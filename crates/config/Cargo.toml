@@ -1,0 +1,15 @@
+[package]
+name = "baauto-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+arrayvec.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+serde_path_to_error.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
