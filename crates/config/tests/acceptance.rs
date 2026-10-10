@@ -1,43 +1,180 @@
-// M1 acceptance contracts, implemented in subsequent M1 commits.
+use baauto_config::*;
+fn points() -> PointSet {
+    from_json(include_str!("../../../points/範例.json")).unwrap()
+}
+fn keys() -> KeysProfile {
+    from_json(include_str!("../../../keys/預設按鍵.json")).unwrap()
+}
+fn check(
+    p: &PointSet,
+    k: &KeysProfile,
+    h: &HandSettings,
+) -> Result<CompiledConfig, Vec<ConfigError>> {
+    compile(p, k, h, TickRate(1_000_000))
+}
 #[test]
-#[ignore = "M1 contract: implementation pending"]
-fn config_rejects_left_button_trigger() { todo!("config_rejects_left_button_trigger"); }
+fn config_rejects_left_button_trigger() {
+    let mut p = points();
+    p.items[0].hotkey = Some("LButton".parse().unwrap());
+    assert!(check(&p, &keys(), &HandSettings::default()).is_err());
+}
 #[test]
-#[ignore = "M1 contract: implementation pending"]
-fn config_preset_conflict_blocks_save() { todo!("config_preset_conflict_blocks_save"); }
+fn config_preset_conflict_blocks_save() {
+    let p = points();
+    let mut k = keys();
+    k.presets.get_mut("skill_2").unwrap().hotkey = k.presets["skill_1"].hotkey;
+    assert_eq!(analyze_conflicts(&p, &k).preset_errors.len(), 2);
+    assert!(check(&p, &k, &HandSettings::default()).is_err());
+}
 #[test]
-#[ignore = "M1 contract: implementation pending"]
-fn config_point_hotkey_conflict_disables_point() { todo!("config_point_hotkey_conflict_disables_point"); }
+fn config_point_hotkey_conflict_disables_point() {
+    let mut p = points();
+    p.items[0].hotkey = Some("w".parse().unwrap());
+    let c = check(&p, &keys(), &HandSettings::default()).unwrap();
+    assert_eq!(c.reports.len(), 1);
+    assert!(matches!(
+        c.actions[c.triggers[87][0] as usize],
+        ActionSpec::Tap(_)
+    ));
+}
 #[test]
-#[ignore = "M1 contract: implementation pending"]
-fn config_cycle_shorter_than_stages_rejected() { todo!("config_cycle_shorter_than_stages_rejected"); }
+fn config_cycle_shorter_than_stages_rejected() {
+    let mut k = keys();
+    k.timing.repeat_period_ms = 40.;
+    assert!(
+        check(&points(), &k, &HandSettings::default())
+            .unwrap_err()
+            .iter()
+            .any(|e| e.path.contains("repeat_period"))
+    );
+}
 #[test]
-#[ignore = "M1 contract: implementation pending"]
-fn hand_slot_keys_need_five_unique() { todo!("hand_slot_keys_need_five_unique"); }
+fn hand_slot_keys_need_five_unique() {
+    let mut h = HandSettings::default();
+    h.slot_keys[1] = h.slot_keys[0];
+    assert!(check(&points(), &keys(), &h).is_err());
+    let json = to_json(&h).unwrap().replace("\"5\"", "\"4\"");
+    assert!(
+        check(
+            &points(),
+            &keys(),
+            &from_json::<HandSettings>(&json).unwrap()
+        )
+        .is_err()
+    );
+    let short = to_json(&h).unwrap().replace("\"4\",\n    \"5\"", "\"4\"");
+    assert!(from_json::<HandSettings>(&short).is_err());
+}
 #[test]
-#[ignore = "M1 contract: implementation pending"]
-fn config_hand_rect_must_be_valid() { todo!("config_hand_rect_must_be_valid"); }
+fn config_hand_rect_must_be_valid() {
+    let mut h = HandSettings::default();
+    h.rects.ten.left.x = [0.8, 0.2];
+    assert!(check(&points(), &keys(), &h).is_err());
+    h.rects.ten.left.x = [f64::NAN, 0.9];
+    assert!(check(&points(), &keys(), &h).is_err());
+}
 #[test]
-#[ignore = "M1 contract: implementation pending"]
-fn mode_picks_hand_rect_and_slot_count() { todo!("mode_picks_hand_rect_and_slot_count"); }
+fn mode_picks_hand_rect_and_slot_count() {
+    let mut p = points();
+    let h = HandSettings {
+        card_ui_side: CardUiSide::Left,
+        ..Default::default()
+    };
+    for (mode, n) in [(Mode::Six, 3), (Mode::Ten, 5)] {
+        p.mode = mode;
+        let c = check(&p, &keys(), &h).unwrap();
+        assert_eq!(c.slots, n);
+        assert_eq!(c.hand, h.layout(mode));
+    }
+}
 #[test]
-#[ignore = "M1 contract: implementation pending"]
-fn config_templates_load_and_compile() { todo!("config_templates_load_and_compile"); }
+fn config_templates_load_and_compile() {
+    let mut p = points();
+    let k = keys();
+    assert_eq!(k.presets.len(), 23);
+    assert!(k.presets.values().all(|p| p.enabled));
+    for mode in [Mode::Six, Mode::Ten] {
+        p.mode = mode;
+        assert!(check(&p, &k, &HandSettings::default()).is_ok());
+    }
+    assert!(!k.timing.verified);
+}
 #[test]
-#[ignore = "M1 contract: implementation pending"]
-fn points_card_item_needs_no_coord() { todo!("points_card_item_needs_no_coord"); }
+fn points_card_item_needs_no_coord() {
+    let p = points();
+    assert_eq!(p.items[2].function, PointFunction::Card);
+    assert_eq!(p.items[2].x, None);
+    assert!(check(&p, &keys(), &HandSettings::default()).is_ok());
+}
 #[test]
-#[ignore = "M1 contract: implementation pending"]
-fn points_item_conflict_disables_item_but_file_saves() { todo!("points_item_conflict_disables_item_but_file_saves"); }
+fn points_item_conflict_disables_item_but_file_saves() {
+    let mut p = points();
+    p.items[1].hotkey = p.items[0].hotkey;
+    let a = analyze_conflicts(&p, &keys());
+    assert_eq!(a.disabled_points, vec![1, 2]);
+    assert!(check(&p, &keys(), &HandSettings::default()).is_ok());
+    assert_eq!(from_json::<PointSet>(&to_json(&p).unwrap()).unwrap(), p);
+}
 #[test]
-#[ignore = "M1 contract: implementation pending"]
-fn switching_keys_file_keeps_points_file() { todo!("switching_keys_file_keeps_points_file"); }
+fn switching_keys_file_keeps_points_file() {
+    let p = points();
+    let k = keys();
+    let mut k2 = k.clone();
+    k2.timing.key_hold_ms = 15.;
+    check(&p, &k2, &HandSettings::default()).unwrap();
+    assert_eq!(p, points());
+    assert_eq!(k, keys());
+}
 #[test]
-#[ignore = "M1 contract: implementation pending"]
-fn config_reports_json_path_on_error() { todo!("config_reports_json_path_on_error"); }
+fn config_reports_json_path_on_error() {
+    let s = include_str!("../../../points/範例.json").replace("\"x\": 0.5", "\"x\": \"oops\"");
+    assert!(
+        from_json::<PointSet>(&s)
+            .unwrap_err()
+            .path
+            .contains("items[0].x")
+    );
+    let s = include_str!("../../../points/範例.json").replace("\"x\": 0.5", "\"unknown\": 0.5");
+    let e = from_json::<PointSet>(&s).unwrap_err();
+    assert!(e.path.contains("items[0]"));
+    assert!(e.reason.contains("unknown"));
+    assert!(from_json::<PointSet>(&format!("{} trailing", to_json(&points()).unwrap())).is_err());
+}
 #[test]
-#[ignore = "M1 contract: implementation pending"]
-fn config_hotkey_string_roundtrip() { todo!("config_hotkey_string_roundtrip"); }
+fn config_hotkey_string_roundtrip() {
+    for s in [
+        "w",
+        "Down",
+        "XButton1",
+        "Ctrl+F9",
+        "=Ctrl+F9",
+        "Shift+RButton",
+    ] {
+        let c: Chord = s.parse().unwrap();
+        assert_eq!(c.to_string(), s);
+        assert_eq!(from_json::<Chord>(&to_json(&c).unwrap()).unwrap(), c);
+    }
+    let a: Chord = "Ctrl+F9".parse().unwrap();
+    let b: Chord = "=Ctrl+Shift+F9".parse().unwrap();
+    assert!(a.overlaps(b));
+}
 #[test]
-#[ignore = "M1 contract: implementation pending"]
-fn tap_zero_hold_requires_verified_profile() { todo!("tap_zero_hold_requires_verified_profile"); }
+fn tap_zero_hold_requires_verified_profile() {
+    let mut k = keys();
+    k.timing.key_hold_ms = 0.;
+    assert!(check(&points(), &k, &HandSettings::default()).is_err());
+    k.timing.verified = true;
+    assert!(check(&points(), &k, &HandSettings::default()).is_ok());
+    k.timing.set_identity(ProfileIdentity {
+        game_version: "changed".into(),
+        ..Default::default()
+    });
+    assert!(!k.timing.verified);
+}
+#[test]
+fn integer_time_conversion_rounds_up() {
+    assert_eq!(ticks_ms(0.001, TickRate(3_000_000)).unwrap(), 3);
+    assert_eq!(ticks_ms(0.0001, TickRate(3)).unwrap(), 1);
+    assert!(ticks_ms(f64::INFINITY, TickRate(1)).is_err());
+    assert!(ticks_ms(1., TickRate(0)).is_err());
+}
