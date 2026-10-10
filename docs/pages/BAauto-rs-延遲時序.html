@@ -1,0 +1,614 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
+<title>BAauto-rs 延遲時序</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* 版面：與「BAauto-rs 架構」同一套工程藍圖。藍 = BAauto-rs 自己的路徑，綠 = 遊戲，灰 = 硬體／Windows／顯示，琥珀 = 晚到或撞幀。 */
+:root{
+  --bg:#F3F6FA; --surface:#FFFFFF; --ink:#132033; --muted:#566377; --line:#D6DDE7; --line-strong:#A9B6C8;
+  --accent:#0A6FBA; --accent-soft:#DDEDF9; --safe:#A85A00; --safe-soft:#FBEBD5; --code-bg:#E8EEF6;
+  --s-ours:#0A6FBA; --s-game:#1baf7a; --s-sys:#8C99AB; --s-band:#EEF2F7;
+  --z1:#86b6ef; --z2:#3987e5; --z3:#1c5cab; --z4:#0d366b;
+  --f-display:"Chakra Petch","Noto Sans TC",system-ui,sans-serif;
+  --f-body:"Noto Sans TC",system-ui,-apple-system,"Microsoft JhengHei","PingFang TC",sans-serif;
+  --f-mono:"JetBrains Mono","Noto Sans TC",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D131C; --surface:#141C28; --ink:#E4EAF3; --muted:#97A5B9; --line:#273345; --line-strong:#3D4C62;
+    --accent:#52B4F2; --accent-soft:#122F48; --safe:#F2A541; --safe-soft:#3A2A14; --code-bg:#1C2636;
+    --s-ours:#3987e5; --s-game:#199e70; --s-sys:#5B6A80; --s-band:#18212F;
+    --z1:#1c5cab; --z2:#2a78d6; --z3:#5598e7; --z4:#9ec5f4;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D131C; --surface:#141C28; --ink:#E4EAF3; --muted:#97A5B9; --line:#273345; --line-strong:#3D4C62;
+  --accent:#52B4F2; --accent-soft:#122F48; --safe:#F2A541; --safe-soft:#3A2A14; --code-bg:#1C2636;
+  --s-ours:#3987e5; --s-game:#199e70; --s-sys:#5B6A80; --s-band:#18212F;
+  --z1:#1c5cab; --z2:#2a78d6; --z3:#5598e7; --z4:#9ec5f4;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:400 15px/1.75 var(--f-body);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding-inline:20px;padding-block:40px 72px}
+a{color:var(--accent)}
+a:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+code{font-family:var(--f-mono);font-size:.86em;background:var(--code-bg);padding:1px 5px;border-radius:4px;word-break:break-word}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;line-height:1.25;margin:0}
+h1{font-size:clamp(32px,5vw,46px);font-weight:700;letter-spacing:.01em}
+h2{font-size:24px;font-weight:700;margin-bottom:6px}
+h3{font-size:16px;font-weight:700;letter-spacing:.02em}
+p{margin:0}
+.eyebrow{font:500 12px/1 var(--f-mono);letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+header{display:grid;gap:14px;padding-bottom:28px;border-bottom:1px solid var(--line)}
+.lead{max-width:66ch;color:var(--muted);font-size:16px}
+.status{display:flex;flex-wrap:wrap;gap:10px 24px;align-items:center;font-size:14px;color:var(--muted)}
+.status .pill{font:600 12px/1.8 var(--f-mono);color:var(--safe);background:var(--safe-soft);border-radius:999px;padding:0 10px}
+.keys{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:13.5px;color:var(--muted)}
+.keys span{display:inline-flex;align-items:center;gap:8px}
+.k-plan,.k-act,.k-read,.k-ghost{display:inline-block;width:12px;height:12px}
+.k-plan{border-radius:50%;border:2px solid var(--s-ours);background:var(--surface)}
+.k-act{border-radius:50%;background:var(--s-ours)}
+.k-read{background:var(--s-game);transform:rotate(45deg) scale(.8)}
+.k-ghost{border:1.5px dashed var(--muted);border-radius:50%}
+nav.toc{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+nav.toc a{font-size:13px;text-decoration:none;color:var(--ink);border:1px solid var(--line);background:var(--surface);padding:3px 10px;border-radius:999px}
+nav.toc a:hover{border-color:var(--accent);color:var(--accent)}
+section{padding-top:44px;display:grid;gap:16px}
+.section-intro{color:var(--muted);max-width:74ch}
+
+figure{margin:0;display:grid;gap:10px}
+.diagram{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+.diagram svg{display:block;width:100%;height:auto;min-width:880px}
+figcaption{color:var(--muted);font-size:14px;max-width:84ch}
+.legend{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+.legend i{display:inline-block;width:14px;height:10px;border-radius:2px}
+
+/* SVG 文字與標記 */
+svg text{font-family:var(--f-body)}
+.t-name{font:600 13.5px var(--f-body);fill:var(--ink)}
+.t-meta{font:400 11.5px var(--f-mono);fill:var(--muted)}
+.t-axis{font:400 11px var(--f-mono);fill:var(--muted);font-variant-numeric:tabular-nums}
+.t-note{font:500 12px var(--f-body);fill:var(--ink)}
+.t-soft{font:500 12px var(--f-body);fill:var(--muted)}
+.t-warn{font:600 12px var(--f-body);fill:var(--safe)}
+.grid{stroke:var(--line);stroke-width:1}
+.axis{stroke:var(--line-strong);stroke-width:1}
+.frame{stroke:var(--line-strong);stroke-width:1}
+.band{fill:var(--s-band)}
+.f-ours{fill:var(--s-ours)} .f-game{fill:var(--s-game)} .f-sys{fill:var(--s-sys)}
+.w-ours{stroke:var(--s-ours)} .w-game{stroke:var(--s-game)} .w-sys{stroke:var(--s-sys)}
+.whisker{stroke-width:2;stroke-linecap:round;opacity:.55}
+.z1{fill:var(--z1)} .z2{fill:var(--z2)} .z3{fill:var(--z3)} .z4{fill:var(--z4)}
+.total{stroke:var(--ink);stroke-width:1.2}
+.target{stroke:var(--safe);stroke-width:1.4}
+.hold{fill:var(--accent-soft)}
+.plan{fill:var(--surface);stroke:var(--s-ours);stroke-width:2}
+.act{fill:var(--s-ours);stroke:var(--surface);stroke-width:2}
+.read{fill:var(--s-game);stroke:var(--surface);stroke-width:2}
+.read.hit{fill:var(--safe)}
+.ghost{fill:none;stroke:var(--muted);stroke-width:1.4;stroke-dasharray:3 3}
+.link{stroke:var(--muted);stroke-width:1.2;fill:none}
+.link.late{stroke:var(--safe);stroke-width:1.6}
+.link.dash{stroke-dasharray:4 4}
+.bracket{fill:none;stroke:var(--muted);stroke-width:1.2}
+.mk{fill:var(--muted)}
+[data-tip]{cursor:default}
+#tip{position:fixed;z-index:10;pointer-events:none;max-width:280px;background:var(--ink);color:var(--bg);font:500 12.5px/1.55 var(--f-body);padding:7px 10px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.18)}
+
+/* 表格 */
+.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:14px}
+th,td{text-align:left;vertical-align:top;padding:10px 14px;border-bottom:1px solid var(--line)}
+th{font:600 12px var(--f-mono);letter-spacing:.06em;color:var(--muted);background:var(--code-bg)}
+tr:last-child td{border-bottom:0}
+td.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+td.late{color:var(--safe);font-weight:600}
+td:first-child{font-weight:700;white-space:nowrap}
+
+/* 互動區 */
+.lab{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;gap:14px}
+.controls{display:grid;grid-template-columns:160px minmax(0,1fr) minmax(0,1fr);gap:14px 20px;align-items:end}
+.ctl{display:grid;gap:4px;min-width:0}
+.ctl label{font:600 12px var(--f-mono);letter-spacing:.04em;color:var(--muted)}
+.ctl output{font:600 14px var(--f-mono);color:var(--ink);font-variant-numeric:tabular-nums}
+.ctl .row{display:flex;align-items:center;gap:10px}
+.ctl input[type=range]{flex:1;min-width:0;accent-color:var(--accent)}
+select{font:500 14px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:8px;padding:6px 10px}
+.presets{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+.presets button{font:500 13px var(--f-body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:3px 12px;cursor:pointer}
+.presets button:hover{border-color:var(--accent);color:var(--accent)}
+.lab .diagram{border:0;padding:0}
+.result{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:16px 28px;align-items:start}
+.now{display:grid;gap:4px}
+.now .big{font:700 22px/1.3 var(--f-display)}
+.now .big.warn{color:var(--safe)}
+.now p{color:var(--muted);font-size:14px}
+.dist{display:grid;gap:8px}
+.dist h3{font-size:14px}
+.drow{display:grid;grid-template-columns:120px minmax(0,1fr) 56px;gap:10px;align-items:center;font-size:14px}
+.track{height:12px;background:var(--s-band);border-radius:3px;overflow:hidden}
+.fill{height:100%;background:var(--s-ours);border-radius:0 4px 4px 0}
+.fill.warn{background:var(--safe)}
+.drow .pct{font:600 13px var(--f-mono);text-align:right;font-variant-numeric:tabular-nums}
+.note{font-size:13px;color:var(--muted)}
+.formula{font:500 13px var(--f-mono);color:var(--muted)}
+.refs{margin:0;padding-left:18px;display:grid;gap:4px;font-size:14px;color:var(--muted)}
+footer{padding-top:44px;display:grid;gap:10px}
+
+@media (max-width:760px){
+  .controls{grid-template-columns:minmax(0,1fr)}
+  .result{grid-template-columns:minmax(0,1fr)}
+  .drow{grid-template-columns:96px minmax(0,1fr) 48px}
+}
+@media (max-width:640px){ .wrap{padding-block:28px 56px} }
+@media (prefers-reduced-motion: reduce){*{scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">BAauto-rs · 時序圖解 · 配合融合架構 v0.3 · 2026-10-10</div>
+  <h1>BAauto-rs 延遲時序</h1>
+  <p class="lead">一次按鍵從手指到畫面要經過哪幾段、引擎排定的時間點和實際送出的時間點差多少，以及這些時間點落在遊戲的哪一幀。</p>
+  <div class="status">
+    <span class="pill">估計值・尚未實測</span>
+    <span>bench 做好後，用同樣的欄位換上環形紀錄、PresentMon 和 DXGI 的實測值。</span>
+  </div>
+  <div class="keys" aria-label="圖例">
+    <span><i class="k-plan"></i>預計：引擎排定的期限 <code>deadline</code></span>
+    <span><i class="k-act"></i>實際：SendInput 送出 <code>send_end</code></span>
+    <span><i class="k-read"></i>遊戲在幀邊界讀到</span>
+    <span><i class="k-ghost"></i>如果準時會在哪</span>
+  </div>
+  <nav class="toc" aria-label="章節">
+    <a href="#path">從手指到畫面</a>
+    <a href="#drag">預計 vs 實際：拖曳一圈</a>
+    <a href="#frames">間距和幀</a>
+    <a href="#fields">紀錄欄位</a>
+  </nav>
+</header>
+
+<section id="path">
+  <h2>一次按鍵：從手指到畫面</h2>
+  <p class="section-intro">以 60fps 視窗模式、1000Hz 鍵盤為例。實心是典型值，淡色延伸是可能的範圍。BAauto-rs 能控制的只有藍色那一段，其餘由硬體、Windows 和遊戲決定。</p>
+  <figure>
+    <div class="diagram">
+      <svg viewBox="0 0 1000 392" role="img" aria-label="一次按鍵的延遲分段瀑布圖。按鍵掃描與 USB 回報 0 到 1 毫秒；Windows 處理到鉤子估計 0.1 到 0.5 毫秒；BAauto-rs 從鉤子到 SendInput 目標 0.2 毫秒以內；等遊戲下一次讀輸入 0 到 16.7 毫秒，平均 8.3；遊戲更新並繪製約 16.7 毫秒；合成並顯示估計 8 到 17 毫秒。合計典型約 38 毫秒。">
+        <!-- 格線：0–50ms，x = 320 + 13t -->
+        <line class="grid" x1="320" y1="56" x2="320" y2="344"/><line class="grid" x1="450" y1="56" x2="450" y2="344"/>
+        <line class="grid" x1="580" y1="56" x2="580" y2="344"/><line class="grid" x1="710" y1="56" x2="710" y2="344"/>
+        <line class="grid" x1="840" y1="56" x2="840" y2="344"/><line class="grid" x1="970" y1="56" x2="970" y2="344"/>
+        <line class="axis" x1="320" y1="348" x2="970" y2="348"/>
+        <text class="t-axis" x="320" y="368" text-anchor="middle">0</text>
+        <text class="t-axis" x="450" y="368" text-anchor="middle">10</text>
+        <text class="t-axis" x="580" y="368" text-anchor="middle">20</text>
+        <text class="t-axis" x="710" y="368" text-anchor="middle">30</text>
+        <text class="t-axis" x="840" y="368" text-anchor="middle">40</text>
+        <text class="t-axis" x="970" y="368" text-anchor="end">50 ms</text>
+
+        <!-- 合計 -->
+        <line class="total" x1="814" y1="44" x2="814" y2="344"/>
+        <text class="t-note" x="806" y="40" text-anchor="end">合計典型約 38ms</text>
+
+        <!-- 列 1 -->
+        <text class="t-name" x="20" y="82">按鍵掃描＋USB 回報</text>
+        <text class="t-meta" x="20" y="100">硬體・0–1ms（1000Hz 輪詢）</text>
+        <g data-tip="按鍵掃描＋USB 回報：0–1ms。1000Hz 輪詢最多等 1ms；125Hz 的鍵盤最多等 8ms。">
+          <line class="whisker w-sys" x1="327" y1="84" x2="333" y2="84"/>
+          <rect class="f-sys" x="320" y="76" width="6.5" height="16" rx="2"/>
+          <rect x="316" y="70" width="24" height="28" fill="transparent"/>
+        </g>
+        <!-- 列 2 -->
+        <text class="t-name" x="20" y="130">Windows 處理 → 鉤子</text>
+        <text class="t-meta" x="20" y="148">Windows・估計 0.1–0.5ms</text>
+        <g data-tip="Windows 輸入處理到呼叫低階鉤子：估計 0.1–0.5ms，實測前不確定。">
+          <line class="whisker w-sys" x1="331" y1="132" x2="333" y2="132"/>
+          <rect class="f-sys" x="326.5" y="124" width="4" height="16" rx="1.5"/>
+          <rect x="320" y="118" width="24" height="28" fill="transparent"/>
+        </g>
+        <!-- 列 3 -->
+        <text class="t-name" x="20" y="178">鉤子 → 引擎 → SendInput</text>
+        <text class="t-meta" x="20" y="196">BAauto-rs・目標 ≤ 0.2ms</text>
+        <g data-tip="BAauto-rs：hook_enter 到 send_end，設計目標 0.2ms 以內。下方有放大圖。">
+          <rect class="f-ours" x="330.4" y="172" width="3" height="16" rx="1"/>
+          <rect x="322" y="166" width="24" height="28" fill="transparent"/>
+        </g>
+        <text class="t-note" x="346" y="184">← BAauto-rs 能控制的只有這一小段</text>
+        <!-- 列 4 -->
+        <text class="t-name" x="20" y="226">等遊戲下一次讀輸入</text>
+        <text class="t-meta" x="20" y="244">遊戲・0–16.7ms，平均 8.3</text>
+        <g data-tip="等遊戲下一次讀輸入：輸入隨機落在一幀裡的某個位置，所以是 0 到 1 幀（60fps 為 0–16.7ms），平均半幀約 8.3ms。">
+          <line class="whisker w-game" x1="441" y1="228" x2="550" y2="228"/>
+          <line class="whisker w-game" x1="550" y1="222" x2="550" y2="234"/>
+          <rect class="f-game" x="333" y="220" width="107.9" height="16" rx="4"/>
+        </g>
+        <!-- 列 5 -->
+        <text class="t-name" x="20" y="274">遊戲更新並繪製</text>
+        <text class="t-meta" x="20" y="292">遊戲・約 1 幀 16.7ms</text>
+        <g data-tip="遊戲更新並繪製這一幀：約 1 幀（60fps 約 16.7ms），估計值，用 PresentMon 量。">
+          <rect class="f-game" x="442.9" y="268" width="215.1" height="16" rx="4"/>
+        </g>
+        <!-- 列 6 -->
+        <text class="t-name" x="20" y="322">合成並顯示到螢幕</text>
+        <text class="t-meta" x="20" y="340">顯示・估計 8–17ms</text>
+        <g data-tip="Windows 合成視窗並掃描輸出到螢幕：估計 8–17ms，視窗模式、螢幕更新率而定。DXGI 的 LastPresentTime 量的是這段的終點。">
+          <line class="whisker w-sys" x1="815" y1="324" x2="879" y2="324"/>
+          <line class="whisker w-sys" x1="879" y1="318" x2="879" y2="330"/>
+          <rect class="f-sys" x="660" y="316" width="154" height="16" rx="4"/>
+        </g>
+      </svg>
+    </div>
+    <div class="legend" aria-hidden="true">
+      <span><i class="f" style="background:var(--s-sys)"></i>硬體／Windows／顯示</span>
+      <span><i style="background:var(--s-ours)"></i>BAauto-rs</span>
+      <span><i style="background:var(--s-game)"></i>遊戲</span>
+    </div>
+    <figcaption>BAauto-rs 這一段再快也只省得到零點幾毫秒；真正大的是「等遊戲下一次讀輸入」，它是 0 到 1 幀的隨機值。所以想讓操作更穩，重點是讓輸入落在對的幀，而不是再壓縮程式內部的微秒。</figcaption>
+  </figure>
+
+  <figure>
+    <div class="diagram">
+      <svg viewBox="0 0 1000 170" role="img" aria-label="放大 BAauto-rs 內部的 0.2 毫秒：鉤子處理約 30 微秒，喚醒引擎約 60 微秒，引擎計算約 10 微秒，SendInput 約 40 微秒，合計約 140 微秒，設計目標 200 微秒。">
+        <line class="grid" x1="320" y1="56" x2="320" y2="132"/><line class="grid" x1="450" y1="56" x2="450" y2="132"/>
+        <line class="grid" x1="580" y1="56" x2="580" y2="132"/><line class="grid" x1="710" y1="56" x2="710" y2="132"/>
+        <line class="grid" x1="840" y1="56" x2="840" y2="132"/><line class="grid" x1="970" y1="56" x2="970" y2="132"/>
+        <line class="axis" x1="320" y1="136" x2="970" y2="136"/>
+        <text class="t-axis" x="320" y="156" text-anchor="middle">0</text>
+        <text class="t-axis" x="450" y="156" text-anchor="middle">50</text>
+        <text class="t-axis" x="580" y="156" text-anchor="middle">100</text>
+        <text class="t-axis" x="710" y="156" text-anchor="middle">150</text>
+        <text class="t-axis" x="840" y="156" text-anchor="middle">200</text>
+        <text class="t-axis" x="970" y="156" text-anchor="end">250 µs</text>
+
+        <text class="t-name" x="20" y="88">放大：BAauto-rs 內部</text>
+        <text class="t-meta" x="20" y="106">合計約 140µs（估計）</text>
+
+        <line class="target" x1="840" y1="44" x2="840" y2="132"/>
+        <text class="t-warn" x="832" y="40" text-anchor="end">設計目標 200µs</text>
+
+        <!-- x = 320 + 2.6us；段與段之間留 2px -->
+        <g data-tip="鉤子處理 hook_enter → enqueue：目標 ≤ 50µs，示意 30µs。"><rect class="z1" x="320" y="80" width="77" height="20" rx="2"/></g>
+        <g data-tip="喚醒引擎 enqueue → engine_receive：估計 20–100µs，示意 60µs。看系統排程。"><rect class="z2" x="399" y="80" width="154" height="20"/></g>
+        <g data-tip="引擎計算 engine_receive → send_begin：目標 ≤ 20µs，示意 10µs。"><rect class="z3" x="555" y="80" width="24" height="20"/></g>
+        <g data-tip="SendInput send_begin → send_end：估計 20–60µs，示意 40µs。"><rect class="z4" x="581" y="80" width="103" height="20" rx="4"/></g>
+
+        <text class="t-soft" x="358" y="70" text-anchor="middle">鉤子處理 ~30µs</text>
+        <text class="t-soft" x="567" y="70" text-anchor="middle">引擎計算 ~10µs</text>
+        <text class="t-soft" x="476" y="120" text-anchor="middle">喚醒引擎 ~60µs</text>
+        <text class="t-soft" x="632" y="120" text-anchor="middle">SendInput ~40µs</text>
+      </svg>
+    </div>
+    <figcaption>四段分別對應環形紀錄的 <code>hook_enter</code> → <code>enqueue</code> → <code>engine_receive</code> → <code>send_begin</code> → <code>send_end</code>。實作後這張圖直接換成 P50／P99／P99.9。</figcaption>
+  </figure>
+</section>
+
+<section id="drag">
+  <h2>預計 vs 實際：拖曳一圈</h2>
+  <p class="section-intro">timing profile 設拖曳三段各 20ms。這一圈的「移動」因為系統偶發搶占晚醒了 3ms。看引擎怎麼處理，以及遊戲最後看到什麼。</p>
+  <figure>
+    <div class="diagram">
+      <svg viewBox="0 0 1000 352" role="img" aria-label="拖曳一圈的時間線。按下預計 0.30 毫秒、實際 0.35；移動預計 20.35、實際 23.35，晚 3 毫秒；放開預計改為 43.35、實際 43.40；下一圈按下預計 63.40、實際 63.45。遊戲在 5.0、38.3、55.0、71.7 毫秒的幀邊界讀到，按下到移動在遊戲裡變成 2 幀。如果移動準時，會在 21.7 毫秒那一幀被讀到。">
+        <!-- x = 200 + 9.625t，0–80ms；幀邊界 5.0 + 16.67k -->
+        <line class="frame" x1="248.1" y1="52" x2="248.1" y2="296"/>
+        <line class="frame" x1="408.5" y1="52" x2="408.5" y2="296"/>
+        <line class="frame" x1="568.9" y1="52" x2="568.9" y2="296"/>
+        <line class="frame" x1="729.4" y1="52" x2="729.4" y2="296"/>
+        <line class="frame" x1="889.8" y1="52" x2="889.8" y2="296"/>
+        <text class="t-axis" x="248.1" y="44" text-anchor="middle">第 1 幀</text>
+        <text class="t-axis" x="408.5" y="44" text-anchor="middle">第 2 幀</text>
+        <text class="t-axis" x="568.9" y="44" text-anchor="middle">第 3 幀</text>
+        <text class="t-axis" x="729.4" y="44" text-anchor="middle">第 4 幀</text>
+        <text class="t-axis" x="889.8" y="44" text-anchor="middle">第 5 幀</text>
+
+        <!-- 列標 -->
+        <text class="t-name" x="20" y="86">實體按鍵</text>
+        <text class="t-name" x="20" y="144">引擎期限（預計）</text>
+        <text class="t-name" x="20" y="204">SendInput（實際）</text>
+        <text class="t-name" x="20" y="264">遊戲讀到</text>
+
+        <!-- 實體按住 -->
+        <rect class="hold" x="200" y="72" width="770" height="18" rx="4"/>
+        <text class="t-soft" x="212" y="86">按住拖曳鍵</text>
+
+        <!-- 順延說明 -->
+        <text class="t-warn" x="700" y="116" text-anchor="middle">移動晚了 3ms → 後面整段跟著順延，間隔不縮短</text>
+
+        <!-- 預計 → 實際 連線 -->
+        <line class="link" x1="202.9" y1="146" x2="203.4" y2="194"/>
+        <line class="link late" x1="395.9" y1="146" x2="424.7" y2="194"/>
+        <line class="link" x1="617.3" y1="146" x2="617.7" y2="194"/>
+        <line class="link" x1="810.2" y1="146" x2="810.7" y2="194"/>
+
+        <!-- 固定節拍的位置（虛線） -->
+        <circle class="ghost" cx="588.4" cy="140" r="6"/>
+        <circle class="ghost" cx="780.9" cy="140" r="6"/>
+        <path class="link" d="M595 140 L607 140"/><path class="mk" d="M609 140 l-6 -3.5 v7 z"/>
+        <path class="link" d="M788 140 L800 140"/><path class="mk" d="M802 140 l-6 -3.5 v7 z"/>
+
+        <!-- 預計 -->
+        <g data-tip="按下　預計 0.30ms（引擎收到事件就排）"><circle class="plan" cx="202.9" cy="140" r="6"/></g>
+        <g data-tip="移動　預計 20.35ms（= 按下實際 0.35 ＋ 20）"><circle class="plan" cx="395.9" cy="140" r="6"/></g>
+        <g data-tip="放開　預計 43.35ms（= 移動實際 23.35 ＋ 20；固定節拍原本是 40.35）"><circle class="plan" cx="617.3" cy="140" r="6"/></g>
+        <g data-tip="下一圈按下　預計 63.40ms（= 放開實際 43.40 ＋ 20）"><circle class="plan" cx="810.2" cy="140" r="6"/></g>
+
+        <!-- 實際 -->
+        <g data-tip="按下　實際 0.35ms，晚 0.05ms"><circle class="act" cx="203.4" cy="200" r="7"/></g>
+        <g data-tip="移動　實際 23.35ms，晚 3.00ms（偶發搶占的例子）"><circle class="act" cx="424.7" cy="200" r="7"/></g>
+        <g data-tip="放開　實際 43.40ms，晚 0.05ms"><circle class="act" cx="617.7" cy="200" r="7"/></g>
+        <g data-tip="下一圈按下　實際 63.45ms，晚 0.05ms"><circle class="act" cx="810.7" cy="200" r="7"/></g>
+        <text class="t-soft" x="203.4" y="226" text-anchor="middle">按下</text>
+        <text class="t-soft" x="424.7" y="226" text-anchor="middle">移動</text>
+        <text class="t-soft" x="617.7" y="226" text-anchor="middle">放開</text>
+        <text class="t-soft" x="810.7" y="226" text-anchor="middle">按下</text>
+        <text class="t-warn" x="438" y="204">晚醒 +3.0ms</text>
+
+        <!-- 實際 → 遊戲讀到 -->
+        <line class="link dash" x1="206" y1="207" x2="244" y2="256"/>
+        <line class="link dash" x1="428" y1="207" x2="564" y2="256"/>
+        <line class="link dash" x1="621" y1="207" x2="725" y2="256"/>
+        <line class="link dash" x1="814" y1="207" x2="886" y2="256"/>
+
+        <!-- 準時的話 -->
+        <rect class="ghost" x="402.5" y="256" width="12" height="12" transform="rotate(45 408.5 262)"/>
+        <text class="t-soft" x="408.5" y="246" text-anchor="middle">準時的話在這幀讀到</text>
+
+        <!-- 遊戲讀到 -->
+        <g data-tip="第 1 幀（5.0ms）讀到按下"><rect class="read" x="242.1" y="256" width="12" height="12" transform="rotate(45 248.1 262)"/></g>
+        <g data-tip="第 3 幀（38.3ms）讀到移動。實際 23.35ms 剛好錯過 21.7ms 的第 2 幀。"><rect class="read" x="562.9" y="256" width="12" height="12" transform="rotate(45 568.9 262)"/></g>
+        <g data-tip="第 4 幀（55.0ms）讀到放開"><rect class="read" x="723.4" y="256" width="12" height="12" transform="rotate(45 729.4 262)"/></g>
+        <g data-tip="第 5 幀（71.7ms）讀到下一圈按下"><rect class="read" x="883.8" y="256" width="12" height="12" transform="rotate(45 889.8 262)"/></g>
+
+        <!-- 遊戲看到的間隔 -->
+        <path class="bracket" d="M249 280 V286 H568 V280"/>
+        <text class="t-warn" x="408.5" y="302" text-anchor="middle">遊戲看到 2 幀（33.3ms）</text>
+        <path class="bracket" d="M570 280 V286 H728 V280"/>
+        <text class="t-soft" x="649" y="302" text-anchor="middle">1 幀</text>
+        <path class="bracket" d="M731 280 V286 H889 V280"/>
+        <text class="t-soft" x="810" y="302" text-anchor="middle">1 幀</text>
+
+        <!-- 時間軸 -->
+        <line class="axis" x1="200" y1="318" x2="970" y2="318"/>
+        <text class="t-axis" x="200" y="336" text-anchor="middle">0</text>
+        <text class="t-axis" x="296.3" y="336" text-anchor="middle">10</text>
+        <text class="t-axis" x="392.5" y="336" text-anchor="middle">20</text>
+        <text class="t-axis" x="488.8" y="336" text-anchor="middle">30</text>
+        <text class="t-axis" x="585" y="336" text-anchor="middle">40</text>
+        <text class="t-axis" x="681.3" y="336" text-anchor="middle">50</text>
+        <text class="t-axis" x="777.5" y="336" text-anchor="middle">60</text>
+        <text class="t-axis" x="873.8" y="336" text-anchor="middle">70</text>
+        <text class="t-axis" x="970" y="336" text-anchor="end">80 ms</text>
+      </svg>
+    </div>
+    <figcaption>引擎送出的三段都是 20ms（最小間隔規則保證不縮短），但遊戲是每幀讀一次。移動只晚了 3ms，剛好錯過第 2 幀，遊戲看到的「按下→移動」就從 1 幀變成 2 幀。這就是紀錄要同時存預計和實際兩個時間點的原因：沒有 <code>deadline</code>，就看不出這 3ms 是從哪裡來的。</figcaption>
+  </figure>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>步驟</th><th>預計 deadline</th><th>怎麼算出來</th><th>實際 send_end</th><th>差</th><th>遊戲讀到</th></tr></thead>
+      <tbody>
+        <tr><td>按下</td><td class="num">0.30 ms</td><td>引擎收到事件就排</td><td class="num">0.35 ms</td><td class="num">+0.05</td><td class="num">5.0（第 1 幀）</td></tr>
+        <tr><td>移動</td><td class="num">20.35 ms</td><td>按下實際 0.35 ＋ 20</td><td class="num">23.35 ms</td><td class="num late">+3.00</td><td class="num">38.3（第 3 幀）</td></tr>
+        <tr><td>放開</td><td class="num">43.35 ms</td><td>移動實際 23.35 ＋ 20</td><td class="num">43.40 ms</td><td class="num">+0.05</td><td class="num">55.0（第 4 幀）</td></tr>
+        <tr><td>下一圈按下</td><td class="num">63.40 ms</td><td>放開實際 43.40 ＋ 20</td><td class="num">63.45 ms</td><td class="num">+0.05</td><td class="num">71.7（第 5 幀）</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">示意數字：幀邊界假設在 5.0ms 起每 16.67ms 一次；3ms 晚醒是偶發狀況的例子，不是預期值。</p>
+</section>
+
+<section id="frames">
+  <h2>間距和幀：同樣的間距，結果不一定一樣</h2>
+  <p class="section-intro">兩個輸入之間隔多久，遊戲看到的是「隔幾幀」。同一個間距，第一個輸入落在幀裡的哪個位置（相位）不同，結果就不同。拖動下面的設定看看。</p>
+  <div class="lab">
+    <div class="presets" aria-label="快速範例">
+      <span>範例：</span>
+      <button type="button" data-fps="60" data-gap="16" data-ph="2">卡幀 16ms＠60fps</button>
+      <button type="button" data-fps="60" data-gap="8" data-ph="30">8ms＠60fps</button>
+      <button type="button" data-fps="60" data-gap="20" data-ph="90">拖曳 20ms＠60fps</button>
+      <button type="button" data-fps="120" data-gap="16" data-ph="50">16ms＠120fps</button>
+    </div>
+    <div class="controls">
+      <div class="ctl">
+        <label for="fps">遊戲幀率</label>
+        <select id="fps">
+          <option value="30">30 fps</option>
+          <option value="60" selected>60 fps</option>
+          <option value="120">120 fps</option>
+          <option value="144">144 fps</option>
+        </select>
+      </div>
+      <div class="ctl">
+        <label for="gap">兩個輸入的間距</label>
+        <div class="row"><input type="range" id="gap" min="1" max="40" step="0.5" value="16"><output id="gapOut" for="gap">16.0 ms</output></div>
+      </div>
+      <div class="ctl">
+        <label for="ph">第一個輸入的相位（落在幀裡的位置）</label>
+        <div class="row"><input type="range" id="ph" min="0" max="99" step="1" value="2"><output id="phOut" for="ph">2%</output></div>
+      </div>
+    </div>
+    <div class="diagram">
+      <svg id="lab" viewBox="0 0 1000 200" role="img" aria-label="兩個輸入和遊戲幀邊界的時間線，隨設定更新。"></svg>
+    </div>
+    <div class="result">
+      <div class="now">
+        <span class="note">目前這個相位</span>
+        <span class="big" id="nowBig">—</span>
+        <p id="nowText"></p>
+      </div>
+      <div class="dist">
+        <h3>隨機相位下，遊戲看到的間隔</h3>
+        <div id="dist"></div>
+        <p class="formula" id="formula"></p>
+      </div>
+    </div>
+  </div>
+  <p class="note">假設：遊戲每幀在固定時間點讀一次輸入、幀時間固定、相位均勻隨機。實際幀時間會抖動，遊戲也可能用事件佇列讀輸入，所以這只是起點，最終間距以校準實測為準。60fps 下 16ms 的間距約有 4% 的機率撞在同一幀，這正是校準時要隨機相位、跑足樣本的原因。</p>
+</section>
+
+<section id="fields">
+  <h2>這些時間點在紀錄裡叫什麼</h2>
+  <p class="section-intro">上面每個點都對應一個會寫進紀錄的欄位，全部是同一個 QPC 時鐘，可以直接相減。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>欄位</th><th>意思</th><th>誰記</th><th>圖上</th></tr></thead>
+      <tbody>
+        <tr><td><code>hook_enter</code></td><td>鉤子 callback 開始</td><td>Hook 執行緒 → 環形紀錄</td><td>藍色段的起點</td></tr>
+        <tr><td><code>enqueue</code></td><td>事件推進佇列</td><td>Hook 執行緒</td><td>放大圖第 1 段終點</td></tr>
+        <tr><td><code>engine_receive</code></td><td>引擎取出事件</td><td>Engine 執行緒</td><td>放大圖第 2 段終點</td></tr>
+        <tr><td><code>deadline</code></td><td>引擎排定的送出時間</td><td>Engine 執行緒</td><td>空心圓（預計）</td></tr>
+        <tr><td><code>send_begin</code>／<code>send_end</code></td><td>SendInput 呼叫前後</td><td>Driver</td><td>實心圓（實際）</td></tr>
+        <tr><td><code>CPUStartQPC</code></td><td>遊戲某一幀開始，約等於讀輸入的時間</td><td>PresentMon <code>--qpc_time</code></td><td>幀邊界、菱形</td></tr>
+        <tr><td><code>LastPresentTime</code></td><td>畫面更新的時間</td><td>DXGI Desktop Duplication</td><td>第一張圖的終點</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>要看的數字</th><th>怎麼算</th><th>用來決定</th></tr></thead>
+      <tbody>
+        <tr><td>鉤子處理</td><td class="num">enqueue − hook_enter</td><td>鉤子會不會逾時、Hook 優先權實驗</td></tr>
+        <tr><td>喚醒延遲</td><td class="num">engine_receive − enqueue</td><td>引擎優先權要不要提高</td></tr>
+        <tr><td>晚醒</td><td class="num">send_begin − deadline</td><td>尾段自旋要不要開、開多長</td></tr>
+        <tr><td>注入耗時</td><td class="num">send_end − send_begin</td><td>批次大小</td></tr>
+        <tr><td>落在哪一幀</td><td class="num">send_end 之後第一個 CPUStartQPC</td><td>間距的起點與安全邊際</td></tr>
+        <tr><td>輸入到畫面</td><td class="num">LastPresentTime − send_end</td><td>自動判定成功／失敗的時間窗</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <h2>依據</h2>
+  <ul class="refs">
+    <li><a href="https://github.com/GameTechDev/PresentMon">PresentMon</a>：<code>--qpc_time</code> 輸出 <code>CPUStartQPC</code>，以及 <code>MsBetweenPresents</code> 等幀時間欄位</li>
+    <li><a href="https://learn.microsoft.com/en-us/windows/win32/api/dxgi1_2/ns-dxgi1_2-dxgi_outdupl_frame_info">DXGI_OUTDUPL_FRAME_INFO</a>：<code>LastPresentTime</code> 由系統以 QPC 取得</li>
+    <li><a href="https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput">SendInput</a>：同一次呼叫的事件不會被其他輸入插入</li>
+    <li>其餘分段數字為估計或設計目標，對應《BAauto-rs 融合架構 v0.3》§12 的量測項目。</li>
+  </ul>
+</footer>
+</div>
+<div id="tip" hidden></div>
+
+<script>
+(function(){
+  // 共用提示框
+  var tip = document.getElementById('tip');
+  function showTip(e){
+    var t = e.target.closest('[data-tip]'); if(!t) return;
+    tip.textContent = t.getAttribute('data-tip'); tip.hidden = false; moveTip(e);
+  }
+  function moveTip(e){
+    if(tip.hidden) return;
+    var x = e.clientX + 14, y = e.clientY + 14;
+    var w = tip.offsetWidth, h = tip.offsetHeight;
+    if(x + w > window.innerWidth - 8) x = e.clientX - w - 14;
+    if(y + h > window.innerHeight - 8) y = e.clientY - h - 14;
+    tip.style.left = Math.max(8, x) + 'px'; tip.style.top = Math.max(8, y) + 'px';
+  }
+  document.addEventListener('pointerover', function(e){ if(e.target.closest('[data-tip]')) showTip(e); });
+  document.addEventListener('pointermove', moveTip);
+  document.addEventListener('pointerout', function(e){ if(e.target.closest('[data-tip]') && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('[data-tip]'))) tip.hidden = true; });
+
+  // 間距和幀的互動圖
+  var NS = 'http://www.w3.org/2000/svg';
+  var svg = document.getElementById('lab');
+  var fpsEl = document.getElementById('fps'), gapEl = document.getElementById('gap'), phEl = document.getElementById('ph');
+  var gapOut = document.getElementById('gapOut'), phOut = document.getElementById('phOut');
+  var nowBig = document.getElementById('nowBig'), nowText = document.getElementById('nowText');
+  var distEl = document.getElementById('dist'), formula = document.getElementById('formula');
+
+  function el(name, attrs, text){
+    var n = document.createElementNS(NS, name);
+    for(var k in attrs) n.setAttribute(k, attrs[k]);
+    if(text != null) n.textContent = text;
+    svg.appendChild(n); return n;
+  }
+  function framesLabel(n){ return n === 0 ? '0 幀（同一幀）' : n + ' 幀'; }
+  function fmt(v){ return (Math.round(v * 10) / 10).toFixed(1); }
+
+  function render(){
+    var fps = +fpsEl.value, T = 1000 / fps, g = +gapEl.value, p = +phEl.value / 100;
+    gapOut.textContent = fmt(g) + ' ms'; phOut.textContent = phEl.value + '%';
+    var B0 = 4;
+    var W = Math.max(60, Math.ceil((B0 + 2 * T + 40) / 10) * 10);
+    var X0 = 60, X1 = 970, sx = function(t){ return X0 + (t / W) * (X1 - X0); };
+    var t1 = B0 + p * T, t2 = t1 + g;
+    var nextRead = function(t){ return B0 + (Math.floor((t - B0) / T + 1e-9) + 1) * T; };
+    var r1 = nextRead(t1), r2 = nextRead(t2);
+    var n = Math.round((r2 - r1) / T);
+    var same = n === 0;
+
+    while(svg.firstChild) svg.removeChild(svg.firstChild);
+    // 幀區間底色與邊界
+    for(var k = 0; B0 + k * T < W; k++){
+      var a = B0 + k * T, b = Math.min(W, a + T);
+      if(k % 2 === 0) el('rect', {class:'band', x:sx(a), y:40, width:Math.max(0, sx(b) - sx(a)), height:118});
+      el('line', {class:'frame', x1:sx(a), y1:36, x2:sx(a), y2:158});
+    }
+    el('text', {class:'t-axis', x:sx(B0), y:28, 'text-anchor':'start'}, '幀邊界：遊戲在這些時間點讀輸入（每 ' + fmt(T) + 'ms）');
+    // 列標
+    el('text', {class:'t-meta', x:8, y:76}, '送出');
+    el('text', {class:'t-meta', x:8, y:136}, '讀到');
+    // 間距括號
+    el('path', {class:'bracket', d:'M' + sx(t1) + ' 54 V48 H' + sx(t2) + ' V54'});
+    el('text', {class:'t-soft', x:(sx(t1) + sx(t2)) / 2, y:44, 'text-anchor':'middle'}, '間距 ' + fmt(g) + 'ms');
+    // 連線
+    el('line', {class:'link dash', x1:sx(t1), y1:78, x2:sx(r1), y2:124});
+    el('line', {class:'link dash', x1:sx(t2), y1:78, x2:sx(r2), y2:124});
+    // 送出點
+    el('circle', {class:'act', cx:sx(t1), cy:70, r:7});
+    el('circle', {class:'act', cx:sx(t2), cy:70, r:7});
+    el('text', {class:'t-soft', x:sx(t1) - 12, y:75, 'text-anchor':'end'}, '①');
+    el('text', {class:'t-soft', x:sx(t2) - 12, y:75, 'text-anchor':'end'}, '②');
+    // 讀到點
+    [r1, r2].forEach(function(r, i){
+      if(i === 1 && same) return;
+      var c = sx(r);
+      el('rect', {class:'read' + (same ? ' hit' : ''), x:c - 6, y:124, width:12, height:12, transform:'rotate(45 ' + c + ' 130)'});
+    });
+    el('text', {class: same ? 't-warn' : 't-soft', x:(sx(r1) + sx(r2)) / 2, y:156, 'text-anchor':'middle'},
+       same ? '① ② 被同一幀讀到' : '遊戲看到 ' + framesLabel(n) + '（' + fmt(r2 - r1) + 'ms）');
+    // 時間軸
+    el('line', {class:'axis', x1:X0, y1:168, x2:X1, y2:168});
+    for(var t = 0; t <= W; t += 10){
+      el('text', {class:'t-axis', x:sx(t), y:186, 'text-anchor': t === W ? 'end' : 'middle'}, t === W ? t + ' ms' : String(t));
+    }
+
+    // 目前相位的結果
+    nowBig.textContent = '遊戲看到 ' + framesLabel(n);
+    nowBig.className = 'big' + (same ? ' warn' : '');
+    nowText.textContent = same
+      ? '兩個輸入落在同一個幀區間，遊戲可能只算一次，或把順序看錯。'
+      : '① 在 ' + fmt(r1) + 'ms 被讀到，② 在 ' + fmt(r2) + 'ms 被讀到。';
+
+    // 隨機相位的分布：q = 間距 / 幀時間
+    var q = g / T, n0 = Math.floor(q + 1e-9), f = q - n0;
+    var rows = f < 1e-6 ? [{n:n0, p:1}] : [{n:n0, p:1 - f}, {n:n0 + 1, p:f}];
+    distEl.textContent = '';
+    rows.forEach(function(r){
+      var row = document.createElement('div'); row.className = 'drow';
+      var lab = document.createElement('span'); lab.textContent = framesLabel(r.n);
+      var track = document.createElement('div'); track.className = 'track';
+      var fill = document.createElement('div'); fill.className = 'fill' + (r.n === 0 ? ' warn' : '');
+      fill.style.width = (r.p * 100).toFixed(1) + '%'; track.appendChild(fill);
+      var pct = document.createElement('span'); pct.className = 'pct'; pct.textContent = (r.p * 100).toFixed(1) + '%';
+      row.appendChild(lab); row.appendChild(track); row.appendChild(pct); distEl.appendChild(row);
+    });
+    formula.textContent = '間距 ÷ 幀時間 = ' + fmt(g) + ' ÷ ' + fmt(T) + ' = ' + q.toFixed(2) +
+      (f < 1e-6 ? '，剛好整數倍，每次都隔 ' + n0 + ' 幀' : '；小數部分 ' + f.toFixed(2) + ' 就是隔 ' + (n0 + 1) + ' 幀的機率');
+  }
+
+  [fpsEl, gapEl, phEl].forEach(function(x){ x.addEventListener('input', render); });
+  document.querySelectorAll('.presets button').forEach(function(b){
+    b.addEventListener('click', function(){
+      fpsEl.value = b.dataset.fps; gapEl.value = b.dataset.gap; phEl.value = b.dataset.ph; render();
+    });
+  });
+  render();
+})();
+</script>
+</body></html>

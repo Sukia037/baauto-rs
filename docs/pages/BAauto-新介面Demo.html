@@ -1,0 +1,1074 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BAauto 介面 Demo</title>
+<style>
+:root{
+  --page:#E8EBEF; --bg:#FFFFFF; --soft:#F5F6F8; --field:#FFFFFF;
+  --line:#D8DCE1; --line2:#ECEEF1; --ink:#1C1F23; --muted:#646A73; --faint:#9AA0A8;
+  --accent:#0067C0; --accent-ink:#FFFFFF; --sel:#E1EEFA;
+  --good:#16833A; --warn:#946200; --bad:#C42B1C; --bad-bg:#FDECEC;
+  --font:"Microsoft JhengHei UI","Microsoft JhengHei","PingFang TC","Noto Sans TC","Segoe UI",sans-serif;
+  --mono:"Cascadia Mono",Consolas,"SFMono-Regular",Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --page:#141517; --bg:#222326; --soft:#292B2F; --field:#1A1B1E;
+    --line:#3C3F45; --line2:#303237; --ink:#E9EAEC; --muted:#A8ADB5; --faint:#747982;
+    --accent:#5AB4F5; --accent-ink:#06223A; --sel:#1E3850;
+    --good:#5CC27A; --warn:#E3B341; --bad:#FF8A80; --bad-bg:#3B2324;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --page:#141517; --bg:#222326; --soft:#292B2F; --field:#1A1B1E;
+  --line:#3C3F45; --line2:#303237; --ink:#E9EAEC; --muted:#A8ADB5; --faint:#747982;
+  --accent:#5AB4F5; --accent-ink:#06223A; --sel:#1E3850;
+  --good:#5CC27A; --warn:#E3B341; --bad:#FF8A80; --bad-bg:#3B2324;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--page);color:var(--ink);font:13px/1.5 var(--font)}
+.page{max-width:1040px;margin:0 auto;padding:16px 16px 28px}
+.page h1{font-size:14px;font-weight:600;color:var(--muted);margin:0 0 10px}
+.frame{overflow-x:auto;padding:2px 0 14px}
+button{font:inherit;color:inherit;cursor:pointer}
+button:disabled{cursor:default;opacity:.4}
+input,select{font:inherit;color:var(--ink);background:var(--field);border:1px solid var(--line);border-radius:6px;height:30px;padding:0 8px;min-width:0}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+input.n{width:66px;text-align:right;font-variant-numeric:tabular-nums}
+input.n.err{border-color:var(--bad)}
+
+.win{width:980px;height:650px;margin:0 auto;display:flex;flex-direction:column;background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.sp{flex:1}
+.mut{color:var(--muted)}
+.num{font-variant-numeric:tabular-nums}
+.path{color:var(--faint);font:12px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ellip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.small{font-size:12px}
+.state{display:inline-flex;align-items:center;gap:6px;font-weight:600;white-space:nowrap}
+.state i{width:8px;height:8px;border-radius:50%;background:currentColor}
+.state.ok{color:var(--good)} .state.warn{color:var(--warn)} .state.bad{color:var(--bad)} .state.off{color:var(--faint)}
+.btn{height:30px;padding:0 14px;border:1px solid var(--line);border-radius:6px;background:var(--field);white-space:nowrap}
+.btn:hover:not(:disabled){background:var(--soft)}
+.btn.sm{height:28px;padding:0 10px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.primary:hover:not(:disabled){background:var(--accent);filter:brightness(1.07)}
+.btn.rec{border-color:var(--accent);color:var(--accent)}
+.lnk{border:0;background:none;padding:0;color:var(--accent);white-space:nowrap}
+.lnk:hover:not(:disabled){text-decoration:underline}
+.lnk.danger{color:var(--bad)}
+.t-bad{color:var(--bad)} .t-warn{color:var(--warn)} .t-off{color:var(--faint)} .t-ok{color:var(--good)}
+
+/* 頂部：兩種 JSON */
+.ctop{display:flex;align-items:center;gap:10px;padding:10px 16px 4px}
+.brand{font-weight:700;font-size:14px;letter-spacing:.02em}
+.frow{display:grid;grid-template-columns:64px auto auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:4px 16px;min-width:0}
+.frow .lab{font-weight:600;color:var(--muted)}
+.frow .links{display:flex;gap:12px;font-size:12px}
+.pseg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;max-width:440px;overflow-x:auto;scrollbar-width:thin}
+.pseg button{border:0;background:var(--field);padding:0 12px;height:30px;color:var(--muted);font:12.5px var(--mono);white-space:nowrap}
+.pseg button+button{border-left:1px solid var(--line)}
+.pseg button[aria-pressed="true"]{background:var(--sel);color:var(--ink);font-weight:700}
+.pseg button.add{font-family:var(--font);padding:0 11px}
+.pinfo{display:flex;align-items:center;gap:10px;min-width:0}
+.tagm{font-size:12px;color:var(--muted);white-space:nowrap}
+.ctabs{display:flex;align-items:center;gap:4px;padding:8px 16px 10px;border-bottom:1px solid var(--line)}
+.ctabs button{border:0;background:none;padding:5px 12px;border-radius:999px;color:var(--muted)}
+.ctabs button:hover{background:var(--soft);color:var(--ink)}
+.ctabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);font-weight:600}
+.ctabs .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--bad);margin-left:5px;vertical-align:middle}
+.ctabs .src{margin-left:auto;font-size:12px;color:var(--faint)}
+
+/* 內容 */
+main{flex:1;min-height:0;padding:12px 16px 14px}
+main>section{height:100%;min-height:0;display:grid;gap:14px}
+.g-points{grid-template-columns:210px minmax(0,1fr) 290px}
+.g-presets{grid-template-columns:minmax(0,1fr) 290px}
+.g-timing{grid-template-columns:minmax(0,1fr) 290px}
+.g-log{grid-template-columns:minmax(0,1fr) 320px}
+.pane{display:flex;flex-direction:column;min-height:0;min-width:0}
+.ph{display:flex;align-items:center;gap:8px;height:34px;flex:none}
+.ph b{font-size:13.5px}
+.cnt{color:var(--faint);font-size:12px}
+.list{flex:1;min-height:0;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--field)}
+.row{display:grid;align-items:center;gap:8px;min-height:34px;padding:2px 10px;border-bottom:1px solid var(--line2);cursor:default}
+.row:last-child{border-bottom:0}
+.row.head{position:sticky;top:0;z-index:1;min-height:28px;background:var(--soft);color:var(--faint);font-size:12px}
+.row.grp{min-height:26px;background:var(--soft);color:var(--muted);font-size:12px;font-weight:600;display:block;line-height:26px}
+.row[data-sel]:hover{background:var(--soft)}
+.row.sel,.row.sel:hover{background:var(--sel)}
+.row.dim>span:first-child{color:var(--faint)}
+.empty{padding:22px 12px;color:var(--faint);text-align:center;font-size:12.5px}
+.c-cand .row{grid-template-columns:minmax(0,1fr) auto}
+.c-pts .row{grid-template-columns:minmax(0,1fr) 74px 62px 84px 40px}
+.c-pre .row:not(.grp){grid-template-columns:minmax(0,1fr) 110px 150px}
+.c-tm .row{grid-template-columns:minmax(0,1fr) 100px minmax(0,1.1fr)}
+.c-log .row{grid-template-columns:52px minmax(0,1fr);min-height:32px}
+.c-rep .row{grid-template-columns:minmax(0,1fr) auto}
+.fn{font-size:12px;padding:1px 6px;border-radius:4px;background:var(--soft);color:var(--muted);white-space:nowrap;justify-self:start}
+.fn.card{background:var(--sel);color:var(--ink)}
+.dotm{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:8px;background:var(--faint);vertical-align:middle}
+.dotm.bad{background:var(--bad)} .dotm.warn{background:var(--warn)}
+
+.chip{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:26px;padding:0 8px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;background:var(--field);font:12px var(--mono);white-space:nowrap}
+.chip:hover:not(:disabled){border-color:var(--accent)}
+.chip.empty{border-style:dashed;border-bottom-width:1px;color:var(--faint);font-family:var(--font)}
+.chip.bad{border-color:var(--bad);color:var(--bad);background:var(--bad-bg)}
+.chip.off{color:var(--faint)}
+.chip.cap{border-color:var(--accent);background:var(--sel);color:var(--ink);font-family:var(--font);border-bottom-width:1px}
+.chip.big{height:32px;min-width:64px;font-size:13px}
+
+/* 右側詳細 */
+.insp{border:1px solid var(--line);border-radius:8px;background:var(--soft);padding:14px;display:flex;flex-direction:column;gap:10px;overflow:auto;min-height:0}
+.insp h3{margin:0;font-size:14px}
+.insp h4{margin:6px 0 0;font-size:12.5px;color:var(--muted);font-weight:600;padding-top:10px;border-top:1px solid var(--line2)}
+.insp h4 .path{display:block;font-weight:400;font-size:11.5px}
+.insp .f{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px;align-items:center}
+.insp .f>.k{color:var(--muted)}
+.insp .f .v{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.insp .acts{display:flex;gap:14px;margin-top:auto;padding-top:8px;border-top:1px solid var(--line2)}
+.insp .none{margin:auto;color:var(--faint);text-align:center;font-size:12.5px}
+.insp hr{border:0;border-top:1px solid var(--line2);margin:2px 0;width:100%}
+.insp p{margin:0}
+.chk{display:inline-flex;align-items:center;gap:6px}
+.chk input{height:auto}
+.sw{position:relative;width:30px;height:18px;border-radius:9px;border:0;background:var(--line);padding:0;flex:none}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .12s}
+.sw[aria-checked="true"]{background:var(--accent)}
+.sw[aria-checked="true"]::after{transform:translateX(12px)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;justify-self:start}
+.seg button{border:0;background:var(--field);padding:0 12px;height:28px}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--sel);color:var(--ink);font-weight:600}
+.slotk{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--muted)}
+
+.savebar{display:flex;align-items:center;gap:8px;padding:8px 16px;border-top:1px solid var(--line);background:var(--soft);flex:none}
+.savebar .msg{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.savebar .msg b{font-family:var(--mono);font-size:12.5px}
+.status{display:flex;align-items:center;gap:16px;height:30px;padding:0 16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;flex:none}
+.status .ok{color:var(--good)} .status .warn{color:var(--warn)} .status .bad{color:var(--bad)} .status .hint{color:var(--ink)}
+
+.demo{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;width:980px;max-width:100%;margin:0 auto;color:var(--muted);font-size:12.5px}
+.demo label{display:flex;align-items:center;gap:6px}
+.demo select{height:28px}
+
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.38);display:grid;place-items:center;z-index:50;padding:16px}
+.dlg{width:min(540px,100%);background:var(--bg);border:1px solid var(--line);border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.3)}
+.dlg h2{font-size:14px;margin:0;padding:14px 16px 6px}
+.dlg .body{padding:4px 16px;display:flex;flex-direction:column;gap:8px}
+.dlg .body p{margin:0;color:var(--muted)}
+.dlg .btns{display:flex;justify-content:flex-end;gap:8px;padding:14px 16px}
+.dlg .of{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:center;width:100%;border:1px solid var(--line);border-radius:8px;background:var(--field);text-align:left;padding:8px 12px}
+.dlg .of:hover{border-color:var(--accent)}
+.dlg .of .p{font:12.5px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dlg .of .d{grid-column:1 / -1;font-size:12px;color:var(--muted)}
+.dlg .row2{display:grid;grid-template-columns:80px minmax(0,1fr);gap:8px;align-items:center}
+.frow .seg{flex:none}
+.win.drop{outline:3px dashed var(--accent);outline-offset:-3px}
+.btn.danger{color:var(--bad)}
+.pseg .ftab{display:inline-flex;align-items:center;background:var(--field)}
+.pseg .ftab+.ftab{border-left:1px solid var(--line)}
+.pseg .ftab button{border:0;background:transparent}
+.pseg .ftab .x{padding:0 9px 0 0;color:var(--faint);font:13px var(--font);border-left:0}
+.pseg .ftab .x:hover:not(:disabled){color:var(--bad)}
+.pseg .ftab.on{background:var(--sel)}
+.pseg .ftab.on button{color:var(--ink)}
+.fbtns{display:flex;gap:6px}
+.frow .seg button{height:26px;padding:0 10px;font-size:12.5px;white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>BAauto 介面 Demo・三欄版・資料都是示範值，不會送出任何按鍵</h1>
+  <div class="frame">
+  <div class="win" id="win">
+    <div class="ctop">
+      <span class="brand">BAauto</span>
+      <span class="sp"></span>
+      <span class="state" id="state"></span>
+      <button type="button" class="btn" id="runBtn" data-act="run" title="緊急停止：Ctrl+F9"></button>
+    </div>
+    <div class="frow">
+      <span class="lab">點位</span>
+      <span class="pseg" id="pfFiles"></span>
+      <span class="fbtns"><button type="button" class="btn sm" data-act="newFile" data-kind="pf">新增</button><button type="button" class="btn sm" data-act="open" data-kind="pf">開啟…</button></span>
+      <span class="pinfo"><span class="seg" id="modeSeg" title="這個點位檔是幾人編成"><button type="button" data-mode="six">六人</button><button type="button" data-mode="ten">十人</button></span><span class="path" id="pfPath"></span></span>
+      <span class="links"><button type="button" class="lnk" data-act="saveAs" data-kind="pf">另存新檔…</button><button type="button" class="lnk" data-act="reload" data-kind="pf">重新載入</button></span>
+    </div>
+    <div class="frow">
+      <span class="lab">預設按鍵</span>
+      <span class="pseg" id="keysFiles"></span>
+      <span class="fbtns"><button type="button" class="btn sm" data-act="newFile" data-kind="keys">新增</button><button type="button" class="btn sm" data-act="open" data-kind="keys">開啟…</button></span>
+      <span class="pinfo"><span class="path" id="keysPath"></span></span>
+      <span class="links"><button type="button" class="lnk" data-act="saveAs" data-kind="keys">另存新檔…</button><button type="button" class="lnk" data-act="reload" data-kind="keys">重新載入</button></span>
+    </div>
+    <nav class="ctabs" role="tablist">
+      <button type="button" role="tab" data-tab="points">點位</button>
+      <button type="button" role="tab" data-tab="presets">預設按鍵<span class="dot" id="preDot" hidden></span></button>
+      <button type="button" role="tab" data-tab="timing">時間</button>
+      <button type="button" role="tab" data-tab="log">紀錄</button>
+      <span class="src" id="tabSrc"></span>
+    </nav>
+
+    <main>
+      <section data-view="points" class="g-points">
+        <div class="pane">
+          <div class="ph"><b>候選點位</b><span class="cnt" id="ccnt"></span><span class="sp"></span><button type="button" class="btn sm" id="recBtn" data-act="record"></button></div>
+          <div class="list c-cand" id="cands"></div>
+        </div>
+        <div class="pane">
+          <div class="ph"><b>點位按鍵清單</b><span class="cnt" id="pcnt"></span><span class="sp"></span><button type="button" class="lnk" data-act="addCard">＋ 牌鍵</button></div>
+          <div class="list c-pts" id="pts"></div>
+        </div>
+        <div class="insp" id="ptInsp"></div>
+      </section>
+
+      <section data-view="presets" class="g-presets" hidden>
+        <div class="pane">
+          <div class="ph"><b>預設按鍵</b><span class="cnt" id="preCnt"></span><span class="sp"></span><button type="button" class="lnk" data-act="presetResetAll">恢復全部預設</button></div>
+          <div class="list c-pre" id="pres"></div>
+        </div>
+        <div class="insp" id="preInsp"></div>
+      </section>
+
+      <section data-view="timing" class="g-timing" hidden>
+        <div class="pane">
+          <div class="ph"><b>時間</b><span class="cnt">ms</span></div>
+          <div class="list c-tm" id="tms"></div>
+        </div>
+        <div class="insp" id="tmInsp"></div>
+      </section>
+
+      <section data-view="log" class="g-log" hidden>
+        <div class="pane">
+          <div class="ph"><b>事件</b><span class="cnt" id="logCnt"></span></div>
+          <div class="list c-log" id="logs"></div>
+        </div>
+        <div class="pane">
+          <div class="ph"><b>報告與故障紀錄</b><span class="sp"></span><button type="button" class="lnk" data-act="openLogs">開啟資料夾</button></div>
+          <div class="list c-rep" id="reps"></div>
+        </div>
+      </section>
+    </main>
+
+    <div class="savebar" id="savebar" hidden><span class="msg" id="saveMsg"></span><button type="button" class="btn" data-act="revert">還原</button><button type="button" class="btn primary" data-act="save" id="saveBtn">儲存</button></div>
+    <div class="status" id="status"></div>
+  </div>
+  </div>
+  <div class="demo">
+    <span>Demo：</span>
+    <label><input type="checkbox" id="simFocus" checked> 遊戲在前景</label>
+    <button type="button" class="btn sm" id="simFault">模擬引擎故障</button>
+    <label>主題 <select id="themeSel"><option value="">跟系統</option><option value="light">淺色</option><option value="dark">深色</option></select></label>
+  </div>
+</div>
+
+<div class="modal" id="modal" hidden><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgT"><h2 id="dlgT"></h2><div class="body" id="dlgB"></div><div class="btns" id="dlgK"></div></div></div>
+
+<script>
+(function(){
+'use strict';
+var RES = {w:2560, h:1440};
+var DIRS = {pf:'C:\\BAauto\\points\\', keys:'C:\\BAauto\\keys\\'};
+var KIND = {pf:'點位', keys:'預設按鍵'};
+function $(s, r){ return (r || document).querySelector(s); }
+function $$(s, r){ return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+function el(tag, a, kids){
+  var e = document.createElement(tag);
+  if(a) Object.keys(a).forEach(function(k){
+    var v = a[k]; if(v == null || v === false) return;
+    if(k === 'class') e.className = v; else if(k === 'text') e.textContent = v;
+    else if(k.slice(0, 2) === 'on') e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? '' : v);
+  });
+  (kids || []).forEach(function(c){ if(c != null) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+  return e;
+}
+function clone(o){ return JSON.parse(JSON.stringify(o)); }
+function setVal(e, v){ if(!e) return; v = v == null || (typeof v === 'number' && isNaN(v)) ? '' : String(v); if(document.activeElement !== e && e.value !== v) e.value = v; }
+function pad(n){ return (n < 10 ? '0' : '') + n; }
+function now(){ var d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+
+// ---------- 預設按鍵（和 AHK 版同樣 23 個） ----------
+var DEFS = [], BY = {};
+var GROUPS = [{name:'技能', roles:[]}, {name:'技能連點', roles:[]}, {name:'卡幀開牌', roles:[]}, {name:'其他', roles:['pause', 'frame_fast', 'frame_slow', 'auto', 'speed', 'click_spam', 'record', 'global_stop']}];
+function def(role, name, hk, act, slot){ var d = {role:role, name:name, hk:hk, act:act, slot:slot}; DEFS.push(d); BY[role] = d; }
+['w','e','r','t','y'].forEach(function(k, i){ var n = i + 1; def('skill_' + n, '技能 ' + n, k, '送出 ' + n + ' 一次。', n); GROUPS[0].roles.push('skill_' + n); });
+['2','3','4','5','6'].forEach(function(k, i){ var n = i + 1; def('spam_' + n, '連點 ' + n, k, '按住時一直重複「送出 ' + n + '，再點一下左鍵」。', n); GROUPS[1].roles.push('spam_' + n); });
+['a','s','d','f','g'].forEach(function(k, i){ var n = i + 1; def('card_' + n, '開牌 ' + n, k, '按下先送 Esc，按住時重複「送出 ' + n + '＋左鍵」，放開再送 Esc。', n); GROUPS[2].roles.push('card_' + n); });
+def('pause', '普通暫停', 'Space', '送出 Esc。');
+def('frame_fast', '卡幀暫停（快）', 'Down', 'Esc，等最短間隔，再 Esc。');
+def('frame_slow', '卡幀暫停（慢）', 'Up', 'Esc，等最長間隔，再 Esc。');
+def('auto', 'AUTO', 'XButton1', '送出 a。');
+def('speed', '加速', 'XButton2', '送出 s。');
+def('click_spam', '滑鼠連點', 'RButton', '按住時一直點左鍵。');
+def('record', '錄製點位', 'Ctrl+F10', '開始錄製點位（不限遊戲在前景）。');
+def('global_stop', '緊急停止', 'Ctrl+F9', '停止全部動作並放開所有按鍵，任何時候都有效。');
+
+var TM = [
+  {f:'key_hold_ms', name:'按鍵按住', json:'key_hold_ms', use:'技能、AUTO、加速、暫停、牌鍵送出時，按下到放開的時間。'},
+  {f:'mouse_hold_ms', name:'點擊按住', json:'mouse_hold_ms', use:'連點、開牌裡左鍵按下到放開的時間。'},
+  {f:'key_to_click_ms', name:'技能鍵到點擊', json:'key_to_click_ms', use:'技能連點：技能鍵放開後，多久點左鍵。'},
+  {f:'repeat_period_ms', name:'連點週期', json:'repeat_period_ms', use:'連點一輪開始到下一輪開始。', rule:'不能小於「按鍵按住＋技能鍵到點擊＋點擊按住」。'},
+  {f:'esc_min_ms', name:'卡幀 Esc 最短間隔', json:'escape_gap_ms[0]', use:'卡幀暫停（快）兩次 Esc 之間的間隔。'},
+  {f:'esc_max_ms', name:'卡幀 Esc 最長間隔', json:'escape_gap_ms[1]', use:'卡幀暫停（慢）兩次 Esc 之間的間隔。', rule:'不能比最短間隔短。'},
+  {f:'card_pre_esc_ms', name:'開牌前等待', json:'card_pre_esc_ms', use:'卡幀開牌：第一個 Esc 之後，多久開始送數字鍵。'},
+  {f:'hold_maintain_period_ms', name:'點位維持週期', json:'hold_maintain_period_ms', use:'普通點位按住時，多久把游標拉回點位一次。'}
+];
+var TM_BY = {}; TM.forEach(function(t){ TM_BY[t.f] = t; });
+
+function rectFor(mode, side){
+  var x1 = mode === 'ten' ? 0.5 : 0.664, x2 = 0.910;
+  if(side === 'left'){ var a = 1 - x2; x2 = 1 - x1; x1 = a; }
+  return {x1:Math.round(x1 * RES.w), y1:Math.round(0.781 * RES.h), x2:Math.round(x2 * RES.w), y2:Math.round(0.924 * RES.h), state:'default', date:''};
+}
+function makePresets(){ var m = {}; DEFS.forEach(function(d){ m[d.role] = {hk:d.hk, en:true, exact:false}; }); return m; }
+function makeTiming(v){
+  return v ? {verified:true, date:'10/05', report:'reports\\cal-20261005.json', key_hold_ms:12, mouse_hold_ms:12, key_to_click_ms:14, repeat_period_ms:42, esc_min_ms:18, esc_max_ms:48, card_pre_esc_ms:10, hold_maintain_period_ms:16}
+           : {verified:false, date:'', report:'', key_hold_ms:16, mouse_hold_ms:16, key_to_click_ms:16, repeat_period_ms:50, esc_min_ms:16, esc_max_ms:50, card_pre_esc_ms:10, hold_maintain_period_ms:16};
+}
+// 預設按鍵 JSON：23 個預設按鍵＋時間（和原本的 function_keys.json 一樣）
+function makeKeys(path, verified){ return {path:path, presets:makePresets(), timing:makeTiming(!!verified)}; }
+// 點位 JSON：幾人＋點位按鍵清單（普通點位、牌鍵）
+function makePf(path, mode, items){ return {path:path, mode:mode, items:clone(items || [])}; }
+
+var K1 = makeKeys(DIRS.keys + '預設按鍵.json');
+var K2 = makeKeys(DIRS.keys + '校準後.json', true);
+var F1 = makePf(DIRS.pf + '一般關卡.json', 'six', [
+  {id:1, name:'Boss 中央', hk:'z', fn:'point', x:1280, y:560},
+  {id:2, name:'左側集火', hk:'x', fn:'point', x:760, y:820},
+  {id:3, name:'出牌', hk:'q', fn:'card'},
+  {id:4, name:'右上補位', hk:'c', fn:'point', x:2075, y:433},
+  {id:5, name:'右下補位', hk:'e', fn:'point', x:2050, y:980}]);
+var F2 = makePf(DIRS.pf + '總力戰 ホド.json', 'six', [
+  {id:1, name:'ホド本體', hk:'z', fn:'point', x:1460, y:500},
+  {id:2, name:'右側小怪', hk:'x', fn:'point', x:1900, y:760},
+  {id:3, name:'出牌', hk:'q', fn:'card'},
+  {id:4, name:'出牌（中鍵）', hk:'MButton', fn:'card'}]);
+var F3 = makePf(DIRS.pf + '制約解除 カイテン.json', 'ten', [
+  {id:1, name:'中央', hk:'z', fn:'point', x:1280, y:600},
+  {id:2, name:'出牌', hk:'q', fn:'card'}]);
+
+// 這台電腦的手牌設定（settings.json），所有檔共用
+var HAND = {side:'right', order:'ltr', slotKeys:['1','2','3','4','5'], autoRepeat:false,
+  rects:{six:{right:{x1:1712, y1:1131, x2:2324, y2:1327, state:'calibrated', date:'10/08'}, left:rectFor('six', 'left')}, ten:{right:rectFor('ten', 'right'), left:rectFor('ten', 'left')}}};
+
+// 「開啟…」的範例：各種路徑、各種格式（內容決定是哪一種 JSON）
+var EXAMPLES = [
+  {path:'\\\\NAS\\BA\\總力戰\\ホド 第2形態.json', data:{schema:'baauto-rs-points-v1', name:'ホド 第2形態', mode:'six', items:[{id:1, name:'ホド本體', hotkey:'z', function:'point', x:0.57, y:0.35}, {id:2, name:'出牌', hotkey:'q', function:'card'}]}},
+  {path:'C:\\Users\\sukia\\OneDrive\\デスクトップ\\BA 設定\\十人 (朋友給的).json', data:{schema:'baauto-rs-points-v1', mode:'ten', items:[{id:1, name:'中央', hotkey:'z', function:'point', x:0.5, y:0.42}, {id:2, name:'左邊', hotkey:'x', function:'point', x:0.27, y:0.44}, {id:3, name:'出牌', hotkey:'q', function:'card'}]}},
+  {path:'D:\\BA\\AHK\\points_總力戰.json', data:{schema:'baauto-points-v1', points:[{id:'p1', name:'Boss', rel_x:0.5, rel_y:0.39}], bindings:[
+    {id:'b1', point_id:'p1', name:'Boss', hotkey:'z', rel_x:0.5, rel_y:0.39, function:'normal'},
+    {id:'b2', point_id:'p2', name:'左側', hotkey:'x', rel_x:0.289, rel_y:0.576, function:'normal_point'},
+    {id:'b3', point_id:'p3', name:'Boss 拖曳', hotkey:'q', rel_x:0.6, rel_y:false, function:'alternating'},
+    {id:'b4', point_id:'p4', name:'右側拖曳', hotkey:'v', rel_x:0.7, rel_y:0.5, function:'alternating'}]}},
+  {path:'E:\\備份\\2026\\預設按鍵_舊電腦.json', data:{schema:'baauto-rs-keys-v1', presets:{skill_1:{hotkey:'w', enabled:true}, frame_fast:{hotkey:'=Down', enabled:true}, click_spam:{hotkey:'RButton', enabled:false}}, timing:{source:'manual', verified:false, key_hold_ms:14, mouse_hold_ms:14, key_to_click_ms:16, repeat_period_ms:48, escape_gap_ms:[16, 50], card_pre_esc_ms:10, hold_maintain_period_ms:16}}},
+  {path:'D:\\BA\\AHK\\config\\function_keys.json', data:{schema:'baauto-functions-v1', hotkeys:{global_stop:'^F9', record:'^F10', skill_1:'w', skill_2:'e', skill_3:'r', pause:'Space', frame_fast:'Down', frame_slow:'Up', auto:'XButton1', speed:'XButton2', click_spam:'RButton', card_1:'a', card_2:'s', card_3:'d'}, timing_ms:{frame_fast:16, frame_slow:50}}},
+  {path:'C:\\Users\\sukia\\Documents\\Blue Archive 相關\\BAauto 設定備份\\2026 年 10 月 總力戰 第 3 季 プラチナ 挑戰用\\這是一個很長很長的資料夾名稱用來確認超過兩百六十個字元的 Windows 長路徑也能正常開啟和儲存\\預設按鍵.json', data:{schema:'baauto-rs-keys-v1', presets:{}, timing:{source:'manual', verified:false, key_hold_ms:16, mouse_hold_ms:16, key_to_click_ms:16, repeat_period_ms:50, escape_gap_ms:[16, 50], card_pre_esc_ms:10, hold_maintain_period_ms:16}}}
+];
+var FOLDERS = [DIRS.pf, DIRS.keys, 'D:\\BA\\關卡\\', '\\\\NAS\\BA\\總力戰\\', 'C:\\Users\\sukia\\OneDrive\\デスクトップ\\BA 設定\\'];
+var REPORTS = [
+  ['cal-20261005.json', '校準', '卡幀暫停（快）・600 次成功 598 次'],
+  ['latency-20261003.csv', '量測', '軟體路徑延遲 P99 0.31 ms'],
+  ['fault-20261001-2214.csv', '故障', '引擎沒有回應，已終止並放開按鍵']
+];
+
+var S = {
+  tab:'points',
+  F:{pf:{list:[F1, F2, F3], saved:null, cur:0, dirty:false}, keys:{list:[K1, K2], saved:null, cur:0, dirty:false}},
+  hand:HAND,
+  cands:[{id:1, name:'錄製 1', x:1302, y:548}, {id:2, name:'錄製 2', x:640, y:902}, {id:3, name:'MuMu 攻擊', x:2210, y:1290}, {id:4, name:'MuMu 移動', x:420, y:1180}],
+  nextCand:5, selCand:null, selPt:null, focusKind:null, selPre:'skill_1', selTm:'repeat_period_ms',
+  capture:null, rec:null, run:'on', focus:true, busy:'', msg:'', hint:'', cursor:{x:1950, y:1230},
+  log:[
+    {t:'11:47', k:'bad', m:'點位「右下補位」的 e 和預設按鍵「技能 2」重複，已停用。'},
+    {t:'11:46', k:'warn', m:'卡幀暫停（快）被拒絕：Esc 正被開牌使用。'},
+    {t:'11:45', k:'warn', m:'連點 2 這一輪略過：左鍵被點位「Boss 中央」佔用。'},
+    {t:'11:43', k:'', m:'牌鍵「出牌」沒有送出：游標不在手牌上。'},
+    {t:'11:42', k:'', m:'載入 points\\一般關卡.json 和 keys\\預設按鍵.json，按鍵放開後開始運作。'}
+  ]
+};
+['pf', 'keys'].forEach(function(k){ S.F[k].saved = S.F[k].list.map(clone); });
+function PF(){ return S.F.pf.list[S.F.pf.cur]; }
+function KF(){ return S.F.keys.list[S.F.keys.cur]; }
+function N(){ return PF().mode === 'ten' ? 5 : 3; }
+function RECT(){ return S.hand.rects[PF().mode][S.hand.side]; }
+function fname(f){ return f.path.split('\\').pop(); }
+function fdir(f){ return f.path.slice(0, f.path.length - fname(f).length); }
+function item(id){ return PF().items.filter(function(q){ return q.id === id; })[0]; }
+function cand(id){ return S.cands.filter(function(q){ return q.id === id; })[0]; }
+function norm(h){ return (h || '').replace(/^=/, '').trim().toLowerCase(); }
+function dirty(k){ S.F[k].dirty = true; }
+function log(k, m){ S.log.unshift({t:now(), k:k, m:m}); }
+function flash(m){ S.msg = m; clearTimeout(S._mt); S._mt = setTimeout(function(){ S.msg = ''; renderBottom(analyze()); }, 5000); }
+
+// ---------- 衝突與檢查（規則同 AHK 版） ----------
+function analyze(){
+  var k = KF(), f = PF(), owners = {}, r = {pre:{}, it:{}, conflicts:0, tm:{}, keysBlock:[]};
+  DEFS.forEach(function(d){ var x = k.presets[d.role], h = norm(x.hk); if(h && x.en) (owners[h] = owners[h] || []).push(d.name); });
+  DEFS.forEach(function(d){
+    var x = k.presets[d.role], h = norm(x.hk);
+    if(!h) r.pre[d.role] = {s:'off', m:'沒有熱鍵，停用'};
+    else if(!x.en) r.pre[d.role] = {s:'off', m:'停用'};
+    else if(owners[h].length > 1){ r.pre[d.role] = {s:'bad', m:'和「' + owners[h].filter(function(n){ return n !== d.name; }).join('、') + '」重複'}; r.conflicts++; }
+    else r.pre[d.role] = {s:'ok', m:f.mode === 'six' && d.slot >= 4 ? '啟用（六人沒有第 ' + d.slot + ' 格）' : '啟用'};
+  });
+  var others = {};
+  f.items.forEach(function(q){ var h = norm(q.hk); if(h) (others[h] = others[h] || []).push(q.name); });
+  f.items.forEach(function(q){
+    var h = norm(q.hk), s;
+    if(!h) s = {s:'off', m:'沒有熱鍵，不會觸發'};
+    else if(owners[h] && owners[h].length === 1) s = {s:'bad', m:'和預設按鍵「' + owners[h][0] + '」重複，停用'};
+    else if(others[h].length > 1) s = {s:'bad', m:'和「' + others[h].filter(function(n){ return n !== q.name; })[0] + '」重複，停用'};
+    else s = {s:'ok', m:'啟用'};
+    r.it[q.id] = s;
+  });
+  var t = k.timing;
+  TM.forEach(function(x){ var v = t[x.f]; if(typeof v !== 'number' || isNaN(v) || v < 0) r.tm[x.f] = '要填 0 以上的數字'; });
+  var need = t.key_hold_ms + t.key_to_click_ms + t.mouse_hold_ms;
+  if(!r.tm.repeat_period_ms && t.repeat_period_ms < need) r.tm.repeat_period_ms = '至少要 ' + need;
+  if(!r.tm.esc_max_ms && t.esc_min_ms > t.esc_max_ms) r.tm.esc_max_ms = '不能比最短還短';
+  if(t.key_hold_ms === 0 && !t.verified) r.tm.key_hold_ms = '0 只有已驗證時能用';
+  if(r.conflicts) r.keysBlock.push('預設按鍵有重複');
+  if(Object.keys(r.tm).length) r.keysBlock.push('時間設定有錯');
+  return r;
+}
+function slotAt(x, y){
+  var L = RECT(), n = N();
+  if(!(x >= L.x1 && x <= L.x2 && y >= L.y1 && y <= L.y2)) return 0;
+  var i = Math.min(n - 1, Math.floor((x - L.x1) / ((L.x2 - L.x1) / n)));
+  return S.hand.order === 'ltr' ? i + 1 : n - i;
+}
+
+// ---------- 共用元件 ----------
+function chip(text, capKey, cls){
+  var on = S.capture && S.capture.key === capKey;
+  return el('button', {type:'button', class:'chip ' + (on ? 'cap' : (cls || '')), 'data-cap':capKey, text:on ? '按下按鍵…' : text});
+}
+function chipCls(h, s){ return !h ? 'empty' : s.s === 'bad' ? 'bad' : s.s === 'off' ? 'off' : ''; }
+function field(k, v){ return [el('span', {class:'k', text:k}), v]; }
+function fgrid(pairs){ var f = el('div', {class:'f'}); pairs.forEach(function(p){ p.forEach(function(n){ f.appendChild(n); }); }); return f; }
+function rowEl(cls, attrs, kids){ return el('div', Object.assign({class:'row' + (cls ? ' ' + cls : '')}, attrs || {}), kids); }
+
+// ---------- 頂部、底部 ----------
+function renderFiles(kind){
+  var st = S.F[kind], cur = st.list[st.cur];
+  var box = $('#' + kind + 'Files'); box.textContent = '';
+  var seen = {}; st.list.forEach(function(x){ var n = fname(x).toLowerCase(); seen[n] = (seen[n] || 0) + 1; });
+  function label(x){ var n = fname(x); if(seen[n.toLowerCase()] < 2) return n; var parts = fdir(x).replace(/\\$/, '').split('\\'), par = parts[parts.length - 1] || ''; return n + ' · ' + (par.length > 10 ? par.slice(0, 10) + '…' : par); }
+  st.list.forEach(function(x, i){
+    box.appendChild(el('span', {class:'ftab' + (i === st.cur ? ' on' : '')}, [
+      el('button', {type:'button', 'data-pick':String(i), 'data-kind':kind, 'aria-pressed':String(i === st.cur), title:x.path + (kind === 'pf' ? '（' + (x.mode === 'ten' ? '十人' : '六人') + '）' : ''), disabled:S.busy ? true : null, text:label(x) + (i === st.cur && st.dirty ? ' *' : '')}),
+      el('button', {type:'button', class:'x', 'data-close':String(i), 'data-kind':kind, title:'關閉這個分頁', 'aria-label':'關閉 ' + fname(x), disabled:S.busy ? true : null, text:'×'})
+    ]));
+  });
+  var on = box.querySelector('.ftab.on');
+  if(on && (on.offsetLeft < box.scrollLeft || on.offsetLeft + on.offsetWidth > box.scrollLeft + box.clientWidth)) box.scrollLeft = on.offsetLeft - 20;
+  $('#' + kind + 'Path').textContent = cur.path; $('#' + kind + 'Path').title = cur.path;
+}
+function renderTop(cf){
+  renderFiles('pf'); renderFiles('keys');
+  $$('#modeSeg button').forEach(function(b){ b.setAttribute('aria-pressed', String(b.dataset.mode === PF().mode)); b.disabled = !!S.busy; });
+  var t, c;
+  if(S.busy){ t = S.busy; c = 'warn'; }
+  else if(S.run === 'fault'){ t = '故障，已停止'; c = 'bad'; }
+  else if(S.run === 'off'){ t = '已停止'; c = 'off'; }
+  else if(!S.focus){ t = '待命（遊戲不在前景）'; c = 'warn'; }
+  else { t = '運作中'; c = 'ok'; }
+  var st = $('#state'); st.className = 'state ' + c; st.textContent = ''; st.appendChild(el('i')); st.appendChild(document.createTextNode(t));
+  var rb = $('#runBtn'); rb.textContent = S.run === 'on' ? '停止' : S.run === 'fault' ? '重新啟用' : '啟用'; rb.disabled = !!S.busy;
+  $('#preDot').hidden = !cf.conflicts;
+  $$('.ctabs [data-tab]').forEach(function(b){ b.setAttribute('aria-selected', String(b.dataset.tab === S.tab)); });
+  $$('main>section').forEach(function(s){ s.hidden = s.dataset.view !== S.tab; });
+  $('#tabSrc').textContent = {points:'存在點位 JSON：' + fname(PF()), presets:'存在預設按鍵 JSON：' + fname(KF()), timing:'存在預設按鍵 JSON：' + fname(KF()), log:''}[S.tab];
+}
+function renderBottom(cf){
+  var files = [];
+  if(S.F.pf.dirty) files.push(fname(PF()));
+  if(S.F.keys.dirty) files.push(fname(KF()));
+  var blocked = S.F.keys.dirty && cf.keysBlock.length;
+  $('#savebar').hidden = !files.length && !cf.keysBlock.length;
+  var m = $('#saveMsg'); m.textContent = '';
+  if(cf.keysBlock.length){ m.className = 'msg t-bad'; m.textContent = '預設按鍵 JSON 不能儲存：' + cf.keysBlock.join('、'); }
+  else { m.className = 'msg'; files.forEach(function(n, i){ if(i) m.appendChild(document.createTextNode('、')); m.appendChild(el('b', {text:n})); }); m.appendChild(document.createTextNode(' 有未儲存的變更')); }
+  $('#saveBtn').disabled = !files.length || blocked || !!S.busy;
+  var st = $('#status'); st.textContent = '';
+  if(S.hint || S.msg){ st.appendChild(el('span', {class:'hint', text:S.hint || S.msg})); return; }
+  var k = slotAt(S.cursor.x, S.cursor.y);
+  var eng = S.run === 'fault' ? ['bad', '引擎故障'] : S.run === 'off' ? ['', '引擎停止'] : ['ok', '引擎正常'];
+  st.appendChild(el('span', {class:eng[0] || null, text:'● ' + eng[1]}));
+  st.appendChild(el('span', {class:S.focus ? null : 'warn', text:S.focus ? '遊戲在前景' : '遊戲不在前景'}));
+  st.appendChild(el('span', {text:'全螢幕 2560×1440（16:9）'}));
+  st.appendChild(el('span', {text:'游標：' + (k ? '第 ' + k + ' 格' : '不在手牌上')}));
+  st.appendChild(el('span', {class:'sp'}));
+  st.appendChild(el('span', {text:'Ctrl+F9 緊急停止'}));
+}
+
+// ---------- 點位 ----------
+function renderPoints(cf){
+  var f = PF();
+  $('#ccnt').textContent = S.cands.length + ' 個'; $('#pcnt').textContent = f.items.length + ' 個';
+  var rb = $('#recBtn'); rb.textContent = S.rec ? '錄製中…（Esc 取消）' : '＋ 錄製'; rb.classList.toggle('rec', !!S.rec);
+  var cb = $('#cands'); cb.textContent = '';
+  if(!S.cands.length) cb.appendChild(el('div', {class:'empty', text:'按「錄製」，到遊戲上點一下就會出現在這裡。'}));
+  S.cands.forEach(function(k){ cb.appendChild(rowEl(S.selCand === k.id && S.focusKind === 'cand' ? 'sel' : '', {'data-cand':String(k.id), 'data-sel':''}, [el('span', {class:'ellip', text:k.name}), el('span', {class:'mut num small', text:k.x + ', ' + k.y})])); });
+  var pb = $('#pts'); pb.textContent = '';
+  pb.appendChild(rowEl('head', null, [el('span', {text:'名稱'}), el('span', {text:'熱鍵'}), el('span', {text:'功能'}), el('span', {text:'位置'}), el('span', {text:'狀態'})]));
+  var items = f.items.slice().sort(function(a, b){ return (cf.it[b.id].s === 'bad') - (cf.it[a.id].s === 'bad'); });
+  if(!items.length) pb.appendChild(el('div', {class:'empty', text:'選一個候選帶入成普通點位，或按「＋ 牌鍵」。'}));
+  items.forEach(function(q){
+    var s = cf.it[q.id];
+    pb.appendChild(rowEl(S.selPt === q.id && S.focusKind === 'pt' ? 'sel' : '', {'data-pt':String(q.id), 'data-sel':''}, [
+      el('span', {class:'ellip', text:q.name || '（未命名）'}),
+      el('span', null, [el('span', {class:'chip ' + chipCls(q.hk, s), text:q.hk || '—'})]),
+      el('span', {class:'fn' + (q.fn === 'card' ? ' card' : ''), text:q.fn === 'card' ? '牌鍵' : '普通點位'}),
+      el('span', {class:'mut num small ellip', text:q.fn === 'card' ? '手牌' : q.x + ', ' + q.y}),
+      el('span', {class:'small t-' + s.s, title:s.m, text:s.s === 'ok' ? '啟用' : s.s === 'bad' ? '停用' : '未設'})
+    ]));
+  });
+  renderPtInsp(cf);
+}
+function renderPtInsp(cf){
+  var I = $('#ptInsp'); I.textContent = '';
+  if(S.focusKind === 'pt' && item(S.selPt)){
+    var q = item(S.selPt), s = cf.it[q.id];
+    var fnSel = el('select', {id:'p-fn'}, [el('option', {value:'point', text:'普通點位'}), el('option', {value:'card', text:'牌鍵'})]); fnSel.value = q.fn;
+    I.appendChild(el('h3', {id:'p-title', text:q.name || '（未命名）'}));
+    var pairs = [
+      field('名稱', el('input', {id:'p-name', value:q.name})),
+      field('熱鍵', el('span', null, [chip(q.hk || '點一下設定', 'it:' + q.id, chipCls(q.hk, s) + ' big')])),
+      field('功能', fnSel)
+    ];
+    if(q.fn === 'point') pairs.push(field('X', el('input', {id:'p-x', class:'n', value:String(q.x)})), field('Y', el('input', {id:'p-y', class:'n', value:String(q.y)})));
+    pairs.push(field('狀態', el('span', {class:'small t-' + s.s, text:s.m})));
+    I.appendChild(fgrid(pairs));
+    if(q.fn === 'point'){
+      I.appendChild(el('p', {class:'small mut', text:'按住熱鍵：游標移到這個點並按住左鍵；放開熱鍵就放開。X、Y 是全螢幕遊戲畫面上的位置（目前 2560×1440）；換解析度不用重錄。'}));
+      I.appendChild(el('div', {class:'acts'}, [el('button', {type:'button', class:'lnk', 'data-act':'rerec', text:'重錄位置'}), el('button', {type:'button', class:'lnk', 'data-act':'unbind', text:'移回候選'}), el('span', {class:'sp'}), el('button', {type:'button', class:'lnk danger', 'data-act':'ptDel', text:'刪除'})]));
+    } else {
+      var H = S.hand, L = RECT(), n = N();
+      I.appendChild(el('p', {class:'small mut', text:'按下熱鍵那一刻，游標在手牌第幾格，就送那一格的按鍵一次。不移動游標、不點擊。'}));
+      I.appendChild(el('h4', null, ['手牌（' + (PF().mode === 'ten' ? '十人 5 格' : '六人 3 格') + '）', el('span', {class:'path', text:'這台電腦的設定，所有點位檔共用，改了馬上生效'})]));
+      var slots = el('span', {class:'v'});
+      for(var i = 0; i < n; i++) slots.appendChild(el('span', {class:'slotk'}, [String(i + 1), chip(H.slotKeys[i], 'sl:' + i)]));
+      var ok = L.x2 > L.x1 && L.y2 > L.y1;
+      var hs = !ok ? ['t-bad', '右下要比左上大'] : L.state === 'calibrated' ? ['t-ok', '已校準（' + L.date + '）'] : L.state === 'manual' ? ['mut', '手動輸入'] : ['t-warn', '預設值，還沒校準'];
+      I.appendChild(fgrid([
+        field('位置', el('span', {class:'seg'}, [el('button', {type:'button', 'data-side':'right', 'aria-pressed':String(H.side === 'right'), text:'右邊'}), el('button', {type:'button', 'data-side':'left', 'aria-pressed':String(H.side === 'left'), text:'左邊'})])),
+        field('順序', (function(){ var o = el('select', {id:'hOrder'}, [el('option', {value:'ltr', text:'左到右是第 1 格起'}), el('option', {value:'rtl', text:'右到左是第 1 格起'})]); o.value = H.order; return o; })()),
+        field('左上', el('span', {class:'v'}, [el('input', {class:'n', id:'hx1', value:String(L.x1), 'aria-label':'左上 X'}), el('input', {class:'n', id:'hy1', value:String(L.y1), 'aria-label':'左上 Y'})])),
+        field('右下', el('span', {class:'v'}, [el('input', {class:'n', id:'hx2', value:String(L.x2), 'aria-label':'右下 X'}), el('input', {class:'n', id:'hy2', value:String(L.y2), 'aria-label':'右下 Y'})])),
+        field('每格', slots),
+        field('校準', el('span', {class:'v'}, [el('span', {class:'small ' + hs[0], id:'hState', text:hs[1]}), el('button', {type:'button', class:'lnk small', 'data-act':'hCal', text:'在遊戲上校準'})])),
+        field('', el('label', {class:'chk small'}, [el('input', {type:'checkbox', id:'ckRepeat', checked:H.autoRepeat ? true : null}), '按住時跟著自動重複再送']))
+      ]));
+      I.appendChild(el('div', {class:'acts'}, [el('button', {type:'button', class:'lnk', 'data-act':'hMirror', text:'鏡像到另一邊'}), el('button', {type:'button', class:'lnk', 'data-act':'hReset', text:'還原預設'}), el('span', {class:'sp'}), el('button', {type:'button', class:'lnk danger', 'data-act':'ptDel', text:'刪除'})]));
+    }
+  } else if(S.focusKind === 'cand' && cand(S.selCand)){
+    var k = cand(S.selCand);
+    I.appendChild(el('h3', {text:k.name}));
+    I.appendChild(fgrid([field('X', el('span', {class:'num', text:String(k.x)})), field('Y', el('span', {class:'num', text:String(k.y)})), field('來源', el('span', {class:'mut', text:/^MuMu/.test(k.name) ? 'MuMu 匯入' : '錄製'}))]));
+    I.appendChild(el('button', {type:'button', class:'btn primary', 'data-act':'bind', text:'帶入點位按鍵清單 →'}));
+    I.appendChild(el('p', {class:'small mut', text:'會變成一個普通點位，接著按下要用的熱鍵。'}));
+    I.appendChild(el('div', {class:'acts'}, [el('span', {class:'sp'}), el('button', {type:'button', class:'lnk danger', 'data-act':'candDel', text:'刪除候選'})]));
+  } else I.appendChild(el('div', {class:'none', text:'選一個候選或點位按鍵，這裡會顯示它的設定。'}));
+}
+
+// ---------- 預設按鍵 ----------
+function renderPresets(cf){
+  var k = KF(), box = $('#pres'); box.textContent = '';
+  var n = $('#preCnt'); n.className = 'cnt' + (cf.conflicts ? ' t-bad' : ''); n.textContent = cf.conflicts ? cf.conflicts + ' 個重複' : '23 個';
+  box.appendChild(rowEl('head', null, [el('span', {text:'功能'}), el('span', {text:'熱鍵'}), el('span', {text:'狀態'})]));
+  GROUPS.forEach(function(g){
+    box.appendChild(el('div', {class:'row grp', text:g.name}));
+    g.roles.forEach(function(role){
+      var d = BY[role], x = k.presets[role], s = cf.pre[role];
+      box.appendChild(rowEl((S.selPre === role ? 'sel ' : '') + (s.s === 'off' ? 'dim' : ''), {'data-pre':role, 'data-sel':''}, [
+        el('span', {class:'ellip', text:d.name}),
+        el('span', null, [chip(x.hk ? (x.exact ? '=' : '') + x.hk : '未設定', 'ps:' + role, chipCls(x.hk, s))]),
+        el('span', {class:'small ellip t-' + s.s, title:s.m, text:s.m})
+      ]));
+    });
+  });
+  var I = $('#preInsp'); I.textContent = '';
+  var d = BY[S.selPre];
+  if(!d){ I.appendChild(el('div', {class:'none', text:'選一個預設按鍵。'})); return; }
+  var x = k.presets[d.role], s = cf.pre[d.role], always = d.role === 'global_stop';
+  I.appendChild(el('h3', {text:d.name}));
+  I.appendChild(el('p', {class:'small mut', text:d.act}));
+  I.appendChild(fgrid([
+    field('熱鍵', el('span', null, [chip(x.hk ? (x.exact ? '=' : '') + x.hk : '點一下設定', 'ps:' + d.role, chipCls(x.hk, s) + ' big')])),
+    field('啟用', always ? el('span', {class:'small mut', text:'一定啟用'}) : el('button', {type:'button', class:'sw', role:'switch', 'aria-checked':String(x.en), 'aria-label':'啟用', 'data-act':'preToggle'})),
+    field('', el('label', {class:'chk small'}, [el('input', {type:'checkbox', id:'preExact', checked:x.exact ? true : null}), '修飾鍵必須完全一致'])),
+    field('狀態', el('span', {class:'small t-' + s.s, text:s.m}))
+  ]));
+  I.appendChild(el('div', {class:'acts'}, [el('span', {class:'small mut', text:'預設：' + d.hk}), el('span', {class:'sp'}), el('button', {type:'button', class:'lnk', 'data-act':'preReset', text:'恢復這一項'})]));
+}
+
+// ---------- 時間 ----------
+function buildTiming(){
+  var box = $('#tms');
+  box.appendChild(rowEl('head', null, [el('span', {text:'項目'}), el('span', {text:'數值'}), el('span', {text:'檢查'})]));
+  TM.forEach(function(x){
+    box.appendChild(rowEl('', {'data-tm':x.f, 'data-sel':''}, [el('span', {text:x.name}), el('span', null, [el('input', {class:'n', id:'tm_' + x.f, 'data-tmin':x.f, inputmode:'decimal', 'aria-label':x.name})]), el('span', {class:'small', id:'te_' + x.f})]));
+  });
+}
+function renderTiming(cf){
+  var t = KF().timing;
+  TM.forEach(function(x){
+    setVal($('#tm_' + x.f), t[x.f]);
+    $('#tm_' + x.f).classList.toggle('err', !!cf.tm[x.f]);
+    var e = $('#te_' + x.f); e.textContent = cf.tm[x.f] || '—'; e.className = 'small ' + (cf.tm[x.f] ? 't-bad' : 't-off');
+    $('[data-tm="' + x.f + '"]').classList.toggle('sel', S.selTm === x.f);
+  });
+  var I = $('#tmInsp'); I.textContent = '';
+  I.appendChild(el('h3', {text:'這組時間'}));
+  I.appendChild(fgrid([
+    field('驗證', el('span', {class:'small ' + (t.verified ? 't-ok' : 't-warn'), text:t.verified ? '已驗證（' + t.date + '）' : '未驗證'})),
+    field('來源', el('span', {class:'small ' + (t.verified ? 'path' : 'mut'), title:t.report || null, text:t.verified ? t.report : '手動填寫'}))
+  ]));
+  if(!t.verified) I.appendChild(el('p', {class:'small mut', text:'可以用，但不保證是最快、最穩的設定。跑完校準後載入結果就會變成已驗證；之後再改任何數值，又會變回未驗證。'}));
+  I.appendChild(el('div', {style:'display:flex;gap:14px'}, [el('button', {type:'button', class:'lnk', 'data-act':'tmLoad', text:'載入校準結果…'}), el('button', {type:'button', class:'lnk', 'data-act':'tmReset', text:'還原範本值'})]));
+  var x = TM_BY[S.selTm];
+  if(x){
+    I.appendChild(el('hr'));
+    I.appendChild(el('h3', {text:x.name}));
+    I.appendChild(el('span', {class:'path', text:x.json}));
+    I.appendChild(el('p', {class:'small', text:x.use}));
+    if(x.rule) I.appendChild(el('p', {class:'small mut', text:x.rule}));
+    if(cf.tm[x.f]) I.appendChild(el('p', {class:'small t-bad', text:cf.tm[x.f]}));
+  }
+}
+
+// ---------- 紀錄 ----------
+function renderLog(){
+  $('#logCnt').textContent = S.log.length + ' 筆';
+  var box = $('#logs'); box.textContent = '';
+  S.log.forEach(function(e){ box.appendChild(rowEl('', null, [el('span', {class:'small mut num', text:e.t}), el('span', null, [el('i', {class:'dotm ' + e.k}), e.m])])); });
+  var rb = $('#reps');
+  if(!rb.children.length) REPORTS.forEach(function(r){
+    rb.appendChild(rowEl('', null, [el('span', {class:'ellip'}, [el('span', {class:'path', style:'color:var(--ink)', text:r[0]}), el('br'), el('span', {class:'small mut', text:r[1] + '・' + r[2]})]), el('button', {type:'button', class:'lnk', 'data-act':'openReport', 'data-file':r[0], text:'開啟'})]));
+  });
+}
+
+function render(){
+  var cf = analyze();
+  renderTop(cf);
+  if(S.tab === 'points') renderPoints(cf);
+  else if(S.tab === 'presets') renderPresets(cf);
+  else if(S.tab === 'timing') renderTiming(cf);
+  else renderLog();
+  renderBottom(cf);
+}
+function renderLight(){ var cf = analyze(); renderTop(cf); renderBottom(cf); }
+
+// ---------- 流程 ----------
+function seq(steps){
+  var i = 0;
+  (function next(){
+    if(i >= steps.length){ S.busy = ''; render(); return; }
+    var s = steps[i++]; S.busy = s[0]; render(); setTimeout(function(){ s[2](); next(); }, s[1]);
+  })();
+}
+function applyFlow(label, fn){
+  var on = S.run === 'on', st = [];
+  if(on) st.push(['停止中…', 250, function(){ S.run = 'off'; }]);
+  st.push([label, 300, fn]);
+  if(on) st.push(['等按鍵放開…', 300, function(){ S.run = 'on'; }]);
+  seq(st);
+}
+function newId(){ return PF().items.reduce(function(m, q){ return Math.max(m, q.id); }, 0) + 1; }
+function startRec(target){
+  if(S.rec) return;
+  S.rec = {target:target, on:S.run === 'on'}; if(S.rec.on) S.run = 'off';
+  S.hint = '錄製中：到遊戲上點一下要記錄的位置（這一下不會點進遊戲）。Esc 取消。';
+  render();
+  S.rec.timer = setTimeout(function(){
+    var x = 500 + Math.round(Math.random() * 1500), y = 300 + Math.round(Math.random() * 800), r = S.rec;
+    if(r.target == null){ var k = {id:S.nextCand++, name:'錄製 ' + (S.nextCand - 1), x:x, y:y}; S.cands.push(k); S.selCand = k.id; S.focusKind = 'cand'; flash('錄到 (' + x + ', ' + y + ')，已加進候選點位。'); }
+    else { var q = item(r.target); q.x = x; q.y = y; dirty('pf'); flash('「' + q.name + '」的位置改成 (' + x + ', ' + y + ')。'); }
+    endRec(); render();
+  }, 1300);
+}
+function endRec(){ if(!S.rec) return; clearTimeout(S.rec.timer); if(S.rec.on) S.run = 'on'; S.rec = null; S.hint = ''; }
+function saveKind(k){ var st = S.F[k]; st.saved[st.cur] = clone(st.list[st.cur]); st.dirty = false; }
+function revertKind(k){ var st = S.F[k]; st.list[st.cur] = clone(st.saved[st.cur]); st.dirty = false; }
+function addFile(k, f){ var st = S.F[k]; st.list.push(f); st.saved.push(clone(f)); return st.list.length - 1; }
+function pathKey(p){ return p.replace(/\//g, '\\').toLowerCase(); }
+function uniqIn(k, dir, n){ var b = n, i = 2, p = dir + n + '.json'; while(S.F[k].list.some(function(f){ return pathKey(f.path) === pathKey(p); })) p = dir + b + ' (' + (i++) + ').json'; return p; }
+function badName(n){ return !n || /[<>:"\/\\|?*]/.test(n); }
+// ---------- 依內容判斷是哪一種 JSON（不看資料夾） ----------
+function detect(o){
+  if(!o || typeof o !== 'object') return null;
+  if(o.schema === 'baauto-rs-points-v1' || (Array.isArray(o.items) && o.mode)) return {k:'pf', legacy:false, label:'點位 JSON'};
+  if(o.schema === 'baauto-rs-keys-v1' || (o.presets && o.timing)) return {k:'keys', legacy:false, label:'預設按鍵 JSON'};
+  if(o.schema === 'baauto-points-v1' || Array.isArray(o.bindings)) return {k:'pf', legacy:true, label:'舊版 AHK 點位 JSON'};
+  if(Array.isArray(o.keys)) return {k:'pf', legacy:true, label:'更舊的 keys 格式點位 JSON'};
+  if(o.schema === 'baauto-functions-v1' || (o.hotkeys && typeof o.hotkeys === 'object')) return {k:'keys', legacy:true, label:'舊版 AHK 功能 JSON'};
+  return null;
+}
+function num(v){ return v === true ? 1 : v === false ? 0 : +v; }
+function ahkKey(s){
+  s = String(s || '').trim(); if(!s) return '';
+  s = s.replace(/^[$*~]+/, '');
+  var m = '', map = {'^':'Ctrl+', '!':'Alt+', '+':'Shift+', '#':'Win+'};
+  while(s.length > 1 && /[\^!+#<>]/.test(s[0])){ if(map[s[0]]) m += map[s[0]]; s = s.slice(1); }
+  if(/^escape$/i.test(s)) s = 'Esc';
+  return m + (s.length === 1 ? s.toLowerCase() : s);
+}
+function describe(o){
+  var d = detect(o); if(!d) return '看不出是點位還是預設按鍵 JSON';
+  if(d.k === 'pf' && !d.legacy) return '點位 JSON・' + (o.mode === 'ten' ? '十人' : '六人') + '・' + o.items.length + ' 筆';
+  if(d.k === 'keys' && !d.legacy) return '預設按鍵 JSON';
+  return d.label + ' → 轉成新格式，存在原檔旁邊（原檔不動）';
+}
+// 把任何一種內容轉成 Demo 的資料；回傳 {k, file, notes}
+function convert(o, path){
+  var d = detect(o), notes = [];
+  if(d.k === 'pf'){
+    var items = [], mode = o.mode === 'ten' ? 'ten' : 'six';
+    if(!d.legacy) (o.items || []).forEach(function(it, i){
+      var x = num(it.x), y = num(it.y);
+      items.push(it['function'] === 'card' ? {id:i + 1, name:it.name || '出牌', hk:it.hotkey || '', fn:'card'}
+        : {id:i + 1, name:it.name || '點位 ' + (i + 1), hk:it.hotkey || '', fn:'point', x:Math.round(x <= 1 ? x * RES.w : x), y:Math.round(y <= 1 ? y * RES.h : y)});
+    });
+    else if(Array.isArray(o.bindings)){
+      var bools = 0, drags = 0;
+      o.bindings.forEach(function(b, i){
+        if(!b || typeof b !== 'object') return;
+        if(typeof b.rel_x === 'boolean' || typeof b.rel_y === 'boolean') bools++;
+        var hk = ahkKey(b.hotkey != null ? b.hotkey : b.key);
+        if(b['function'] === 'alternating'){ drags++; items.push({id:i + 1, name:b.name || '牌鍵 ' + (i + 1), hk:hk, fn:'card'}); }
+        else items.push({id:i + 1, name:b.name || '點位 ' + (i + 1), hk:hk, fn:'point', x:Math.round(num(b.rel_x) * RES.w), y:Math.round(num(b.rel_y) * RES.h)});
+      });
+      if(drags) notes.push(drags + ' 個拖曳點位改成牌鍵（拖曳終點不再使用）');
+      if(bools) notes.push(bools + ' 個座標是 true／false，已改成 1／0');
+    } else {
+      var bw = num(o.width || o.screenW || 0), bh = num(o.height || o.screenH || 0);
+      o.keys.forEach(function(it, i){
+        var rx = it.rel_x, ry = it.rel_y;
+        if(rx == null || ry == null){ if(!(bw > 0 && bh > 0)){ bw = RES.w; bh = RES.h; notes.push('沒有基準尺寸：正式版會問你當時的解析度，Demo 先當成 2560×1440'); } rx = num(it.x) / bw; ry = num(it.y) / bh; }
+        items.push({id:i + 1, name:'舊版點位 ' + (i + 1), hk:ahkKey(it.key), fn:'point', x:Math.round(num(rx) * RES.w), y:Math.round(num(ry) * RES.h)});
+      });
+    }
+    return {k:'pf', file:makePf(path, mode, items), notes:notes, legacy:d.legacy};
+  }
+  var f = makeKeys(path), src = d.legacy ? o.hotkeys : o.presets, n = 0;
+  DEFS.forEach(function(df){
+    var v = src && src[df.role]; if(v == null) return; n++;
+    if(d.legacy){ f.presets[df.role].hk = ahkKey(v); }
+    else { var h = String(v.hotkey || ''); f.presets[df.role] = {hk:h.replace(/^=/, ''), exact:/^=/.test(h), en:v.enabled !== false}; }
+  });
+  if(n < 23) notes.push((23 - n) + ' 個預設按鍵檔案裡沒寫，用範本值');
+  if(!d.legacy && o.timing){
+    var t = o.timing, T = f.timing;
+    ['key_hold_ms', 'mouse_hold_ms', 'key_to_click_ms', 'repeat_period_ms', 'card_pre_esc_ms', 'hold_maintain_period_ms'].forEach(function(x){ if(t[x] != null) T[x] = +t[x]; });
+    if(Array.isArray(t.escape_gap_ms)){ T.esc_min_ms = +t.escape_gap_ms[0]; T.esc_max_ms = +t.escape_gap_ms[1]; }
+    T.verified = !!t.verified;
+  }
+  if(d.legacy) notes.push('舊版 timing_ms 只當參考，時間用範本值、標成未驗證');
+  return {k:'keys', file:f, notes:notes, legacy:d.legacy};
+}
+// 打開一份內容；from 是使用者從哪一列按「開啟…」（可以是 null）
+function openContent(path, obj, from){
+  closeDlg();
+  var d = detect(obj);
+  if(!d){ flash('「' + path.split('\\').pop() + '」看不出是點位還是預設按鍵 JSON，沒有開啟。'); render(); return; }
+  var k = d.k, st = S.F[k], have = -1;
+  var target = path;
+  if(d.legacy){ var dir = path.slice(0, path.length - path.split('\\').pop().length), base = path.split('\\').pop().replace(/(\.json)+$/i, ''); target = uniqIn(k, dir, base + '（新版）'); }
+  st.list.forEach(function(f, i){ if(pathKey(f.path) === pathKey(target)) have = i; });
+  var moved = from && from !== k ? '這是' + d.label + '，已開在「' + KIND[k] + '」那一列。' : '';
+  if(have >= 0){ if(moved) flash(moved); pick(k, have); return; }
+  guardDirty(k, function(){
+    var c = convert(obj, target);
+    var msg = d.legacy ? '舊版格式：已轉成新格式，存成 ' + target + '（原檔沒動）' : '已開啟 ' + target;
+    if(c.notes.length) msg += '。' + c.notes.join('；');
+    if(moved) msg = moved + msg;
+    var i = addFile(k, c.file);
+    applyFlow('載入 ' + fname(c.file) + '…', function(){ st.cur = i; clearSel(k); log('', msg + '。'); flash(msg + '。'); });
+  });
+}
+// 真的從電腦選檔或拖進來（瀏覽器看不到完整路徑，正式版會顯示完整路徑）
+function readFile(file, from){
+  var fr = new FileReader();
+  closeDlg();
+  fr.onload = function(){
+    var u = new Uint8Array(fr.result), text;
+    try {
+      if(u[0] === 0xFF && u[1] === 0xFE) text = new TextDecoder('utf-16le').decode(u.subarray(2));
+      else if(u[0] === 0xFE && u[1] === 0xFF) text = new TextDecoder('utf-16be').decode(u.subarray(2));
+      else text = new TextDecoder('utf-8', {fatal:true}).decode(u[0] === 0xEF && u[1] === 0xBB && u[2] === 0xBF ? u.subarray(3) : u);
+    } catch(e){ flash('「' + file.name + '」不是 UTF-8 或 UTF-16 文字檔，沒有開啟。'); render(); return; }
+    var obj;
+    try { obj = JSON.parse(text); } catch(e){ flash('「' + file.name + '」不是有效的 JSON：' + e.message); render(); return; }
+    openContent('（從這台電腦）\\' + file.name, obj, from);
+  };
+  fr.readAsArrayBuffer(file);
+}
+function pickFolder(input){
+  var i = FOLDERS.indexOf(input.value); input.value = FOLDERS[(i + 1) % FOLDERS.length];
+}
+function clearSel(k){ if(k === 'pf'){ S.selPt = null; if(S.focusKind === 'pt') S.focusKind = null; } S.capture = null; }
+function guardDirty(k, next){
+  var st = S.F[k];
+  if(!st.dirty){ next(); return; }
+  var blocked = k === 'keys' && analyze().keysBlock.length;
+  var btns = [{text:'取消', fn:closeDlg}, {text:'不儲存', fn:function(){ revertKind(k); closeDlg(); next(); }}];
+  if(!blocked) btns.push({text:'儲存後切換', primary:true, fn:function(){ saveKind(k); closeDlg(); next(); }});
+  openDlg('「' + fname(st.list[st.cur]) + '」還沒儲存', [el('p', {text:blocked ? '現在有錯不能儲存（' + analyze().keysBlock.join('、') + '）。要放棄這些變更嗎？' : '切換前要先儲存嗎？'})], btns);
+}
+function pick(k, i){
+  var st = S.F[k]; if(i === st.cur) return;
+  guardDirty(k, function(){
+    var f = st.list[i];
+    applyFlow('載入 ' + fname(f) + '…', function(){ st.cur = i; clearSel(k); log('', '載入' + KIND[k] + ' JSON ' + f.path + '。'); flash('已切換' + KIND[k] + ' JSON：' + f.path); });
+  });
+}
+function closeTab(k, i){
+  var st = S.F[k], f = st.list[i];
+  if(st.list.length === 1){ flash('至少要開著一個' + KIND[k] + ' JSON。'); render(); return; }
+  var isCur = i === st.cur, lost = isCur && st.dirty;
+  function remove(msg){
+    closeDlg();
+    var wasCur = i === st.cur;
+    st.list.splice(i, 1); st.saved.splice(i, 1);
+    if(wasCur){
+      st.dirty = false;
+      var next = Math.max(0, i - 1);
+      st.cur = next; clearSel(k);
+      applyFlow('載入 ' + fname(st.list[next]) + '…', function(){ flash(msg + '，改用 ' + fname(st.list[next]) + '。'); log('', msg + '。'); });
+    } else { if(i < st.cur) st.cur--; flash(msg + '。'); log('', msg + '。'); render(); }
+  }
+  var body = [el('p', {text:'「關閉分頁」只是從這一列拿掉，檔案還在 ' + fdir(f) + '，之後可以用「開啟…」再打開。'})];
+  if(lost) body.push(el('p', {class:'t-bad', text:'這個檔有未儲存的變更，關閉或刪除都會放棄這些變更。'}));
+  if(isCur) body.push(el('p', {text:'這是目前用的檔，會先停止，再改用旁邊那一個。'}));
+  openDlg('關閉「' + fname(f) + '」？', body, [
+    {text:'取消', fn:closeDlg},
+    {text:'刪除檔案（移到 .trash）', danger:true, fn:function(){ remove('已刪除 ' + fname(f) + '（移到 ' + fdir(f) + '.trash\\）'); }},
+    {text:'關閉分頁', primary:true, fn:function(){ remove('已關閉分頁 ' + fname(f)); }}
+  ]);
+}
+function saveHand(m){ flash(m || '已存到這台電腦的設定（settings.json）。'); }
+
+var ACT = {
+  run:function(){
+    if(S.run === 'on'){ S.run = 'off'; log('', '手動停止。'); render(); return; }
+    var f = S.run === 'fault';
+    seq([['等按鍵放開…', 350, function(){ S.run = 'on'; log('', f ? '故障後重新啟用。' : '開始運作。'); }]]);
+  },
+  record:function(){ if(S.rec){ endRec(); render(); } else startRec(null); },
+  rerec:function(){ startRec(S.selPt); },
+  candDel:function(){ S.cands = S.cands.filter(function(q){ return q.id !== S.selCand; }); S.selCand = null; S.focusKind = null; render(); },
+  bind:function(){
+    var k = cand(S.selCand); if(!k) return;
+    var id = newId(); PF().items.push({id:id, name:k.name, hk:'', fn:'point', x:k.x, y:k.y});
+    S.cands = S.cands.filter(function(q){ return q !== k; }); S.selCand = null; S.selPt = id; S.focusKind = 'pt'; dirty('pf');
+    startCap('it:' + id);
+  },
+  addCard:function(){
+    var id = newId(); PF().items.push({id:id, name:'出牌 ' + id, hk:'', fn:'card'});
+    S.selPt = id; S.focusKind = 'pt'; dirty('pf'); startCap('it:' + id);
+  },
+  unbind:function(){
+    var q = item(S.selPt); if(!q || q.fn !== 'point') return;
+    var k = {id:S.nextCand++, name:q.name, x:q.x, y:q.y}; S.cands.push(k);
+    PF().items = PF().items.filter(function(z){ return z !== q; }); S.selPt = null; S.selCand = k.id; S.focusKind = 'cand'; dirty('pf'); render();
+  },
+  ptDel:function(){ PF().items = PF().items.filter(function(q){ return q.id !== S.selPt; }); S.selPt = null; S.focusKind = null; dirty('pf'); render(); },
+  preToggle:function(){ var x = KF().presets[S.selPre]; x.en = !x.en; dirty('keys'); render(); },
+  preReset:function(){ var d = BY[S.selPre]; KF().presets[d.role] = {hk:d.hk, en:true, exact:false}; dirty('keys'); render(); },
+  presetResetAll:function(){ KF().presets = makePresets(); dirty('keys'); flash('預設按鍵全部恢復成範本值。'); render(); },
+  hCal:function(){ var L = RECT(); L.state = 'calibrated'; L.date = '10/10'; saveHand('Demo 沒有遊戲畫面，直接當作校準完成，存到這台電腦的設定。正式版會在遊戲上畫出手牌框讓你拖拉。'); render(); },
+  hMirror:function(){ var H = S.hand, m = PF().mode, a = H.rects[m][H.side], o = H.side === 'right' ? 'left' : 'right'; H.rects[m][o] = {x1:RES.w - a.x2, y1:a.y1, x2:RES.w - a.x1, y2:a.y2, state:'default', date:''}; saveHand('已鏡像到' + (o === 'right' ? '右邊' : '左邊') + '，切過去後記得到遊戲上確認。'); render(); },
+  hReset:function(){ var H = S.hand, m = PF().mode; H.rects[m][H.side] = rectFor(m, H.side); saveHand(); render(); },
+  tmLoad:function(){ Object.assign(KF().timing, makeTiming(true), {date:'10/10', report:'reports\\cal-20261010.json'}); dirty('keys'); flash('（Demo）載入了校準結果。'); render(); },
+  tmReset:function(){ KF().timing = makeTiming(false); dirty('keys'); render(); },
+  openLogs:function(){ flash('（Demo）會用檔案總管打開 reports 和 logs 資料夾。'); render(); },
+  openReport:function(b){ flash('（Demo）會用預設程式開啟 ' + b.dataset.file + '。'); render(); },
+  revert:function(){ ['pf', 'keys'].forEach(function(k){ if(S.F[k].dirty) revertKind(k); }); clearSel('pf'); flash('已還原成檔案裡的內容。'); render(); },
+  save:function(){
+    var names = []; if(S.F.pf.dirty) names.push(PF().path); if(S.F.keys.dirty) names.push(KF().path);
+    applyFlow('儲存中…', function(){ ['pf', 'keys'].forEach(function(k){ if(S.F[k].dirty) saveKind(k); }); log('', '儲存 ' + names.join('、') + '。'); flash('已儲存：' + names.join('、')); });
+  },
+  reload:function(b){ var k = b.dataset.kind; revertKind(k); clearSel(k); flash('已從 ' + S.F[k].list[S.F[k].cur].path + ' 重新載入。'); render(); },
+  saveAs:function(b){
+    var k = b.dataset.kind, st = S.F[k], cur = st.list[st.cur];
+    var inp = el('input', {value:fname(cur).replace(/\.json$/i, '') + ' 複本', style:'width:100%'});
+    var dir = el('input', {value:/^（/.test(fdir(cur)) ? DIRS[k] : fdir(cur), style:'width:100%;font-family:var(--mono);font-size:12px'});
+    var err = el('p', {class:'small t-bad'});
+    openDlg('另存' + KIND[k] + ' JSON', [el('div', {class:'row2'}, [el('span', {class:'mut', text:'檔名'}), inp]), el('div', {class:'row2'}, [el('span', {class:'mut', text:'位置'}), el('span', {style:'display:flex;gap:6px'}, [dir, el('button', {type:'button', class:'btn sm', text:'瀏覽…', onclick:function(){ pickFolder(dir); }})])]), err], [
+      {text:'取消', fn:closeDlg},
+      {text:'另存並切換過去', primary:true, fn:function(){
+        var n = inp.value.trim().replace(/\.json$/i, ''), d = dir.value.trim();
+        if(badName(n)){ err.textContent = '檔名不能空白，也不能有 < > : " / \\ | ? *'; return; }
+        if(!d){ err.textContent = '請選一個資料夾。'; return; }
+        if(!/[\\\/]$/.test(d)) d += '\\';
+        var nf = clone(cur); nf.path = uniqIn(k, d, n);
+        revertKind(k); var i = addFile(k, nf); closeDlg(); st.cur = i; clearSel(k); flash('已另存成 ' + nf.path + '，現在開的是這個檔。'); render();
+      }}
+    ]);
+  },
+  newFile:function(b){
+    var k = b.dataset.kind, st = S.F[k], name = el('input', {value:k === 'pf' ? '新關卡' : '新預設按鍵', style:'width:100%'}), mode;
+    var dir = el('input', {value:/^（/.test(fdir(st.list[st.cur])) ? DIRS[k] : fdir(st.list[st.cur]), style:'width:100%;font-family:var(--mono);font-size:12px'});
+    var err = el('p', {class:'small t-bad'});
+    var body = [el('div', {class:'row2'}, [el('span', {class:'mut', text:'檔名'}), name]), el('div', {class:'row2'}, [el('span', {class:'mut', text:'位置'}), el('span', {style:'display:flex;gap:6px'}, [dir, el('button', {type:'button', class:'btn sm', text:'瀏覽…', onclick:function(){ pickFolder(dir); }})])])];
+    if(k === 'pf'){
+      mode = el('select', null, [el('option', {value:'six', text:'六人（3 格）'}), el('option', {value:'ten', text:'十人（5 格・制約解除決戰）'})]);
+      body.push(el('div', {class:'row2'}, [el('span', {class:'mut', text:'幾人'}), mode]));
+    }
+    body.push(err);
+    openDlg('新增' + KIND[k] + ' JSON', body, [
+      {text:'取消', fn:closeDlg},
+      {text:'建立並切換過去', primary:true, fn:function(){
+        var n = name.value.trim().replace(/\.json$/i, ''), d = dir.value.trim();
+        if(badName(n)){ err.textContent = '檔名不能空白，也不能有 < > : " / \\ | ? *'; return; }
+        if(!d){ err.textContent = '請選一個資料夾。'; return; }
+        if(!/[\\\/]$/.test(d)) d += '\\';
+        var p = uniqIn(k, d, n), nf = k === 'pf' ? makePf(p, mode.value, []) : makeKeys(p);
+        closeDlg();
+        guardDirty(k, function(){ var i = addFile(k, nf); applyFlow('載入 ' + fname(nf) + '…', function(){ S.F[k].cur = i; clearSel(k); flash('已建立 ' + nf.path + '。'); }); });
+      }}
+    ]);
+  },
+  open:function(b){
+    var k = b.dataset.kind;
+    var fi = el('input', {type:'file', accept:'.json,application/json', style:'display:none'});
+    fi.addEventListener('change', function(){ if(fi.files[0]) readFile(fi.files[0], k); });
+    var list = EXAMPLES.map(function(o, i){
+      var open = S.F.pf.list.concat(S.F.keys.list).some(function(f){ return pathKey(f.path) === pathKey(o.path); });
+      return el('button', {type:'button', class:'of', 'data-ex':String(i), 'data-from':k}, [el('span', {class:'p', title:o.path, text:o.path}), el('span', {class:'small mut', text:open ? '已開過' : ''}), el('span', {class:'d', text:describe(o.data)})]);
+    });
+    openDlg('開啟 JSON', [
+      el('div', {style:'display:flex;align-items:center;gap:10px'}, [el('button', {type:'button', class:'btn primary', text:'從這台電腦選擇…', onclick:function(){ fi.click(); }}), el('span', {class:'small mut', text:'也可以直接把 JSON 拖進視窗'}), fi]),
+      el('p', {class:'small', text:'看內容判斷是點位還是預設按鍵，開錯列也會自動放到對的那一列。下面是各種路徑的範例：'})
+    ].concat(list), [{text:'取消', fn:closeDlg}]);
+  }
+};
+
+function openDlg(title, body, buttons){
+  $('#dlgT').textContent = title;
+  var b = $('#dlgB'); b.textContent = ''; body.forEach(function(n){ b.appendChild(n); });
+  var k = $('#dlgK'); k.textContent = '';
+  buttons.forEach(function(x){ k.appendChild(el('button', {type:'button', class:'btn' + (x.primary ? ' primary' : '') + (x.danger ? ' danger' : ''), text:x.text, onclick:x.fn})); });
+  $('#modal').hidden = false;
+  var f = b.querySelector('input') || k.querySelector('.primary') || k.querySelector('button'); if(f) f.focus();
+}
+function closeDlg(){ $('#modal').hidden = true; }
+
+// ---------- 熱鍵擷取 ----------
+function mods(e, b){ return (e.ctrlKey ? 'Ctrl+' : '') + (e.altKey ? 'Alt+' : '') + (e.shiftKey ? 'Shift+' : '') + b; }
+function keyName(e){
+  var k = e.key;
+  if(['Control', 'Shift', 'Alt', 'Meta', 'OS'].indexOf(k) >= 0) return null;
+  var map = {' ':'Space', 'ArrowDown':'Down', 'ArrowUp':'Up', 'ArrowLeft':'Left', 'ArrowRight':'Right', 'Enter':'Enter', 'Tab':'Tab', 'Delete':'Delete', 'Insert':'Insert', 'Home':'Home', 'End':'End', 'PageUp':'PgUp', 'PageDown':'PgDn'};
+  var b;
+  if(map[k]) b = map[k];
+  else if(/^F\d{1,2}$/.test(k)) b = k;
+  else if(e.code && /^Key[A-Z]$/.test(e.code)) b = e.code.slice(3).toLowerCase();
+  else if(e.code && /^Digit\d$/.test(e.code)) b = e.code.slice(5);
+  else b = k.length === 1 ? k.toLowerCase() : k;
+  return mods(e, b);
+}
+function isSlot(){ return S.capture && S.capture.key.indexOf('sl:') === 0; }
+function startCap(key){
+  endRec(); S.capture = {key:key};
+  S.hint = key.indexOf('sl:') === 0 ? '按下這一格要送出的鍵盤按鍵。Esc 取消。' : '按下要用的鍵，也可以按滑鼠右鍵、中鍵、側鍵。Esc 取消，Backspace 清除。';
+  render();
+}
+function endCap(v){
+  var c = S.capture; S.capture = null; S.hint = '';
+  if(c && v != null){
+    var parts = c.key.split(':'), kind = parts[0], id = parts[1];
+    if(kind === 'it'){ var q = item(+id); if(q){ q.hk = v; dirty('pf'); } }
+    else if(kind === 'ps'){ KF().presets[id].hk = v; S.selPre = id; dirty('keys'); }
+    else if(kind === 'sl'){ if(v){ S.hand.slotKeys[+id] = v; saveHand(); } }
+  }
+  render();
+}
+document.addEventListener('keydown', function(e){
+  if(S.capture){
+    e.preventDefault(); e.stopPropagation();
+    if(e.key === 'Escape') return endCap(null);
+    if(e.key === 'Backspace' && !isSlot()) return endCap('');
+    var n = keyName(e); if(!n) return;
+    if(isSlot()) n = n.replace(/^(Ctrl\+|Alt\+|Shift\+)+/, '');
+    return endCap(n);
+  }
+  if(e.key === 'Escape'){
+    if(!$('#modal').hidden){ closeDlg(); return; }
+    if(S.rec){ endRec(); flash('已取消錄製。'); render(); }
+  }
+}, true);
+document.addEventListener('mousedown', function(e){
+  if(!S.capture) return;
+  if(e.button === 0){ if(!e.target.closest('[data-cap]')) endCap(null); return; }
+  e.preventDefault();
+  if(isSlot()){ endCap(null); flash('每一格要送出的是鍵盤按鍵，不能用滑鼠鍵。'); render(); return; }
+  var m = {1:'MButton', 2:'RButton', 3:'XButton1', 4:'XButton2'}[e.button]; if(m) endCap(mods(e, m));
+}, true);
+document.addEventListener('mouseup', function(e){ if(e.button === 3 || e.button === 4) e.preventDefault(); }, true);
+document.addEventListener('contextmenu', function(e){ if(S.capture || e.target.closest('[data-cap]')) e.preventDefault(); }, true);
+
+// ---------- 事件 ----------
+document.addEventListener('click', function(e){
+  var t = e.target;
+  if(t.closest('#modal')){ if(t.id === 'modal'){ closeDlg(); return; } var o = t.closest('[data-ex]'); if(o){ var ex = EXAMPLES[+o.dataset.ex]; openContent(ex.path, clone(ex.data), o.dataset.from); } return; }
+  var cap = t.closest('[data-cap]'); if(cap){ startCap(cap.dataset.cap); return; }
+  var a = t.closest('[data-act]'); if(a && !a.disabled && ACT[a.dataset.act]){ ACT[a.dataset.act](a); return; }
+  var cl = t.closest('[data-close]'); if(cl && !cl.disabled){ closeTab(cl.dataset.kind, +cl.dataset.close); return; }
+  var pk = t.closest('[data-pick]'); if(pk && !pk.disabled){ pick(pk.dataset.kind, +pk.dataset.pick); return; }
+  var md = t.closest('[data-mode]'); if(md && !md.disabled){ if(PF().mode !== md.dataset.mode){ PF().mode = md.dataset.mode; dirty('pf'); flash('這個點位檔改成' + (md.dataset.mode === 'ten' ? '十人（5 格）' : '六人（3 格）') + '，牌鍵跟著改用對應的手牌範圍。'); render(); } return; }
+  var tab = t.closest('[data-tab]'); if(tab){ S.tab = tab.dataset.tab; S.capture = null; S.hint = ''; render(); return; }
+  var sd = t.closest('[data-side]'); if(sd){ if(S.hand.side !== sd.dataset.side){ S.hand.side = sd.dataset.side; saveHand('手牌位置改成' + (sd.dataset.side === 'right' ? '右邊' : '左邊') + '，要和遊戲的「スキルカードUI位置」一致。已存到這台電腦的設定。'); render(); } return; }
+  if(t.closest('input,select,label')) return;
+  var r;
+  if((r = t.closest('[data-cand]'))){ S.selCand = +r.dataset.cand; S.focusKind = 'cand'; S.selPt = null; render(); return; }
+  if((r = t.closest('[data-pt]'))){ S.selPt = +r.dataset.pt; S.focusKind = 'pt'; S.selCand = null; render(); return; }
+  if((r = t.closest('[data-pre]'))){ S.selPre = r.dataset.pre; render(); return; }
+  if((r = t.closest('[data-tm]'))){ S.selTm = r.dataset.tm; render(); $('#tm_' + S.selTm).focus(); return; }
+});
+document.addEventListener('focusin', function(e){ var f = e.target.dataset && e.target.dataset.tmin; if(f && S.selTm !== f){ S.selTm = f; renderTiming(analyze()); } });
+document.addEventListener('input', function(e){
+  var t = e.target;
+  if(t.id === 'p-name'){ var q = item(S.selPt); q.name = t.value; dirty('pf'); $('#p-title').textContent = t.value || '（未命名）'; var cell = $('#pts [data-pt="' + q.id + '"] .ellip'); if(cell) cell.textContent = t.value || '（未命名）'; renderLight(); }
+  else if(t.id === 'p-x' || t.id === 'p-y'){ var v = parseInt(t.value, 10); if(!isNaN(v)){ var it = item(S.selPt); it[t.id === 'p-x' ? 'x' : 'y'] = v; dirty('pf'); var pc = $('#pts [data-pt="' + it.id + '"] .num'); if(pc) pc.textContent = it.x + ', ' + it.y; renderLight(); } }
+  else if(/^h[xy][12]$/.test(t.id)){
+    var L = RECT(), n = parseInt(t.value, 10); L[t.id.slice(1)] = isNaN(n) ? 0 : n; L.state = 'manual';
+    var ok = L.x2 > L.x1 && L.y2 > L.y1, hs = $('#hState'); if(hs){ hs.className = 'small ' + (ok ? 'mut' : 't-bad'); hs.textContent = ok ? '手動輸入' : '右下要比左上大'; }
+    saveHand(); renderLight();
+  }
+  else if(t.dataset.tmin){ var tm = KF().timing; tm[t.dataset.tmin] = t.value.trim() === '' ? NaN : parseFloat(t.value); if(tm.verified){ tm.verified = false; tm.report = ''; tm.date = ''; } dirty('keys'); render(); }
+});
+document.addEventListener('change', function(e){
+  var t = e.target;
+  if(t.id === 'p-fn'){ var q = item(S.selPt); q.fn = t.value; if(q.fn === 'point' && q.x == null){ q.x = 1280; q.y = 720; } dirty('pf'); render(); }
+  else if(t.id === 'preExact'){ KF().presets[S.selPre].exact = t.checked; dirty('keys'); render(); }
+  else if(t.id === 'ckRepeat'){ S.hand.autoRepeat = t.checked; saveHand(); render(); }
+  else if(t.id === 'hOrder'){ S.hand.order = t.value; saveHand(); render(); }
+  else if(t.id === 'simFocus'){ S.focus = t.checked; log(S.focus ? '' : 'warn', S.focus ? '遊戲回到前景，按鍵放開後繼續。' : '遊戲離開前景，所有動作停止。'); render(); }
+  else if(t.id === 'themeSel'){ if(t.value) document.documentElement.setAttribute('data-theme', t.value); else document.documentElement.removeAttribute('data-theme'); }
+});
+document.addEventListener('dragover', function(e){ if(e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types, 'Files') >= 0){ e.preventDefault(); $('#win').classList.add('drop'); } });
+document.addEventListener('dragleave', function(e){ if(!e.relatedTarget) $('#win').classList.remove('drop'); });
+document.addEventListener('drop', function(e){
+  $('#win').classList.remove('drop');
+  if(!e.dataTransfer || !e.dataTransfer.files.length) return;
+  e.preventDefault();
+  if(e.dataTransfer.files.length > 1) flash('一次拖一個 JSON 就好，先開第一個。');
+  readFile(e.dataTransfer.files[0], null);
+});
+$('#simFault').addEventListener('click', function(){ S.busy = ''; S.run = 'fault'; log('bad', '引擎沒有回應：已終止引擎並放開所有按鍵，不會自動恢復。'); render(); });
+
+buildTiming();
+render();
+})();
+</script>
+</body>
+</html>

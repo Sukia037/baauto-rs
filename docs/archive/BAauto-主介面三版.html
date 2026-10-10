@@ -1,0 +1,798 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BAauto 主介面三版</title>
+<style>
+:root{
+  --page:#E8EBEF; --bg:#FFFFFF; --soft:#F5F6F8; --side:#F3F4F6; --field:#FFFFFF;
+  --line:#D8DCE1; --line2:#ECEEF1; --ink:#1C1F23; --muted:#646A73; --faint:#9AA0A8;
+  --accent:#0067C0; --accent-ink:#FFFFFF; --sel:#E1EEFA;
+  --good:#16833A; --warn:#946200; --bad:#C42B1C; --bad-bg:#FDECEC;
+  --font:"Microsoft JhengHei UI","Microsoft JhengHei","PingFang TC","Noto Sans TC","Segoe UI",sans-serif;
+  --mono:"Cascadia Mono",Consolas,"SFMono-Regular",Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --page:#141517; --bg:#222326; --soft:#292B2F; --side:#1B1C1F; --field:#1A1B1E;
+    --line:#3C3F45; --line2:#303237; --ink:#E9EAEC; --muted:#A8ADB5; --faint:#747982;
+    --accent:#5AB4F5; --accent-ink:#06223A; --sel:#1E3850;
+    --good:#5CC27A; --warn:#E3B341; --bad:#FF8A80; --bad-bg:#3B2324;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --page:#141517; --bg:#222326; --soft:#292B2F; --side:#1B1C1F; --field:#1A1B1E;
+  --line:#3C3F45; --line2:#303237; --ink:#E9EAEC; --muted:#A8ADB5; --faint:#747982;
+  --accent:#5AB4F5; --accent-ink:#06223A; --sel:#1E3850;
+  --good:#5CC27A; --warn:#E3B341; --bad:#FF8A80; --bad-bg:#3B2324;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--page);color:var(--ink);font:13px/1.5 var(--font)}
+.page{max-width:1000px;margin:0 auto;padding:16px 16px 28px}
+.switcher{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-bottom:12px}
+.switcher .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--bg)}
+.switcher .seg button{border:0;background:none;padding:6px 14px;color:var(--muted)}
+.switcher .seg button+button{border-left:1px solid var(--line)}
+.switcher .seg button[aria-pressed="true"]{background:var(--sel);color:var(--ink);font-weight:600}
+.switcher .desc{color:var(--muted);font-size:12.5px}
+.switcher #verDesc{order:9;flex-basis:100%}
+.switcher .sp{flex:1}
+.frame{overflow-x:auto;padding:2px 0 16px}
+
+button{font:inherit;color:inherit;cursor:pointer}
+button:disabled{cursor:default;opacity:.4}
+input,select{font:inherit;color:var(--ink);background:var(--field);border:1px solid var(--line);border-radius:6px;height:30px;padding:0 8px;min-width:0}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+input.n{width:72px;text-align:right;font-variant-numeric:tabular-nums}
+
+.win{width:940px;height:600px;margin:0 auto;background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.sp{flex:1}
+.sub{color:var(--muted)}
+.path{color:var(--faint);font:12px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.state{display:inline-flex;align-items:center;gap:6px;font-weight:600;white-space:nowrap}
+.state i{width:8px;height:8px;border-radius:50%;background:currentColor}
+.state.ok{color:var(--good)} .state.warn{color:var(--warn)} .state.bad{color:var(--bad)} .state.off{color:var(--faint)}
+.btn{height:30px;padding:0 14px;border:1px solid var(--line);border-radius:6px;background:var(--field);white-space:nowrap}
+.btn:hover:not(:disabled){background:var(--soft)}
+.btn.sm{height:28px;padding:0 10px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.primary:hover:not(:disabled){background:var(--accent);filter:brightness(1.07)}
+.btn.rec{border-color:var(--accent);color:var(--accent)}
+.btn.icon{width:36px;padding:0;font-size:16px}
+.lnk{border:0;background:none;padding:0;color:var(--accent);white-space:nowrap}
+.lnk:hover:not(:disabled){text-decoration:underline}
+.lnk.danger{color:var(--bad)}
+.dirty{color:var(--warn);font-weight:700}
+
+/* 檔案按鈕與選單 */
+.filebtn{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 10px;border:1px solid var(--line);border-radius:6px;background:var(--field);font-weight:700;max-width:260px}
+.filebtn:hover:not(:disabled){border-color:var(--accent)}
+.filebtn .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.filebtn .cv{font-weight:400;color:var(--muted);font-size:10px}
+.fk{color:var(--muted);font-size:12px}
+.menuwrap{position:relative}
+.menu{position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:320px;background:var(--bg);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.16);padding:4px}
+.menu .mh{padding:6px 10px 2px;font-size:11.5px;color:var(--faint)}
+.menu button{display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;text-align:left;padding:6px 10px;border-radius:5px}
+.menu button:hover{background:var(--soft)}
+.menu .ck{width:12px;color:var(--accent)}
+.menu .tg{margin-left:auto;color:var(--muted);font-size:12px}
+.menu hr{border:0;border-top:1px solid var(--line2);margin:4px 2px}
+
+/* 清單 */
+.pane{display:flex;flex-direction:column;min-height:0;min-width:0}
+.ph{display:flex;align-items:center;gap:8px;height:34px;flex:none}
+.ph b{font-size:13.5px}
+.cnt{color:var(--faint);font-size:12px}
+.list{flex:1;min-height:0;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--field)}
+.row{display:grid;align-items:center;gap:10px;min-height:34px;padding:2px 10px;border-bottom:1px solid var(--line2);cursor:default}
+.row:last-child{border-bottom:0}
+.row.head{position:sticky;top:0;z-index:1;min-height:28px;background:var(--soft);color:var(--faint);font-size:12px}
+.row:not(.head):hover{background:var(--soft)}
+.row.sel,.row.sel:hover{background:var(--sel)}
+.num{font-variant-numeric:tabular-nums}
+.r{text-align:right}
+.mut{color:var(--muted)}
+.empty{padding:22px 12px;color:var(--faint);text-align:center;font-size:12.5px}
+.t-bad{color:var(--bad);font-size:12px} .t-warn{color:var(--warn);font-size:12px} .t-off{color:var(--faint);font-size:12px} .t-ok{color:var(--good);font-size:12px}
+.ellip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pf{display:flex;align-items:center;gap:14px;padding-top:8px;flex:none}
+
+.chip{display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:26px;padding:0 9px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;background:var(--field);font:12px var(--mono);white-space:nowrap}
+.chip:hover:not(:disabled){border-color:var(--accent)}
+.chip.empty{border-style:dashed;border-bottom-width:1px;color:var(--faint);font-family:var(--font)}
+.chip.bad{border-color:var(--bad);color:var(--bad);background:var(--bad-bg)}
+.chip.cap{border-color:var(--accent);background:var(--sel);color:var(--ink);font-family:var(--font);border-bottom-width:1px}
+.chip.big{height:32px;min-width:64px;font-size:13px}
+
+.savebar{display:flex;align-items:center;gap:8px;padding:8px 16px;border-top:1px solid var(--line);background:var(--soft);flex:none}
+.savebar .msg{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.savebar .msg b{font-family:var(--mono);font-size:12.5px}
+.status{display:flex;align-items:center;gap:16px;height:30px;padding:0 16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;flex:none}
+.status .ok{color:var(--good)} .status .warn{color:var(--warn)} .status .hint{color:var(--ink)}
+
+/* ===== A 經典 ===== */
+.va{display:flex;flex-direction:column}
+.va .top{display:flex;align-items:center;gap:10px;padding:12px 16px 8px;min-width:0}
+.va .top .path{max-width:200px}
+.tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid var(--line)}
+.tabs button{border:0;background:none;padding:8px 12px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button:hover{color:var(--ink)}
+.tabs button[aria-selected="true"]{color:var(--ink);font-weight:600;border-bottom-color:var(--accent)}
+.a-main{flex:1;min-height:0;display:grid;grid-template-columns:300px minmax(0,1fr);gap:18px;padding:12px 16px 14px}
+.a-cand .row{grid-template-columns:34px minmax(0,1fr) 50px 50px}
+.a-pts .row{grid-template-columns:minmax(0,1fr) 84px 96px 140px}
+.aform{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:8px 10px;align-items:center;padding:12px 0 0;flex:none}
+.aform>span{color:var(--muted)}
+.aform .xy{display:flex;align-items:center;gap:6px}
+.aform .acts{grid-column:1 / -1;display:flex;align-items:center;gap:14px}
+
+/* ===== B 側欄 ===== */
+.vb{display:grid;grid-template-columns:196px minmax(0,1fr)}
+.side{display:flex;flex-direction:column;gap:4px;padding:14px 10px;background:var(--side);border-right:1px solid var(--line);min-height:0}
+.brand{font-weight:700;font-size:14px;letter-spacing:.02em;padding:0 6px 6px}
+.sh{padding:4px 8px 2px;font-size:11.5px;color:var(--faint)}
+.files{display:flex;flex-direction:column;gap:1px;max-height:170px;overflow:auto}
+.fitem{display:flex;align-items:center;gap:6px;width:100%;border:0;background:none;text-align:left;padding:6px 8px;border-radius:6px;min-width:0}
+.fitem:hover{background:var(--soft)}
+.fitem .fn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:12.5px}
+.fitem .tg{margin-left:auto;font-size:11px;color:var(--faint);white-space:nowrap}
+.fitem[aria-current="true"]{background:var(--bg);box-shadow:inset 3px 0 0 var(--accent);font-weight:600}
+.fitem.ext .fn{font-style:italic}
+.flinks{display:flex;gap:12px;padding:4px 8px 8px;font-size:12px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.snav{display:flex;flex-direction:column;gap:2px}
+.snav button{border:0;background:none;text-align:left;padding:7px 10px;border-radius:6px;color:var(--muted)}
+.snav button:hover{background:var(--soft);color:var(--ink)}
+.snav button[aria-selected="true"]{background:var(--sel);color:var(--ink);font-weight:600}
+.sstate{display:flex;flex-direction:column;gap:8px;padding:10px 6px 0;border-top:1px solid var(--line)}
+.sstate .btn{width:100%}
+.sstate .k{font-size:11.5px;color:var(--faint)}
+.bmain{display:flex;flex-direction:column;min-width:0;min-height:0}
+.bhead{display:flex;align-items:center;gap:10px;padding:14px 18px 6px;min-width:0}
+.bhead h2{margin:0;font-size:17px}
+.bcols{flex:1;min-height:0;display:grid;grid-template-columns:200px 40px minmax(0,1fr);gap:10px;padding:4px 18px 14px}
+.xfer{display:flex;flex-direction:column;justify-content:center;gap:8px;padding-top:34px}
+.b-cand .row,.c-cand .row{grid-template-columns:minmax(0,1fr) auto}
+.b-pts .row{grid-template-columns:minmax(0,1fr) 76px 86px 104px 16px}
+.nmi{border:1px solid transparent;background:none;height:28px;padding:0 6px;margin-left:-7px;width:100%}
+.nmi:hover{border-color:var(--line)}
+.x{border:0;background:none;color:var(--faint);padding:0;visibility:hidden;font-size:14px}
+.row:hover .x{visibility:visible}
+.x:hover{color:var(--bad)}
+
+/* ===== C 三欄 ===== */
+.vc{display:flex;flex-direction:column}
+.ctop{display:flex;align-items:center;gap:12px;padding:12px 16px 8px;min-width:0}
+.pseg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;max-width:560px;overflow-x:auto;flex:none}
+.pseg button{border:0;background:var(--field);padding:0 12px;height:30px;color:var(--muted);font:12.5px var(--mono);white-space:nowrap}
+.pseg button+button{border-left:1px solid var(--line)}
+.pseg button[aria-pressed="true"]{background:var(--sel);color:var(--ink);font-weight:700}
+.cpath{display:flex;align-items:center;gap:12px;padding:0 16px 8px;min-width:0}
+.cpath .path{max-width:520px}
+.ctabs{display:flex;align-items:center;gap:4px;padding:0 16px 10px;border-bottom:1px solid var(--line)}
+.ctabs button{border:0;background:none;padding:5px 12px;border-radius:999px;color:var(--muted)}
+.ctabs button:hover{background:var(--soft);color:var(--ink)}
+.ctabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);font-weight:600}
+.c-main{flex:1;min-height:0;display:grid;grid-template-columns:230px minmax(0,1fr) 250px;gap:14px;padding:12px 16px 14px}
+.c-pts .row{grid-template-columns:minmax(0,1fr) 80px 70px}
+.insp{border:1px solid var(--line);border-radius:8px;background:var(--soft);padding:14px;display:flex;flex-direction:column;gap:10px;overflow:auto}
+.insp h3{margin:0;font-size:14px}
+.insp .f{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px;align-items:center}
+.insp .f>span:nth-child(odd){color:var(--muted)}
+.insp .acts{display:flex;gap:14px;margin-top:auto;padding-top:8px;border-top:1px solid var(--line2)}
+.insp .none{margin:auto;color:var(--faint);text-align:center;font-size:12.5px}
+
+/* 對話框 */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.38);display:grid;place-items:center;z-index:50;padding:16px}
+.dlg{width:min(520px,100%);background:var(--bg);border:1px solid var(--line);border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.3)}
+.dlg h2{font-size:14px;margin:0;padding:14px 16px 6px}
+.dlg .body{padding:4px 16px 4px;display:flex;flex-direction:column;gap:8px}
+.dlg .body p{margin:0;color:var(--muted)}
+.dlg .btns{display:flex;justify-content:flex-end;gap:8px;padding:14px 16px}
+.dlg .of{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:center;width:100%;border:1px solid var(--line);border-radius:8px;background:var(--field);text-align:left;padding:8px 12px}
+.dlg .of:hover{border-color:var(--accent)}
+.dlg .of .p{font:12.5px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dlg .of .d{grid-column:1 / -1;font-size:12px;color:var(--muted)}
+.dlg .row2{display:grid;grid-template-columns:80px minmax(0,1fr);gap:8px;align-items:center}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="switcher">
+    <span class="seg" id="verSeg">
+      <button type="button" data-ver="A">A　經典</button>
+      <button type="button" data-ver="B">B　側欄</button>
+      <button type="button" data-ver="C">C　三欄</button>
+    </span>
+    <span class="desc" id="verDesc"></span>
+    <span class="sp"></span>
+    <label class="desc">主題 <select id="themeSel"><option value="">跟系統</option><option value="light">淺色</option><option value="dark">深色</option></select></label>
+  </div>
+
+  <div class="frame">
+  <!-- A 經典 -->
+  <div class="win va" id="vA">
+    <div class="top">
+      <span class="fk">JSON</span>
+      <span class="menuwrap">
+        <button type="button" class="filebtn" data-filemenu aria-haspopup="menu"><span class="nm" data-fname></span><span class="cv">▼</span></button>
+        <div class="menu" data-menu hidden></div>
+      </span>
+      <span class="path" data-fdir></span>
+      <span class="sub" data-sub></span>
+      <span class="sp"></span>
+      <span class="state" data-state></span>
+      <button type="button" class="btn" data-act="run" data-runbtn></button>
+    </div>
+    <nav class="tabs"><button type="button" data-ftab="點位" aria-selected="true">點位</button><button type="button" data-ftab="預設按鍵">預設按鍵</button><button type="button" data-ftab="牌鍵">牌鍵</button><button type="button" data-ftab="時間">時間</button><button type="button" data-ftab="紀錄">紀錄</button></nav>
+    <div class="a-main">
+      <section class="pane">
+        <div class="ph"><b>候選點位</b><span class="cnt" data-cc></span><span class="sp"></span><button type="button" class="btn sm" data-act="record" data-recbtn></button></div>
+        <div class="list a-cand" data-cands></div>
+        <div class="pf"><button type="button" class="lnk" data-act="candDel" data-needcand>刪除</button><button type="button" class="lnk" data-act="candClear">清空</button><span class="sp"></span><button type="button" class="btn sm" data-act="aUse" data-needcand>帶入 →</button></div>
+      </section>
+      <section class="pane">
+        <div class="ph"><b>點位按鍵</b><span class="cnt" data-pc></span><span class="sp"></span><button type="button" class="lnk" data-act="aNew">新增空白</button></div>
+        <div class="list a-pts" data-pts></div>
+        <div class="aform">
+          <span>名稱</span><input id="a-name">
+          <span>熱鍵</span><span><button type="button" class="chip" data-cap="form" id="a-hk"></button></span>
+          <span>位置</span><span class="xy"><input class="n" id="a-x" aria-label="X"><input class="n" id="a-y" aria-label="Y"></span>
+          <span></span><span></span>
+          <div class="acts"><span class="mut" id="a-note"></span><span class="sp"></span><button type="button" class="lnk danger" data-act="ptDel" id="a-del">刪除這個點位</button><button type="button" class="btn primary sm" data-act="aSave">儲存點位</button></div>
+        </div>
+      </section>
+    </div>
+    <div class="savebar" data-savebar><span class="msg" data-savemsg></span><button type="button" class="btn" data-act="revert">還原</button><button type="button" class="btn primary" data-act="save" data-savebtn>儲存</button></div>
+    <div class="status" data-status></div>
+  </div>
+
+  <!-- B 側欄 -->
+  <div class="win vb" id="vB" hidden>
+    <aside class="side">
+      <div class="brand">BAauto</div>
+      <div class="sh">JSON 檔（profiles 資料夾）</div>
+      <div class="files" id="b-files"></div>
+      <div class="flinks"><button type="button" class="lnk" data-act="openOther">開啟其他…</button><button type="button" class="lnk" data-act="saveAs">另存新檔…</button></div>
+      <nav class="snav"><button type="button" data-ftab="點位" aria-selected="true">點位</button><button type="button" data-ftab="預設按鍵">預設按鍵</button><button type="button" data-ftab="牌鍵">牌鍵</button><button type="button" data-ftab="時間">時間</button><button type="button" data-ftab="紀錄">紀錄</button></nav>
+      <span class="sp"></span>
+      <div class="sstate"><span class="state" data-state></span><button type="button" class="btn" data-act="run" data-runbtn></button><span class="k">Ctrl+F9 緊急停止</span></div>
+    </aside>
+    <div class="bmain">
+      <div class="bhead"><h2>點位</h2><span class="path" data-fpath title=""></span><span class="sp"></span><span class="sub" data-sub></span><button type="button" class="btn" data-act="record" data-recbtn></button></div>
+      <div class="bcols">
+        <section class="pane">
+          <div class="ph"><b>候選</b><span class="cnt" data-cc></span><span class="sp"></span><button type="button" class="lnk" data-act="candClear">清空</button></div>
+          <div class="list b-cand" data-cands></div>
+        </section>
+        <div class="xfer"><button type="button" class="btn icon" data-act="bind" data-needcand title="綁成點位按鍵">→</button><button type="button" class="btn icon" data-act="unbind" data-needpt title="移回候選">←</button></div>
+        <section class="pane">
+          <div class="ph"><b>點位按鍵</b><span class="cnt" data-pc></span></div>
+          <div class="list b-pts" data-pts></div>
+        </section>
+      </div>
+      <div class="savebar" data-savebar><span class="msg" data-savemsg></span><button type="button" class="btn" data-act="revert">還原</button><button type="button" class="btn primary" data-act="save" data-savebtn>儲存</button></div>
+      <div class="status" data-status></div>
+    </div>
+  </div>
+
+  <!-- C 三欄 -->
+  <div class="win vc" id="vC" hidden>
+    <div class="ctop">
+      <span class="brand" style="padding:0">BAauto</span>
+      <span class="pseg" data-pseg></span>
+      <button type="button" class="btn sm" data-act="openOther">開啟…</button>
+      <span class="sp"></span>
+      <span class="state" data-state></span>
+      <button type="button" class="btn" data-act="run" data-runbtn></button>
+    </div>
+    <div class="cpath"><span class="path" data-fpath></span><button type="button" class="lnk" data-act="saveAs" style="font-size:12px">另存新檔…</button><button type="button" class="lnk" data-act="reload" style="font-size:12px">重新載入</button><span class="sp"></span><span class="sub" data-sub></span></div>
+    <div class="ctabs"><button type="button" data-ftab="點位" aria-selected="true">點位</button><button type="button" data-ftab="預設按鍵">預設按鍵</button><button type="button" data-ftab="牌鍵">牌鍵</button><button type="button" data-ftab="時間">時間</button><button type="button" data-ftab="紀錄">紀錄</button></div>
+    <div class="c-main">
+      <section class="pane">
+        <div class="ph"><b>候選</b><span class="cnt" data-cc></span><span class="sp"></span><button type="button" class="btn sm" data-act="record" data-recbtn></button></div>
+        <div class="list c-cand" data-cands></div>
+      </section>
+      <section class="pane">
+        <div class="ph"><b>點位按鍵</b><span class="cnt" data-pc></span></div>
+        <div class="list c-pts" data-pts></div>
+      </section>
+      <section class="insp" id="c-insp"></section>
+    </div>
+    <div class="savebar" data-savebar><span class="msg" data-savemsg></span><button type="button" class="btn" data-act="revert">還原</button><button type="button" class="btn primary" data-act="save" data-savebtn>儲存</button></div>
+    <div class="status" data-status></div>
+  </div>
+  </div>
+</div>
+
+<div class="modal" id="modal" hidden><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgT"><h2 id="dlgT"></h2><div class="body" id="dlgB"></div><div class="btns" id="dlgK"></div></div></div>
+
+<script>
+(function(){
+'use strict';
+function $(s, r){ return (r || document).querySelector(s); }
+function $$(s, r){ return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+function el(tag, a, kids){
+  var e = document.createElement(tag);
+  if(a) Object.keys(a).forEach(function(k){
+    var v = a[k]; if(v == null || v === false) return;
+    if(k === 'class') e.className = v; else if(k === 'text') e.textContent = v;
+    else if(k.slice(0, 2) === 'on') e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? '' : v);
+  });
+  (kids || []).forEach(function(c){ if(c != null) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+  return e;
+}
+function clone(o){ return JSON.parse(JSON.stringify(o)); }
+function setVal(e, v){ v = v == null ? '' : String(v); if(document.activeElement !== e && e.value !== v) e.value = v; }
+
+var DIR = 'C:\\BAauto\\profiles\\';
+var DESC = {
+  A:'最接近 AHK 版：上方是目前的 JSON 檔（點一下切換、開啟、另存），下面左邊候選點位、右邊點位按鍵和編輯表單。',
+  B:'左側欄直接列出 profiles 資料夾裡的 JSON 檔，點一下就切換；中間兩欄用箭頭搬，名稱和熱鍵直接在清單上改。',
+  C:'上方一排是 JSON 檔按鈕，一鍵切換，下面一行是完整路徑；候選｜點位按鍵｜詳細三欄。'
+};
+var PRESETS = [['w','技能 1',0],['e','技能 2',0],['r','技能 3',0],['t','技能 4',4],['y','技能 5',5],['2','連點 1',0],['3','連點 2',0],['4','連點 3',0],['5','連點 4',4],['6','連點 5',5],
+  ['a','開牌 1',0],['s','開牌 2',0],['d','開牌 3',0],['f','開牌 4',4],['g','開牌 5',5],['space','普通暫停',0],['down','卡幀暫停（快）',0],['up','卡幀暫停（慢）',0],
+  ['xbutton1','AUTO',0],['xbutton2','加速',0],['rbutton','滑鼠連點',0],['ctrl+f9','緊急停止',0],['ctrl+f10','錄製點位',0]];
+// 「開啟其他 JSON」示範用的檔案
+var OPENABLE = [
+  {path:'D:\\BA\\備份\\六人_舊.json', mode:'six', side:'right', kind:'new', desc:'BAauto 設定檔・六人・手牌在右', points:[{id:1, name:'Boss', hk:'z', x:1300, y:560, legacy:false}]},
+  {path:'C:\\Users\\sukia\\Downloads\\十人_朋友.json', mode:'ten', side:'left', kind:'new', desc:'BAauto 設定檔・十人・手牌在左', points:[{id:1, name:'中央', hk:'z', x:1280, y:600, legacy:false}, {id:2, name:'左邊', hk:'x', x:700, y:640, legacy:false}]},
+  {path:'D:\\BA\\AHK\\points_總力戰.json', mode:'six', side:'right', kind:'legacy', desc:'舊版 AHK 點位 JSON → 會轉成新格式另存（原檔不動）', points:[{id:1, name:'Boss', hk:'z', x:1280, y:560, legacy:true}, {id:2, name:'左側', hk:'x', x:740, y:830, legacy:true}]}
+];
+
+var S = {
+  ver:'A',
+  profiles:[
+    {path:DIR + '六人.json', mode:'six', side:'right', points:[
+      {id:1, name:'Boss 中央', hk:'z', x:1280, y:560, legacy:false},
+      {id:2, name:'左側集火', hk:'x', x:760, y:820, legacy:false},
+      {id:3, name:'舊版點位', hk:'c', x:1075, y:533, legacy:true},
+      {id:4, name:'右下補位', hk:'e', x:2050, y:980, legacy:false}]},
+    {path:DIR + '十人.json', mode:'ten', side:'right', points:[{id:1, name:'Boss 中央', hk:'z', x:1280, y:540, legacy:false}]},
+    {path:DIR + '總力戰 ホド.json', mode:'six', side:'left', points:[{id:1, name:'ホド本體', hk:'z', x:1460, y:500, legacy:false}, {id:2, name:'右側小怪', hk:'x', x:1900, y:760, legacy:false}]}
+  ],
+  cur:0, saved:null, dirty:false,
+  cands:[{id:1, name:'錄製 1', x:1302, y:548}, {id:2, name:'錄製 2', x:640, y:902}, {id:3, name:'MuMu 攻擊', x:2210, y:1290}, {id:4, name:'MuMu 移動', x:420, y:1180}],
+  nextCand:5, selCand:null, selPt:null, focusKind:null,
+  form:{name:'', hk:'', x:'', y:''},
+  capture:null, rec:null, run:'on', busy:'', msg:'', hint:''
+};
+S.saved = S.profiles.map(clone);
+function P(){ return S.profiles[S.cur]; }
+function fname(p){ return p.path.split('\\').pop(); }
+function fdir(p){ return p.path.slice(0, p.path.length - fname(p).length); }
+function inDir(p){ return fdir(p) === DIR; }
+function tag(p){ return (p.mode === 'ten' ? '十人' : '六人') + '・' + (p.side === 'right' ? '右' : '左'); }
+function pt(id){ return P().points.filter(function(q){ return q.id === id; })[0]; }
+function cand(id){ return S.cands.filter(function(q){ return q.id === id; })[0]; }
+function norm(h){ return (h || '').trim().toLowerCase(); }
+function dirty(){ S.dirty = true; }
+function flash(m){ S.msg = m; clearTimeout(S._mt); S._mt = setTimeout(function(){ S.msg = ''; chrome(); }, 5000); }
+function clearSel(){ S.selPt = null; S.focusKind = null; S.form = {name:'', hk:'', x:'', y:''}; S.capture = null; }
+
+function analyze(p){
+  var pre = {}; PRESETS.forEach(function(x){ if(!(p.mode === 'six' && x[2])) pre[x[0]] = x[1]; });
+  var cnt = {}; p.points.forEach(function(q){ var k = norm(q.hk); if(k && !pre[k]) cnt[k] = (cnt[k] || 0) + 1; });
+  var r = {};
+  p.points.forEach(function(q){
+    var k = norm(q.hk);
+    if(!k) r[q.id] = {s:'off', m:'未設熱鍵'};
+    else if(pre[k]) r[q.id] = {s:'bad', m:'和「' + pre[k] + '」重複，停用'};
+    else if(cnt[k] > 1) r[q.id] = {s:'bad', m:'熱鍵重複，停用'};
+    else if(q.legacy) r[q.id] = {s:'warn', m:'舊版座標'};
+    else r[q.id] = {s:'ok', m:'啟用'};
+  });
+  return r;
+}
+
+// ---------- 外框 ----------
+function root(){ return document.getElementById('v' + S.ver); }
+function chip(text, capKey, cls){
+  var on = S.capture && S.capture.key === capKey;
+  return el('button', {type:'button', class:'chip ' + (on ? 'cap' : (cls || '')), 'data-cap':capKey, text:on ? '按下按鍵…' : text});
+}
+function chrome(){
+  var R = root(), p = P(), star = S.dirty ? ' *' : '';
+  $$('[data-sub]', R).forEach(function(e){ e.textContent = (p.mode === 'ten' ? '十人・5 格' : '六人・3 格') + '・手牌在' + (p.side === 'right' ? '右' : '左'); });
+  $$('[data-fname]', R).forEach(function(e){ e.textContent = fname(p) + star; });
+  $$('[data-fdir]', R).forEach(function(e){ e.textContent = fdir(p); e.title = p.path; });
+  $$('[data-fpath]', R).forEach(function(e){ e.textContent = p.path; e.title = p.path; });
+  $$('[data-filemenu]', R).forEach(function(b){ b.title = p.path; b.disabled = !!S.busy; });
+  var t, c;
+  if(S.busy){ t = S.busy; c = 'warn'; }
+  else if(S.run === 'off'){ t = '已停止'; c = 'off'; }
+  else { t = '運作中'; c = 'ok'; }
+  $$('[data-state]', R).forEach(function(e){ e.className = 'state ' + c; e.textContent = ''; e.appendChild(el('i')); e.appendChild(document.createTextNode(t)); });
+  $$('[data-runbtn]', R).forEach(function(b){ b.textContent = S.run === 'on' ? '停止' : '啟用'; b.disabled = !!S.busy; });
+  $$('[data-recbtn]', R).forEach(function(b){ b.textContent = S.rec ? '錄製中…（Esc 取消）' : '＋ 錄製'; b.classList.toggle('rec', !!S.rec); });
+  // B：側欄檔案清單
+  var fl = $('#b-files', R);
+  if(fl){
+    fl.textContent = '';
+    S.profiles.forEach(function(x, i){
+      var cur = i === S.cur;
+      fl.appendChild(el('button', {type:'button', class:'fitem' + (inDir(x) ? '' : ' ext'), 'data-pick':String(i), 'aria-current':String(cur), title:x.path, disabled:S.busy ? true : null},
+        [el('span', {class:'fn', text:fname(x) + (cur ? star : '')}), el('span', {class:'tg', text:tag(x)})]));
+    });
+  }
+  // C：檔案按鈕列
+  var ps = $('[data-pseg]', R);
+  if(ps){
+    ps.textContent = '';
+    S.profiles.forEach(function(x, i){ ps.appendChild(el('button', {type:'button', 'data-pick':String(i), 'aria-pressed':String(i === S.cur), title:x.path + '（' + tag(x) + '）', disabled:S.busy ? true : null, text:fname(x) + (i === S.cur ? star : '')})); });
+    var on = ps.querySelector('[aria-pressed="true"]');
+    if(on && (on.offsetLeft < ps.scrollLeft || on.offsetLeft + on.offsetWidth > ps.scrollLeft + ps.clientWidth)) ps.scrollLeft = on.offsetLeft - 20;
+  }
+  $$('[data-cc]', R).forEach(function(e){ e.textContent = S.cands.length + ' 個'; });
+  $$('[data-pc]', R).forEach(function(e){ e.textContent = P().points.length + ' 個'; });
+  $$('[data-needcand]', R).forEach(function(b){ b.disabled = S.selCand == null; });
+  $$('[data-needpt]', R).forEach(function(b){ b.disabled = S.selPt == null; });
+  $('[data-savebar]', R).hidden = !S.dirty;
+  var sm = $('[data-savemsg]', R); sm.textContent = ''; sm.appendChild(el('b', {text:fname(p)})); sm.appendChild(document.createTextNode(' 有未儲存的變更'));
+  $('[data-savebtn]', R).disabled = !!S.busy;
+  var st = $('[data-status]', R); st.textContent = '';
+  if(S.hint || S.msg){ st.appendChild(el('span', {class:'hint', text:S.hint || S.msg})); return; }
+  st.appendChild(el('span', {class:S.run === 'on' ? 'ok' : null, text:'● ' + (S.run === 'on' ? '引擎正常' : '引擎停止')}));
+  st.appendChild(el('span', {text:'遊戲在前景'}));
+  st.appendChild(el('span', {text:'游標：第 2 格'}));
+  st.appendChild(el('span', {class:'sp'}));
+  if(S.ver !== 'B') st.appendChild(el('span', {text:'Ctrl+F9 緊急停止'}));
+}
+function buildMenu(m){
+  m.textContent = '';
+  m.appendChild(el('div', {class:'mh', text:'profiles 資料夾'}));
+  S.profiles.forEach(function(x, i){
+    if(!inDir(x)) return;
+    m.appendChild(el('button', {type:'button', 'data-pick':String(i), title:x.path}, [el('span', {class:'ck', text:i === S.cur ? '✓' : ''}), fname(x), el('span', {class:'tg', text:tag(x)})]));
+  });
+  var ext = S.profiles.map(function(x, i){ return [x, i]; }).filter(function(a){ return !inDir(a[0]); });
+  if(ext.length){
+    m.appendChild(el('div', {class:'mh', text:'其他位置'}));
+    ext.forEach(function(a){ m.appendChild(el('button', {type:'button', 'data-pick':String(a[1]), title:a[0].path}, [el('span', {class:'ck', text:a[1] === S.cur ? '✓' : ''}), a[0].path, el('span', {class:'tg', text:tag(a[0])})])); });
+  }
+  m.appendChild(el('hr'));
+  [['openOther', '開啟其他 JSON…'], ['saveAs', '另存新檔…'], ['reload', '重新載入（放棄未儲存的變更）'], ['reveal', '在檔案總管中顯示']].forEach(function(a){
+    m.appendChild(el('button', {type:'button', 'data-act':a[0]}, [el('span', {class:'ck'}), a[1]]));
+  });
+}
+
+// ---------- 清單 ----------
+function statusEl(c){ return el('span', {class:'t-' + c.s + ' ellip', title:c.s === 'ok' ? null : c.m, text:c.s === 'ok' ? '' : c.m}); }
+function candRows(box, full){
+  box.textContent = '';
+  if(full) box.appendChild(el('div', {class:'row head'}, [el('span', {text:'#'}), el('span', {text:'名稱'}), el('span', {class:'r', text:'X'}), el('span', {class:'r', text:'Y'})]));
+  if(!S.cands.length){ box.appendChild(el('div', {class:'empty', text:'按「錄製」，到遊戲上點一下就會出現在這裡。'})); return; }
+  S.cands.forEach(function(c){
+    var cells = full
+      ? [el('span', {class:'mut num', text:String(c.id)}), el('span', {class:'ellip', text:c.name}), el('span', {class:'r num', text:String(c.x)}), el('span', {class:'r num', text:String(c.y)})]
+      : [el('span', {class:'ellip', text:c.name}), el('span', {class:'mut num', text:c.x + ', ' + c.y})];
+    box.appendChild(el('div', {class:'row' + (S.selCand === c.id ? ' sel' : ''), 'data-cand':String(c.id)}, cells));
+  });
+}
+function sorted(cf){ return P().points.slice().sort(function(a, b){ return (cf[b.id].s === 'bad') - (cf[a.id].s === 'bad'); }); }
+function renderA(cf){
+  var R = $('#vA');
+  candRows($('[data-cands]', R), true);
+  var box = $('[data-pts]', R); box.textContent = '';
+  box.appendChild(el('div', {class:'row head'}, [el('span', {text:'名稱'}), el('span', {text:'熱鍵'}), el('span', {text:'位置'}), el('span', {text:'狀態'})]));
+  var pts = sorted(cf);
+  if(!pts.length) box.appendChild(el('div', {class:'empty', text:'還沒有點位按鍵。'}));
+  pts.forEach(function(q){
+    var c = cf[q.id];
+    box.appendChild(el('div', {class:'row' + (S.selPt === q.id ? ' sel' : ''), 'data-pt':String(q.id)}, [
+      el('span', {class:'ellip', text:q.name || '（未命名）'}),
+      el('span', null, [el('span', {class:'chip' + (q.hk ? (c.s === 'bad' ? ' bad' : '') : ' empty'), text:q.hk || '—'})]),
+      el('span', {class:'mut num', text:q.x + ', ' + q.y}),
+      el('span', {class:'t-' + c.s + ' ellip', text:c.m})
+    ]));
+  });
+  setVal($('#a-name'), S.form.name); setVal($('#a-x'), S.form.x); setVal($('#a-y'), S.form.y);
+  var hb = $('#a-hk'), on = S.capture && S.capture.key === 'form';
+  hb.className = 'chip ' + (on ? 'cap' : (S.form.hk ? '' : 'empty')); hb.textContent = on ? '按下按鍵…' : (S.form.hk || '點一下設定');
+  $('#a-note').textContent = S.selPt != null && pt(S.selPt) ? '正在編輯「' + pt(S.selPt).name + '」' : '新點位';
+  $('#a-del').disabled = S.selPt == null;
+}
+function renderB(cf){
+  var R = $('#vB');
+  candRows($('[data-cands]', R), false);
+  var box = $('[data-pts]', R); box.textContent = '';
+  box.appendChild(el('div', {class:'row head'}, [el('span', {text:'名稱'}), el('span', {text:'熱鍵'}), el('span', {text:'位置'}), el('span', {text:'狀態'}), el('span')]));
+  var pts = sorted(cf);
+  if(!pts.length) box.appendChild(el('div', {class:'empty', text:'選一個候選，按 → 綁成點位按鍵。'}));
+  pts.forEach(function(q){
+    var c = cf[q.id];
+    box.appendChild(el('div', {class:'row' + (S.selPt === q.id ? ' sel' : ''), 'data-pt':String(q.id)}, [
+      el('input', {class:'nmi', value:q.name, 'data-name':String(q.id), 'aria-label':'名稱'}),
+      el('span', null, [chip(q.hk || '設定', 'pt:' + q.id, q.hk ? (c.s === 'bad' ? 'bad' : '') : 'empty')]),
+      el('span', {class:'mut num', text:q.x + ', ' + q.y}),
+      statusEl(c),
+      el('button', {type:'button', class:'x', 'data-act':'ptDel', 'data-id':String(q.id), title:'刪除', text:'✕'})
+    ]));
+  });
+}
+function renderC(cf){
+  var R = $('#vC');
+  candRows($('[data-cands]', R), false);
+  var box = $('[data-pts]', R); box.textContent = '';
+  box.appendChild(el('div', {class:'row head'}, [el('span', {text:'名稱'}), el('span', {text:'熱鍵'}), el('span', {text:'狀態'})]));
+  var pts = sorted(cf);
+  if(!pts.length) box.appendChild(el('div', {class:'empty', text:'選一個候選，在右邊按「綁成點位按鍵」。'}));
+  pts.forEach(function(q){
+    var c = cf[q.id];
+    box.appendChild(el('div', {class:'row' + (S.selPt === q.id && S.focusKind === 'pt' ? ' sel' : ''), 'data-pt':String(q.id)}, [
+      el('span', {class:'ellip', text:q.name || '（未命名）'}),
+      el('span', null, [el('span', {class:'chip' + (q.hk ? (c.s === 'bad' ? ' bad' : '') : ' empty'), text:q.hk || '—'})]),
+      el('span', {class:'t-' + c.s, text:c.s === 'ok' ? '啟用' : c.s === 'bad' ? '停用' : c.s === 'warn' ? '舊座標' : '未設'})
+    ]));
+  });
+  var I = $('#c-insp'); I.textContent = '';
+  if(S.focusKind === 'pt' && S.selPt != null && pt(S.selPt)){
+    var q = pt(S.selPt), c = cf[q.id];
+    var coord = el('select', {id:'c-coord'}, [el('option', {value:'0', text:'遊戲內容區'}), el('option', {value:'1', text:'舊版：整個螢幕'})]); coord.value = q.legacy ? '1' : '0';
+    I.appendChild(el('h3', {text:q.name || '（未命名）'}));
+    I.appendChild(el('div', {class:'f'}, [
+      el('span', {text:'名稱'}), el('input', {id:'c-name', value:q.name}),
+      el('span', {text:'熱鍵'}), el('span', null, [chip(q.hk || '點一下設定', 'pt:' + q.id, (q.hk ? (c.s === 'bad' ? 'bad' : '') : 'empty') + ' big')]),
+      el('span', {text:'X'}), el('input', {id:'c-x', class:'n', value:String(q.x)}),
+      el('span', {text:'Y'}), el('input', {id:'c-y', class:'n', value:String(q.y)}),
+      el('span', {text:'座標'}), coord,
+      el('span', {text:'狀態'}), el('span', {class:'t-' + c.s, text:c.m})
+    ]));
+    I.appendChild(el('div', {class:'acts'}, [el('button', {type:'button', class:'lnk', 'data-act':'rerec', text:'重錄位置'}), el('button', {type:'button', class:'lnk', 'data-act':'unbind', text:'移回候選'}), el('span', {class:'sp'}), el('button', {type:'button', class:'lnk danger', 'data-act':'ptDel', 'data-id':String(q.id), text:'刪除'})]));
+  } else if(S.focusKind === 'cand' && cand(S.selCand)){
+    var k = cand(S.selCand);
+    I.appendChild(el('h3', {text:k.name}));
+    I.appendChild(el('div', {class:'f'}, [el('span', {text:'X'}), el('span', {class:'num', text:String(k.x)}), el('span', {text:'Y'}), el('span', {class:'num', text:String(k.y)}), el('span', {text:'來源'}), el('span', {class:'mut', text:/^MuMu/.test(k.name) ? 'MuMu 匯入' : '錄製'})]));
+    I.appendChild(el('button', {type:'button', class:'btn primary', 'data-act':'bind', text:'綁成點位按鍵 →'}));
+    I.appendChild(el('div', {class:'acts'}, [el('span', {class:'sp'}), el('button', {type:'button', class:'lnk danger', 'data-act':'candDel', text:'刪除候選'})]));
+  } else {
+    I.appendChild(el('div', {class:'none', text:'選一個候選或點位按鍵，這裡會顯示它的設定。'}));
+  }
+}
+function render(){
+  ['A', 'B', 'C'].forEach(function(v){ document.getElementById('v' + v).hidden = v !== S.ver; });
+  $$('#verSeg button').forEach(function(b){ b.setAttribute('aria-pressed', String(b.dataset.ver === S.ver)); });
+  $('#verDesc').textContent = DESC[S.ver];
+  var cf = analyze(P());
+  if(S.ver === 'A') renderA(cf); else if(S.ver === 'B') renderB(cf); else renderC(cf);
+  chrome();
+}
+
+// ---------- 流程 ----------
+function seq(steps){
+  var i = 0;
+  (function next(){
+    if(i >= steps.length){ S.busy = ''; render(); return; }
+    var s = steps[i++]; S.busy = s[0]; render(); setTimeout(function(){ s[2](); next(); }, s[1]);
+  })();
+}
+function applyFlow(label, fn){
+  var on = S.run === 'on', st = [];
+  if(on) st.push(['停止中…', 250, function(){ S.run = 'off'; }]);
+  st.push([label, 300, fn]);
+  if(on) st.push(['等按鍵放開…', 300, function(){ S.run = 'on'; }]);
+  seq(st);
+}
+function newId(){ return P().points.reduce(function(m, q){ return Math.max(m, q.id); }, 0) + 1; }
+function startRec(target){
+  if(S.rec) return;
+  S.rec = {target:target, on:S.run === 'on'}; if(S.rec.on) S.run = 'off';
+  S.hint = '錄製中：到遊戲上點一下要記錄的位置（這一下不會點進遊戲）。Esc 取消。';
+  render();
+  S.rec.timer = setTimeout(function(){
+    var x = 500 + Math.round(Math.random() * 1500), y = 300 + Math.round(Math.random() * 800), r = S.rec;
+    if(r.target == null){ var c = {id:S.nextCand++, name:'錄製 ' + (S.nextCand - 1), x:x, y:y}; S.cands.push(c); S.selCand = c.id; S.focusKind = 'cand'; flash('錄到 (' + x + ', ' + y + ')，已加進候選。'); }
+    else { var q = pt(r.target); q.x = x; q.y = y; q.legacy = false; dirty(); flash('「' + q.name + '」的位置改成 (' + x + ', ' + y + ')。'); }
+    endRec(); render();
+  }, 1300);
+}
+function endRec(){ if(!S.rec) return; clearTimeout(S.rec.timer); if(S.rec.on) S.run = 'on'; S.rec = null; S.hint = ''; }
+function bind(){
+  var c = cand(S.selCand); if(!c) return;
+  var id = newId();
+  P().points.push({id:id, name:c.name, hk:'', x:c.x, y:c.y, legacy:false});
+  S.cands = S.cands.filter(function(q){ return q !== c; }); S.selCand = null;
+  S.selPt = id; S.focusKind = 'pt'; dirty();
+  startCap('pt:' + id);
+}
+function saveNow(){ S.saved[S.cur] = clone(P()); S.dirty = false; }
+// 切換到第 i 個 JSON；有未儲存的變更時先問
+function pick(i){
+  if(i === S.cur) return;
+  guardDirty(function(){
+    var target = S.profiles[i];
+    applyFlow('載入 ' + fname(target) + '…', function(){ S.cur = i; clearSel(); flash('已切換到 ' + target.path); });
+  });
+}
+function guardDirty(next){
+  if(!S.dirty){ next(); return; }
+  var f = fname(P());
+  openDlg('「' + f + '」還沒儲存', [el('p', {text:'切換前要先儲存嗎？'})], [
+    {text:'取消', fn:closeDlg},
+    {text:'不儲存', fn:function(){ S.profiles[S.cur] = clone(S.saved[S.cur]); S.dirty = false; closeDlg(); next(); }},
+    {text:'儲存後切換', primary:true, fn:function(){ saveNow(); closeDlg(); next(); }}
+  ]);
+}
+function addProfile(p){ S.profiles.push(p); S.saved.push(clone(p)); return S.profiles.length - 1; }
+function uniqPath(n){ var b = n, k = 2; while(S.profiles.some(function(p){ return p.path === DIR + n + '.json'; })) n = b + ' (' + (k++) + ')'; return DIR + n + '.json'; }
+
+var ACT = {
+  run:function(){ if(S.run === 'on'){ S.run = 'off'; render(); } else seq([['等按鍵放開…', 350, function(){ S.run = 'on'; }]]); },
+  record:function(){ if(S.rec){ endRec(); render(); } else startRec(null); },
+  rerec:function(){ startRec(S.selPt); },
+  candDel:function(){ S.cands = S.cands.filter(function(q){ return q.id !== S.selCand; }); S.selCand = null; if(S.focusKind === 'cand') S.focusKind = null; render(); },
+  candClear:function(){ S.cands = []; S.selCand = null; if(S.focusKind === 'cand') S.focusKind = null; render(); },
+  aUse:function(){ var c = cand(S.selCand); if(!c) return; S.form.x = c.x; S.form.y = c.y; if(!S.form.name) S.form.name = c.name; flash('已帶入「' + c.name + '」的位置，設好熱鍵後按「儲存點位」。'); render(); },
+  aNew:function(){ S.selPt = null; S.form = {name:'', hk:'', x:'', y:''}; render(); $('#a-name').focus(); },
+  aSave:function(){
+    var f = S.form, x = parseInt(f.x, 10), y = parseInt(f.y, 10);
+    if(!String(f.name).trim() || isNaN(x) || isNaN(y)){ flash('名稱和位置都要填。'); render(); return; }
+    var q = S.selPt != null ? pt(S.selPt) : null;
+    if(!q){ q = {id:newId(), legacy:false}; P().points.push(q); }
+    q.name = String(f.name).trim(); q.hk = f.hk; q.x = x; q.y = y; S.selPt = q.id; dirty(); flash('已更新點位「' + q.name + '」，按下面的「儲存」才會寫進 ' + fname(P()) + '。'); render();
+  },
+  ptDel:function(b){
+    var id = b && b.dataset.id ? +b.dataset.id : S.selPt;
+    P().points = P().points.filter(function(q){ return q.id !== id; });
+    if(S.selPt === id){ S.selPt = null; S.form = {name:'', hk:'', x:'', y:''}; if(S.focusKind === 'pt') S.focusKind = null; }
+    dirty(); render();
+  },
+  bind:bind,
+  unbind:function(){
+    var q = pt(S.selPt); if(!q) return;
+    var c = {id:S.nextCand++, name:q.name, x:q.x, y:q.y}; S.cands.push(c);
+    P().points = P().points.filter(function(z){ return z !== q; });
+    S.selPt = null; S.selCand = c.id; S.focusKind = 'cand'; dirty(); render();
+  },
+  revert:function(){ S.profiles[S.cur] = clone(S.saved[S.cur]); S.dirty = false; clearSel(); flash('已還原成 ' + fname(P()) + ' 裡的內容。'); render(); },
+  reload:function(){ S.profiles[S.cur] = clone(S.saved[S.cur]); S.dirty = false; clearSel(); flash('已從 ' + P().path + ' 重新載入。'); render(); },
+  save:function(){ var p = P(); applyFlow('儲存中…', function(){ saveNow(); flash('已儲存到 ' + p.path); }); },
+  reveal:function(){ flash('（Demo）會用檔案總管打開 ' + fdir(P()) + ' 並選取 ' + fname(P()) + '。'); render(); },
+  saveAs:function(){
+    var p = P(), base = fname(p).replace(/\.json$/i, '') + ' 複本';
+    var inp = el('input', {value:base, style:'width:100%'});
+    openDlg('另存新檔', [el('div', {class:'row2'}, [el('span', {class:'mut', text:'檔名'}), inp]), el('p', {class:'path', text:'存到 ' + DIR})], [
+      {text:'取消', fn:closeDlg},
+      {text:'另存並切換過去', primary:true, fn:function(){
+        var np = clone(p); np.path = uniqPath(inp.value.trim().replace(/\.json$/i, '') || '新設定檔');
+        S.profiles[S.cur] = clone(S.saved[S.cur]); S.dirty = false;
+        var i = addProfile(np); closeDlg(); S.cur = i; clearSel(); flash('已另存成 ' + np.path + '，現在開的是這個檔。'); render();
+      }}
+    ]);
+  },
+  openOther:function(){
+    var list = OPENABLE.map(function(o, i){
+      var open = S.profiles.some(function(p){ return p.path === o.path; });
+      return el('button', {type:'button', class:'of', 'data-open':String(i)}, [el('span', {class:'p', text:o.path}), el('span', {class:'mut', style:'font-size:12px', text:open ? '已在清單' : ''}), el('span', {class:'d', text:o.desc})]);
+    });
+    openDlg('開啟 JSON 檔', [el('p', {text:'（Demo 用這幾個檔案代替 Windows 的開啟檔案視窗）'})].concat(list), [{text:'取消', fn:closeDlg}]);
+  }
+};
+function openFile(o){
+  closeDlg();
+  var have = -1; S.profiles.forEach(function(p, i){ if(p.path === o.path) have = i; });
+  if(have >= 0){ pick(have); return; }
+  guardDirty(function(){
+    var np = {path:o.path, mode:o.mode, side:o.side, points:clone(o.points)}, msg;
+    if(o.kind === 'legacy'){ np.path = uniqPath(fname(np).replace(/\.json$/i, '')); msg = '舊版格式：已轉成新格式並存成 ' + np.path + '（原檔沒動）。'; }
+    else msg = '已開啟 ' + o.path;
+    var i = addProfile(np);
+    applyFlow('載入 ' + fname(np) + '…', function(){ S.cur = i; clearSel(); flash(msg); });
+  });
+}
+
+// ---------- 對話框 ----------
+function openDlg(title, body, buttons){
+  $('#dlgT').textContent = title;
+  var b = $('#dlgB'); b.textContent = ''; body.forEach(function(n){ b.appendChild(n); });
+  var k = $('#dlgK'); k.textContent = '';
+  buttons.forEach(function(x){ k.appendChild(el('button', {type:'button', class:'btn' + (x.primary ? ' primary' : ''), text:x.text, onclick:x.fn})); });
+  $('#modal').hidden = false;
+  var f = b.querySelector('input') || k.querySelector('.primary') || k.querySelector('button'); if(f) f.focus();
+}
+function closeDlg(){ $('#modal').hidden = true; }
+
+// ---------- 熱鍵擷取 ----------
+function mods(e, b){ return (e.ctrlKey ? 'Ctrl+' : '') + (e.altKey ? 'Alt+' : '') + (e.shiftKey ? 'Shift+' : '') + b; }
+function keyName(e){
+  var k = e.key;
+  if(['Control', 'Shift', 'Alt', 'Meta', 'OS'].indexOf(k) >= 0) return null;
+  var map = {' ':'Space', 'ArrowDown':'Down', 'ArrowUp':'Up', 'ArrowLeft':'Left', 'ArrowRight':'Right', 'Enter':'Enter', 'Tab':'Tab', 'Delete':'Delete', 'Insert':'Insert', 'Home':'Home', 'End':'End', 'PageUp':'PgUp', 'PageDown':'PgDn'};
+  var b;
+  if(map[k]) b = map[k];
+  else if(/^F\d{1,2}$/.test(k)) b = k;
+  else if(e.code && /^Key[A-Z]$/.test(e.code)) b = e.code.slice(3).toLowerCase();
+  else if(e.code && /^Digit\d$/.test(e.code)) b = e.code.slice(5);
+  else b = k.length === 1 ? k.toLowerCase() : k;
+  return mods(e, b);
+}
+function startCap(key){ endRec(); S.capture = {key:key}; S.hint = '按下要用的鍵，也可以按滑鼠右鍵、中鍵、側鍵。Esc 取消，Backspace 清除。'; render(); }
+function endCap(v){
+  var c = S.capture; S.capture = null; S.hint = '';
+  if(c && v != null){
+    if(c.key === 'form') S.form.hk = v;
+    else { var q = pt(+c.key.split(':')[1]); if(q){ q.hk = v; dirty(); } }
+  }
+  render();
+}
+document.addEventListener('keydown', function(e){
+  if(S.capture){
+    e.preventDefault(); e.stopPropagation();
+    if(e.key === 'Escape') return endCap(null);
+    if(e.key === 'Backspace') return endCap('');
+    var n = keyName(e); if(n) endCap(n);
+    return;
+  }
+  if(e.key === 'Escape'){
+    if(!$('#modal').hidden){ closeDlg(); return; }
+    $$('[data-menu]').forEach(function(m){ m.hidden = true; });
+    if(S.rec){ endRec(); flash('已取消錄製。'); render(); }
+  }
+}, true);
+document.addEventListener('mousedown', function(e){
+  if(!S.capture) return;
+  if(e.button === 0){ if(!e.target.closest('[data-cap]')) endCap(null); return; }
+  e.preventDefault();
+  var m = {1:'MButton', 2:'RButton', 3:'XButton1', 4:'XButton2'}[e.button]; if(m) endCap(mods(e, m));
+}, true);
+document.addEventListener('mouseup', function(e){ if(e.button === 3 || e.button === 4) e.preventDefault(); }, true);
+document.addEventListener('contextmenu', function(e){ if(S.capture || e.target.closest('[data-cap]')) e.preventDefault(); }, true);
+
+// ---------- 事件 ----------
+document.addEventListener('click', function(e){
+  var t = e.target;
+  if(t.closest('#modal')){
+    if(t.id === 'modal'){ closeDlg(); return; }
+    var o = t.closest('[data-open]'); if(o) openFile(OPENABLE[+o.dataset.open]);
+    return;
+  }
+  var fm = t.closest('[data-filemenu]');
+  var menus = $$('[data-menu]');
+  if(fm){ var m = fm.parentNode.querySelector('[data-menu]'); var show = m.hidden; menus.forEach(function(x){ x.hidden = true; }); if(show){ buildMenu(m); m.hidden = false; } return; }
+  if(!t.closest('[data-menu]')) menus.forEach(function(x){ x.hidden = true; });
+  var v = t.closest('[data-ver]'); if(v){ S.ver = v.dataset.ver; S.capture = null; S.hint = ''; render(); return; }
+  var cap = t.closest('[data-cap]'); if(cap){ startCap(cap.dataset.cap); return; }
+  var a = t.closest('[data-act]'); if(a && !a.disabled && ACT[a.dataset.act]){ menus.forEach(function(x){ x.hidden = true; }); ACT[a.dataset.act](a); return; }
+  var pk = t.closest('[data-pick]'); if(pk && !pk.disabled){ menus.forEach(function(x){ x.hidden = true; }); pick(+pk.dataset.pick); return; }
+  var ft = t.closest('[data-ftab]'); if(ft){ if(ft.dataset.ftab !== '點位'){ flash('這次先比較主畫面和點位頁；「' + ft.dataset.ftab + '」選定版本後再照同一個風格做。'); render(); } return; }
+  if(t.closest('input,select')) return;
+  var cr = t.closest('[data-cand]');
+  if(cr){ S.selCand = +cr.dataset.cand; S.focusKind = 'cand'; if(S.ver === 'C') S.selPt = null; render(); return; }
+  var pr = t.closest('[data-pt]');
+  if(pr){
+    var q = pt(+pr.dataset.pt); S.selPt = q.id; S.focusKind = 'pt';
+    if(S.ver === 'A') S.form = {name:q.name, hk:q.hk, x:q.x, y:q.y};
+    if(S.ver === 'C') S.selCand = null;
+    render();
+  }
+});
+document.addEventListener('dblclick', function(e){
+  if(S.ver === 'B' && e.target.closest('[data-cand]')){ S.selCand = +e.target.closest('[data-cand]').dataset.cand; bind(); }
+});
+document.addEventListener('input', function(e){
+  var t = e.target;
+  if(t.id === 'a-name') S.form.name = t.value;
+  else if(t.id === 'a-x') S.form.x = t.value;
+  else if(t.id === 'a-y') S.form.y = t.value;
+  else if(t.dataset && t.dataset.name){ pt(+t.dataset.name).name = t.value; dirty(); chrome(); }
+  else if(t.id === 'c-name'){ var q = pt(S.selPt); q.name = t.value; dirty(); $('#c-insp h3').textContent = t.value || '（未命名）'; var cell = $('#vC [data-pt="' + q.id + '"] .ellip'); if(cell) cell.textContent = t.value || '（未命名）'; chrome(); }
+  else if(t.id === 'c-x' || t.id === 'c-y'){ var v = parseInt(t.value, 10); if(!isNaN(v)){ pt(S.selPt)[t.id === 'c-x' ? 'x' : 'y'] = v; dirty(); chrome(); } }
+});
+document.addEventListener('change', function(e){
+  var t = e.target;
+  if(t.id === 'c-coord'){ pt(S.selPt).legacy = t.value === '1'; dirty(); render(); }
+  else if(t.id === 'themeSel'){ if(t.value) document.documentElement.setAttribute('data-theme', t.value); else document.documentElement.removeAttribute('data-theme'); }
+});
+
+render();
+})();
+</script>
+</body>
+</html>

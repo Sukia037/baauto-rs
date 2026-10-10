@@ -1,0 +1,905 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
+<title>BAauto-rs 架構</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* 版面：單欄工程藍圖。藍色 = 時間關鍵路徑，琥珀色 = 安全機制，其他一律中性。v0.2 沿用 v0.1 的設計系統。 */
+:root{
+  --bg:#F3F6FA; --surface:#FFFFFF; --ink:#132033; --muted:#566377; --line:#D6DDE7; --line-strong:#A9B6C8;
+  --accent:#0A6FBA; --accent-soft:#DDEDF9; --safe:#A85A00; --safe-soft:#FBEBD5; --code-bg:#E8EEF6;
+  --f-display:"Chakra Petch","Noto Sans TC",system-ui,sans-serif;
+  --f-body:"Noto Sans TC",system-ui,-apple-system,"Microsoft JhengHei","PingFang TC",sans-serif;
+  --f-mono:"JetBrains Mono","Noto Sans TC",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D131C; --surface:#141C28; --ink:#E4EAF3; --muted:#97A5B9; --line:#273345; --line-strong:#3D4C62;
+    --accent:#52B4F2; --accent-soft:#122F48; --safe:#F2A541; --safe-soft:#3A2A14; --code-bg:#1C2636;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D131C; --surface:#141C28; --ink:#E4EAF3; --muted:#97A5B9; --line:#273345; --line-strong:#3D4C62;
+  --accent:#52B4F2; --accent-soft:#122F48; --safe:#F2A541; --safe-soft:#3A2A14; --code-bg:#1C2636;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:400 15px/1.75 var(--f-body);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding-inline:20px;padding-block:40px 72px}
+a{color:var(--accent)}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+code{font-family:var(--f-mono);font-size:.86em;background:var(--code-bg);padding:1px 5px;border-radius:4px;word-break:break-word}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;line-height:1.25;margin:0}
+h1{font-size:clamp(32px,5vw,46px);font-weight:700;letter-spacing:.01em}
+h2{font-size:24px;font-weight:700;margin-bottom:6px}
+h3{font-size:16px;font-weight:700;letter-spacing:.02em}
+p{margin:0}
+.eyebrow{font:500 12px/1 var(--f-mono);letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+header{display:grid;gap:14px;padding-bottom:28px;border-bottom:1px solid var(--line)}
+.lead{max-width:66ch;color:var(--muted);font-size:16px}
+.principles{list-style:none;margin:8px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.principles li{border-left:3px solid var(--accent);padding:2px 0 2px 12px;min-width:0}
+.principles li.safe{border-left-color:var(--safe)}
+.principles b{display:block;font-weight:700}
+.principles span{color:var(--muted);font-size:14px}
+nav.toc{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+nav.toc a{font-size:13px;text-decoration:none;color:var(--ink);border:1px solid var(--line);background:var(--surface);padding:3px 10px;border-radius:999px}
+nav.toc a:hover{border-color:var(--accent);color:var(--accent)}
+section{padding-top:44px;display:grid;gap:16px}
+.section-intro{color:var(--muted);max-width:72ch}
+
+/* 來源標籤 */
+.src{display:inline-block;font:600 10.5px/1.6 var(--f-mono);letter-spacing:.04em;padding:0 7px;border-radius:999px;border:1px solid var(--line-strong);color:var(--muted);white-space:nowrap;vertical-align:1px}
+.src.new{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+
+/* 圖 */
+figure{margin:0;display:grid;gap:10px}
+.diagram{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+.diagram svg{display:block;width:100%;height:auto;min-width:900px}
+.diagram.small svg{min-width:760px}
+figcaption{color:var(--muted);font-size:14px;max-width:84ch}
+.legend{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+.legend i{display:inline-block;width:28px;height:0;border-top:2px solid var(--muted)}
+.legend .l-hot{border-top:3px solid var(--accent)}
+.legend .l-snap{border-top:2px dashed var(--muted)}
+.legend .l-safe{border-top:2px solid var(--safe)}
+.legend .l-proc{width:22px;height:12px;border:1.5px dashed var(--line-strong);border-radius:3px}
+.legend .l-dot,.legend .l-plan{width:10px;height:10px;border-radius:50%;border:0;background:var(--accent)}
+.legend .l-plan{background:var(--surface);border:1.6px solid var(--accent)}
+.legend .l-skip{width:auto;border:0;font:700 13px/1 var(--f-mono);color:var(--safe);font-style:normal}
+
+.arch text{font-family:var(--f-body)}
+.t-title{font:600 14px var(--f-display);fill:var(--ink)}
+.t-proc{font:700 13px var(--f-display);fill:var(--muted);letter-spacing:.04em}
+.t-zh{font:500 12px var(--f-body);fill:var(--muted)}
+.t-line{font:400 11.5px var(--f-mono);fill:var(--ink)}
+.t-sub{font:400 11.5px var(--f-mono);fill:var(--muted)}
+.t-edge{font:500 11.5px var(--f-body);fill:var(--muted)}
+.t-edge.hot{fill:var(--accent)}
+.t-edge.safe{fill:var(--safe)}
+.t-target{font:600 13px var(--f-mono);fill:var(--bg)}
+.t-target-sub{font:500 11.5px var(--f-body);fill:var(--bg)}
+.b-os{fill:var(--surface);stroke:var(--line-strong);stroke-width:1.2}
+.b-proc{fill:none;stroke:var(--line-strong);stroke-width:1.5;stroke-dasharray:8 6}
+.b-thread{fill:var(--surface);stroke:var(--line-strong);stroke-width:1.4}
+.b-hot{stroke:var(--accent);stroke-width:2}
+.b-safe{stroke:var(--safe);stroke-width:2}
+.b-store{fill:var(--code-bg);stroke:var(--line-strong);stroke-width:1.2}
+.b-target{fill:var(--ink)}
+.divider{stroke:var(--line);stroke-width:1}
+.e{fill:none;stroke:var(--muted);stroke-width:1.4}
+.e-hot{stroke:var(--accent);stroke-width:2.4}
+.e-snap{stroke-dasharray:5 4}
+.e-safe{stroke:var(--safe);stroke-width:1.6}
+.mk-hot{fill:var(--accent)} .mk-ink{fill:var(--muted)} .mk-safe{fill:var(--safe)}
+.cell{fill:var(--surface);stroke:var(--accent);stroke-width:1.2}
+.cell.on{fill:var(--accent)}
+.hold-zone{fill:var(--safe-soft);stroke:var(--safe);stroke-width:1.2;stroke-dasharray:6 4}
+/* 時間語意圖 */
+.axis{stroke:var(--line-strong);stroke-width:1.2}
+.tick{stroke:var(--line-strong);stroke-width:1}
+.dot{fill:var(--accent)}
+.dot-plan{fill:var(--surface);stroke:var(--accent);stroke-width:1.6}
+.skip{stroke:var(--safe);stroke-width:2.2;stroke-linecap:round}
+.late{stroke:var(--accent);stroke-width:1.2;stroke-dasharray:3 3}
+.bar-timer{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2}
+.bar-spin{fill:var(--accent)}
+.bracket{fill:none;stroke:var(--muted);stroke-width:1.2}
+
+/* 按鍵路徑 */
+.journey{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;counter-reset:step}
+.journey li{counter-increment:step;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:6px;align-content:start;min-width:0}
+.journey li::before{content:counter(step);font:700 13px/1 var(--f-display);color:var(--accent)}
+.journey .who{font:500 11.5px var(--f-mono);color:var(--muted)}
+.journey b{font-weight:700;font-size:14.5px;line-height:1.5}
+.journey p{font-size:13.5px;color:var(--muted);line-height:1.6}
+.journey .t{justify-self:start;font:500 12px var(--f-mono);color:var(--accent);background:var(--accent-soft);padding:1px 8px;border-radius:999px}
+.note{font-size:13px;color:var(--muted)}
+
+/* 元件 */
+.group{display:grid;gap:0;margin-top:8px}
+.group h3{display:flex;align-items:center;gap:10px;padding-bottom:10px;border-bottom:2px solid var(--ink)}
+.group h3::before{content:"";width:12px;height:12px;border-radius:3px;background:var(--muted)}
+.group.hot h3::before{background:var(--accent)}
+.group.safe h3::before{background:var(--safe)}
+.comp{display:grid;grid-template-columns:200px minmax(0,1fr) 250px;gap:8px 24px;padding:16px 0;border-bottom:1px solid var(--line)}
+.comp-name{display:grid;gap:4px;align-content:start}
+.comp-name b{display:block;font:700 15px/1.3 var(--f-display)}
+.comp-name span:not(.src){color:var(--muted);font-size:13.5px}
+.comp-name .src{justify-self:start}
+.comp ul{margin:0;padding-left:18px;display:grid;gap:4px;font-size:14.5px;min-width:0}
+.comp-why{font-size:13.5px;color:var(--muted);line-height:1.65}
+.comp-why::before{content:"為什麼";display:block;font:600 11px var(--f-mono);letter-spacing:.08em;color:var(--ink);margin-bottom:2px}
+
+/* 表格 */
+.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:680px;font-size:14px}
+th,td{text-align:left;vertical-align:top;padding:11px 14px;border-bottom:1px solid var(--line)}
+th{font:600 12px var(--f-mono);letter-spacing:.06em;color:var(--muted);background:var(--code-bg)}
+tr:last-child td{border-bottom:0}
+td:first-child{font-weight:700;white-space:nowrap}
+td.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.wrap-first td:first-child{white-space:normal;min-width:220px}
+
+/* 步驟 */
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:0;counter-reset:s;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.steps li{counter-increment:s;display:grid;grid-template-columns:34px 120px minmax(0,1fr);gap:4px 14px;padding:12px 16px;border-bottom:1px solid var(--line);align-items:baseline}
+.steps li:last-child{border-bottom:0}
+.steps li::before{content:counter(s);font:700 14px/1 var(--f-display);color:var(--accent)}
+.steps.safe li::before{color:var(--safe)}
+.steps .who{font:500 12px var(--f-mono);color:var(--muted)}
+.steps p{font-size:14.5px;min-width:0}
+.bounds{border-left:3px solid var(--safe);padding:4px 0 4px 14px;color:var(--muted);font-size:14px;max-width:84ch;display:grid;gap:4px}
+.bounds b{color:var(--ink)}
+
+/* 校準 */
+.layers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.layer{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:grid;gap:8px;align-content:start;min-width:0}
+.layer .tag{font:600 11px var(--f-mono);letter-spacing:.08em;color:var(--accent)}
+.layer h3{font-size:16px}
+.layer dl{margin:0;display:grid;grid-template-columns:44px minmax(0,1fr);gap:4px 10px;font-size:14px}
+.layer dt{font:600 12px/1.9 var(--f-mono);color:var(--muted)}
+.layer dd{margin:0;min-width:0}
+
+/* 結構 */
+.two{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:20px}
+.two > *{min-width:0}
+pre{margin:0;overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;font:400 13px/1.7 var(--f-mono);color:var(--ink)}
+pre .c{color:var(--muted)}
+.crates{list-style:none;margin:0;padding:0;display:grid;gap:0;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.crates li{display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);font-size:14px}
+.crates li:last-child{border-bottom:0}
+.crates code{justify-self:start}
+.crates .no{color:var(--muted)}
+.cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.cols > div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:grid;gap:8px;align-content:start;min-width:0}
+.cols ul{margin:0;padding-left:18px;display:grid;gap:6px;font-size:14.5px}
+.tag{font:600 11px var(--f-mono);letter-spacing:.08em;color:var(--muted)}
+.tests{margin:0;padding-left:18px;display:grid;gap:6px;max-width:84ch}
+.miles li{grid-template-columns:44px minmax(0,1fr)}
+.miles li::before{content:"M" counter(s)}
+.refs{margin:0;padding-left:18px;display:grid;gap:4px;font-size:14px;color:var(--muted)}
+footer{padding-top:44px;display:grid;gap:10px}
+
+@media (max-width:900px){
+  .principles{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .journey{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .comp{grid-template-columns:minmax(0,1fr)}
+  .two,.cols,.layers{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:640px){
+  .principles{grid-template-columns:minmax(0,1fr)}
+  .journey{grid-template-columns:minmax(0,1fr)}
+  .crates li{grid-template-columns:minmax(0,1fr);gap:2px}
+  .steps li{grid-template-columns:28px minmax(0,1fr)}
+  .steps .who{grid-column:2}
+  .steps p{grid-column:2}
+  .miles li{grid-template-columns:36px minmax(0,1fr)}
+  .wrap{padding-block:28px 56px}
+}
+@media (prefers-reduced-motion: reduce){*{scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Rust 重寫草案 · v0.2 · 2026-10-10 · 融合 Claude v0.1 與 Astra 的設計</div>
+  <h1>BAauto-rs 架構</h1>
+  <p class="lead">按鍵到遊戲的熱路徑留在同一個程序裡，維持最短；外面再包一個獨立的監督程序，引擎出事時由它先確認引擎停了，再放開按鍵。所有時間參數都可以設定，遊戲能承受的最低間距交給校準模式實測。</p>
+  <ul class="principles">
+    <li><b>熱路徑只在一個程序裡</b><span>從鉤子到 SendInput 不經 IPC、不加鎖、不配置記憶體。</span></li>
+    <li><b>狀態只有一個擁有者</b><span>執行中的動作只歸引擎執行緒管，其他執行緒只傳訊息。</span></li>
+    <li class="safe"><b>出事由外面收拾</b><span>監督程序先確認引擎已經停下或結束，才放開按鍵。</span></li>
+    <li><b>間距是量出來的</b><span>程式不寫死任何時間；最低間距用校準模式在遊戲裡量。</span></li>
+  </ul>
+  <nav class="toc" aria-label="章節">
+    <a href="#merge">取捨總表</a>
+    <a href="#flow">程序與資料流</a>
+    <a href="#journey">一次按鍵的路徑</a>
+    <a href="#components">元件與實作</a>
+    <a href="#timing">時間語意</a>
+    <a href="#stop">停止協定</a>
+    <a href="#calibrate">校準</a>
+    <a href="#failure">出錯時</a>
+    <a href="#layout">專案結構</a>
+    <a href="#testing">測試</a>
+    <a href="#milestones">里程碑</a>
+    <a href="#kanata">kanata</a>
+    <a href="#ahk">對照 AHK 版</a>
+  </nav>
+</header>
+
+<section id="merge">
+  <h2>取捨總表</h2>
+  <p class="section-intro">兩份設計逐項比較後各取所長。「新增」是兩邊都沒有、為了補洞而加的部分。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>項目</th><th>採用</th><th>來源</th><th>為什麼</th></tr></thead>
+      <tbody>
+        <tr><td>程序拓樸</td><td>兩個程序：引擎（鉤子、引擎、控制）和介面＋監督</td><td><span class="src">Astra</span></td><td>引擎出事時能從外面確認它停了；介面卡頓碰不到引擎。熱路徑全在引擎程序裡，速度不受 IPC 影響</td></tr>
+        <tr><td>前景追蹤</td><td>放在鉤子執行緒，焦點事件和按鍵走同一條佇列</td><td><span class="src">Claude v0.1</span></td><td>兩種事件的先後順序天然正確</td></tr>
+        <tr><td>事件佇列</td><td>每個生產者一條 rtrb SPSC；推不進去就進安全停止</td><td><span class="src">Astra</span></td><td>放開事件不能被默默丟掉，否則連點停不下來</td></tr>
+        <tr><td>鉤子讀設定</td><td>固定大小的原子觸發表，用 seqlock 更新</td><td><span class="src new">新增</span></td><td>鉤子裡沒有 Arc，舊設定不會剛好在 callback 裡被釋放</td></tr>
+        <tr><td>到期時間</td><td>存在動作本身（<code>next_at</code>），另加 epoch</td><td><span class="src">Claude v0.1</span></td><td>動作一刪，期限就跟著消失；不需要計時事件堆積，也不需要每個計時事件帶 ID</td></tr>
+        <tr><td>時間語意</td><td>連點過期就略過；拖曳保留最小間隔；卡幀精準等待</td><td><span class="src">Astra</span></td><td>晚醒時不會一口氣補送一串，也不會把拖曳壓縮成瞬間</td></tr>
+        <tr><td>精準等待</td><td>高精度計時器＋可調的 spin 尾段，spin 中檢查停止</td><td><span class="src">融合</span></td><td>卡幀要準；spin 多長由校準結果決定</td></tr>
+        <tr><td>優先權</td><td>鉤子 TIME_CRITICAL、引擎 HIGHEST；程序維持一般優先權</td><td><span class="src">融合</span></td><td>不用 REALTIME，避免跟遊戲和系統搶 CPU</td></tr>
+        <tr><td>按住鍵帳本</td><td>放在共享記憶體，送 Down 前先記、Up 成功後才清</td><td><span class="src new">新增</span></td><td>引擎被終止後，監督程序仍然知道要放開哪些鍵</td></tr>
+        <tr><td>停止</td><td>STOP → 等確認 → 逾時就終止引擎 → 確認結束 → 才放鍵</td><td><span class="src">Astra</span></td><td>避免監督放開之後，變慢的引擎又醒來按下</td></tr>
+        <tr><td>漏掉放開的備援</td><td>引擎每圈對照實體按鍵位元集</td><td><span class="src new">新增</span></td><td>事件就算丟了，觸發鍵已經放開的動作也會停（AHK 版 SafetyTick 的思路）</td></tr>
+        <tr><td>鉤子失聯偵測</td><td>比對 <code>GetLastInputInfo</code>，只在遊戲在前景時判斷</td><td><span class="src">Claude v0.1＋修正</span></td><td>其他高權限視窗在前景時，鉤子本來就可能收不到輸入，不能當成失聯</td></tr>
+        <tr><td>panic 之後</td><td>放鍵 → 引擎結束 → 重啟成「未啟用」，所有鍵放開後才接受新按下</td><td><span class="src">Astra</span></td><td>不會自動恢復連點</td></tr>
+        <tr><td>紀錄</td><td>環形紀錄放共享記憶體，欄位照 Astra 列的</td><td><span class="src">融合</span></td><td>引擎被終止也拿得到最後幾千筆</td></tr>
+        <tr><td>設定更新</td><td>停止 → 換設定 → 回報版本 → 所有鍵放開後再啟用</td><td><span class="src">Astra</span></td><td>不會拖曳到一半換座標或綁定</td></tr>
+        <tr><td>介面與存檔</td><td>eframe GUI、錄點覆蓋層、原子存檔、舊格式匯入</td><td><span class="src">Claude v0.1</span></td><td>沿用</td></tr>
+        <tr><td>時間參數</td><td>全部可設定；校準模式量出最低間距，存成 timing profile</td><td><span class="src new">新增</span></td><td>遊戲實際能承受的間距只能實測</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="flow">
+  <h2>程序與資料流</h2>
+  <figure>
+    <div class="diagram">
+      <svg class="arch" viewBox="0 0 1080 736" role="img" aria-label="兩個程序的資料流。程序 B 是引擎：鉤子執行緒把按鍵與焦點事件推進無等待佇列交給引擎執行緒，引擎用 SendInput 注入遊戲；控制執行緒經另一條佇列送指令給引擎。引擎把心跳、按住鍵帳本與環形紀錄寫進共享記憶體。程序 A 是介面與監督：介面經 Named Pipe 和控制執行緒溝通；監督執行緒讀共享記憶體，透過具名 STOP Event 停止引擎，逾時就終止引擎，確認結束後依帳本放開按鍵。">
+        <defs>
+          <marker id="ah-hot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-hot"/></marker>
+          <marker id="ah-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-ink"/></marker>
+          <marker id="ah-safe" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-safe"/></marker>
+        </defs>
+
+        <!-- 程序 B 邊界 -->
+        <rect class="b-proc" x="196" y="40" width="692" height="336" rx="14"/>
+        <text class="t-proc" x="214" y="64">程序 B · baauto-engine</text>
+        <text class="t-zh" x="404" y="64">熱路徑全在這個程序裡</text>
+
+        <!-- 輸入來源 -->
+        <rect class="b-os" x="16" y="96" width="164" height="58" rx="8"/>
+        <text class="t-title" x="98" y="121" text-anchor="middle">鍵盤／滑鼠</text>
+        <text class="t-sub" x="98" y="141" text-anchor="middle">實體輸入</text>
+        <rect class="b-os" x="16" y="182" width="164" height="58" rx="8"/>
+        <text class="t-title" x="98" y="207" text-anchor="middle">前景／視窗事件</text>
+        <text class="t-sub" x="98" y="227" text-anchor="middle">WinEvent</text>
+        <line class="e e-hot" x1="180" y1="125" x2="211" y2="125" marker-end="url(#ah-hot)"/>
+        <line class="e" x1="180" y1="211" x2="211" y2="211" marker-end="url(#ah-ink)"/>
+
+        <!-- 鉤子執行緒 -->
+        <rect class="b-thread b-hot" x="214" y="84" width="230" height="200" rx="10"/>
+        <text class="t-title" x="230" y="110">Hook Thread</text>
+        <text class="t-zh" x="230" y="128">鉤子執行緒</text>
+        <line class="divider" x1="230" y1="140" x2="428" y2="140"/>
+        <text class="t-line" x="230" y="161">WH_KEYBOARD_LL・WH_MOUSE_LL</text>
+        <text class="t-line" x="230" y="181">SetWinEventHook（前景）</text>
+        <text class="t-line" x="230" y="201">自家注入、滑鼠移動直接放行</text>
+        <text class="t-line" x="230" y="221">原子觸發表（seqlock）</text>
+        <text class="t-line" x="230" y="241">更新實體按鍵位元集</text>
+        <text class="t-line" x="230" y="261">TIME_CRITICAL</text>
+
+        <!-- 佇列 A -->
+        <text class="t-edge hot" x="523" y="150" text-anchor="middle">rtrb：按鍵＋焦點</text>
+        <rect class="cell" x="470" y="160" width="16" height="20" rx="2"/>
+        <rect class="cell" x="488" y="160" width="16" height="20" rx="2"/>
+        <rect class="cell" x="506" y="160" width="16" height="20" rx="2"/>
+        <rect class="cell on" x="524" y="160" width="16" height="20" rx="2"/>
+        <rect class="cell on" x="542" y="160" width="16" height="20" rx="2"/>
+        <rect class="cell on" x="560" y="160" width="16" height="20" rx="2"/>
+        <line class="e e-hot" x1="444" y1="170" x2="466" y2="170" marker-end="url(#ah-hot)"/>
+        <line class="e e-hot" x1="578" y1="170" x2="637" y2="170" marker-end="url(#ah-hot)"/>
+        <text class="t-edge" x="523" y="200" text-anchor="middle">＋ SetEvent 喚醒</text>
+        <text class="t-edge safe" x="523" y="218" text-anchor="middle">推不進去 → 安全停止</text>
+
+        <!-- 引擎執行緒 -->
+        <rect class="b-thread b-hot" x="640" y="84" width="212" height="200" rx="10"/>
+        <text class="t-title" x="656" y="110">Engine Thread</text>
+        <text class="t-zh" x="656" y="128">引擎執行緒・唯一擁有狀態</text>
+        <line class="divider" x1="656" y1="140" x2="836" y2="140"/>
+        <text class="t-line" x="656" y="161">WaitForMultipleObjects</text>
+        <text class="t-line" x="656" y="181">喚醒・計時器・STOP</text>
+        <text class="t-line" x="656" y="201">狀態機・next_at・epoch</text>
+        <text class="t-line" x="656" y="221">左鍵仲裁・對照實體鍵</text>
+        <text class="t-line" x="656" y="241">先記帳再 SendInput</text>
+        <text class="t-line" x="656" y="261">HIGHEST</text>
+
+        <!-- 控制執行緒 -->
+        <rect class="b-thread" x="214" y="298" width="230" height="62" rx="10"/>
+        <text class="t-title" x="230" y="322">Control Thread</text>
+        <text class="t-sub" x="230" y="343">控制執行緒・換設定・重新掛鉤</text>
+        <polyline class="e" points="444,329 600,329 600,252 637,252" marker-end="url(#ah-ink)"/>
+        <text class="t-edge" x="522" y="320" text-anchor="middle">rtrb：指令</text>
+
+        <!-- 引擎 → 遊戲 -->
+        <line class="e e-hot" x1="852" y1="172" x2="917" y2="172" marker-end="url(#ah-hot)"/>
+        <text class="t-edge hot" x="993" y="118" text-anchor="middle">SendInput 注入</text>
+        <rect class="b-target" x="920" y="130" width="146" height="84" rx="10"/>
+        <text class="t-target" x="993" y="166" text-anchor="middle">BlueArchive.exe</text>
+        <text class="t-target-sub" x="993" y="188" text-anchor="middle">只在前景時生效</text>
+
+        <!-- 共享記憶體 -->
+        <rect class="b-store" x="440" y="398" width="300" height="110" rx="8"/>
+        <text class="t-title" x="590" y="422" text-anchor="middle">Shared Memory</text>
+        <text class="t-zh" x="590" y="440" text-anchor="middle">共享記憶體・兩個程序都對映</text>
+        <text class="t-sub" x="590" y="462" text-anchor="middle">心跳・鉤子最後呼叫時間・狀態</text>
+        <text class="t-sub" x="590" y="480" text-anchor="middle">按住鍵帳本（先記再送）</text>
+        <text class="t-sub" x="590" y="498" text-anchor="middle">環形紀錄 flight recorder</text>
+        <line class="e e-snap" x1="720" y1="286" x2="720" y2="395" marker-end="url(#ah-ink)"/>
+        <text class="t-edge" x="728" y="344">寫入（純記憶體）</text>
+        <line class="e e-snap" x1="720" y1="510" x2="720" y2="569" marker-end="url(#ah-ink)"/>
+        <text class="t-edge" x="728" y="544">讀取</text>
+
+        <!-- Named Pipe -->
+        <line class="e" x1="420" y1="362" x2="420" y2="569" marker-start="url(#ah-ink)" marker-end="url(#ah-ink)"/>
+        <text class="t-edge" x="410" y="452" text-anchor="end">Named Pipe（overlapped）</text>
+        <text class="t-edge" x="410" y="470" text-anchor="end">設定・狀態・錄點結果</text>
+
+        <!-- STOP Event -->
+        <line class="e e-safe" x1="840" y1="570" x2="840" y2="289" marker-end="url(#ah-safe)"/>
+        <text class="t-edge safe" x="848" y="430">STOP Event（具名）</text>
+        <text class="t-edge safe" x="848" y="448">逾時 → TerminateProcess</text>
+
+        <!-- 監督 → 遊戲：放鍵 -->
+        <polyline class="e e-safe" points="868,650 1040,650 1040,217" marker-end="url(#ah-safe)"/>
+        <text class="t-edge safe" x="1032" y="300" text-anchor="end">確認引擎結束後</text>
+        <text class="t-edge safe" x="1032" y="318" text-anchor="end">依帳本放開按鍵</text>
+
+        <!-- 程序 A 邊界 -->
+        <rect class="b-proc" x="196" y="530" width="692" height="194" rx="14"/>
+        <text class="t-proc" x="214" y="554">程序 A · baauto</text>
+
+        <!-- 檔案 -->
+        <rect class="b-os" x="16" y="604" width="164" height="72" rx="8"/>
+        <text class="t-title" x="98" y="630" text-anchor="middle">JSON 設定檔</text>
+        <text class="t-sub" x="98" y="650" text-anchor="middle">點位・功能鍵</text>
+        <text class="t-sub" x="98" y="666" text-anchor="middle">timing profile</text>
+        <line class="e" x1="182" y1="640" x2="212" y2="640" marker-start="url(#ah-ink)" marker-end="url(#ah-ink)"/>
+
+        <!-- 檔案執行緒 -->
+        <rect class="b-thread" x="214" y="572" width="160" height="136" rx="10"/>
+        <text class="t-title" x="230" y="596">File Worker</text>
+        <text class="t-zh" x="230" y="614">檔案執行緒</text>
+        <line class="divider" x1="230" y1="626" x2="358" y2="626"/>
+        <text class="t-line" x="230" y="646">serde_json</text>
+        <text class="t-line" x="230" y="664">.tmp → rename</text>
+        <text class="t-line" x="230" y="682">匯入 AHK／MuMu</text>
+        <line class="e" x1="374" y1="640" x2="392" y2="640" marker-start="url(#ah-ink)" marker-end="url(#ah-ink)"/>
+
+        <!-- GUI -->
+        <rect class="b-thread" x="392" y="572" width="226" height="136" rx="10"/>
+        <text class="t-title" x="408" y="596">GUI Thread</text>
+        <text class="t-zh" x="408" y="614">介面執行緒・eframe</text>
+        <line class="divider" x1="408" y1="626" x2="602" y2="626"/>
+        <text class="t-line" x="408" y="646">編輯器・錄點覆蓋層</text>
+        <text class="t-line" x="408" y="664">設定編譯＋衝突分析</text>
+        <text class="t-line" x="408" y="682">校準模式介面</text>
+        <text class="t-line" x="408" y="700">狀態可合併、可丟</text>
+        <line class="e" x1="618" y1="640" x2="636" y2="640" marker-start="url(#ah-ink)" marker-end="url(#ah-ink)"/>
+
+        <!-- 監督 -->
+        <rect class="b-thread b-safe" x="636" y="572" width="232" height="136" rx="10"/>
+        <text class="t-title" x="652" y="596">Supervisor</text>
+        <text class="t-zh" x="652" y="614">監督執行緒</text>
+        <line class="divider" x1="652" y1="626" x2="852" y2="626"/>
+        <text class="t-line" x="652" y="646">RegisterHotKey Ctrl+F9</text>
+        <text class="t-line" x="652" y="664">心跳・鉤子存活檢查</text>
+        <text class="t-line" x="652" y="682">停止 → 確認 → 終止</text>
+        <text class="t-line" x="652" y="700">結束確認後才放鍵</text>
+      </svg>
+    </div>
+    <div class="legend" aria-hidden="true">
+      <span><i class="l-hot"></i>時間關鍵路徑（無鎖、無等待、無 IPC）</span>
+      <span><i class="l-snap"></i>共享記憶體讀寫</span>
+      <span><i></i>一般通道與檔案</span>
+      <span><i class="l-safe"></i>安全機制</span>
+      <span><i class="l-proc"></i>程序邊界</span>
+    </div>
+    <figcaption>速度靠程序 B：實體按鍵到遊戲的藍色路徑上沒有鎖、沒有 IPC。穩定靠程序 A：它不在熱路徑上，只讀共享記憶體、送 STOP，必要時終止整個引擎程序；程序結束時 Windows 會自動移除它的鉤子。</figcaption>
+  </figure>
+</section>
+
+<section id="journey">
+  <h2>一次按鍵的路徑</h2>
+  <p class="section-intro">以「按下 W → 送出技能 1」為例。</p>
+  <ol class="journey">
+    <li><span class="who">Windows</span><b>實體按下 W</b><p>系統在鉤子執行緒上呼叫 <code>kb_hook</code>。</p></li>
+    <li><span class="who">Hook Thread</span><b>查表並交出事件</b><p>略過自家注入，確認遊戲在前景，讀觸發表命中「技能 1」，push 進佇列並 <code>SetEvent</code>，回傳「攔截」。</p><span class="t">目標 &lt; 50 µs</span></li>
+    <li><span class="who">Engine Thread</span><b>立刻醒來處理</b><p>從 <code>WaitForMultipleObjects</code> 返回，<code>step()</code> 產生「按下 1」和「放開 1」。按住時間設為 0 就合成一批，不為 0 就分兩次送。</p><span class="t">目標 &lt; 0.2 ms</span></li>
+    <li><span class="who">Driver</span><b>記帳、送出、核對</b><p>先在帳本記下「1 可能按著」，呼叫 <code>SendInput</code>，確認回傳筆數，放開送出後才清帳本。</p></li>
+    <li><span class="who">BlueArchive.exe</span><b>下一次讀輸入時收到</b><p>這一段多久、按住要多長才不會漏，由遊戲決定，用校準模式量。</p></li>
+  </ol>
+  <p class="note">µs、ms 數字都是設計目標，還沒有實測；實作後用環形紀錄量。</p>
+</section>
+
+<section id="components">
+  <h2>元件與實作方式</h2>
+
+  <div class="group hot">
+    <h3>時間關鍵路徑（程序 B）</h3>
+
+    <div class="comp">
+      <div class="comp-name"><b>Hook Thread</b><span>鉤子執行緒</span><span class="src">融合</span></div>
+      <ul>
+        <li><code>SetWindowsHookExW</code> 掛 <code>WH_KEYBOARD_LL</code>、<code>WH_MOUSE_LL</code>，這條執行緒只跑 <code>GetMessageW</code> 迴圈。</li>
+        <li>callback 依序：帶自家 <code>dwExtraInfo</code> 標記的注入、滑鼠移動 → 立刻放行；更新實體按鍵位元集（自動重複只算第一次 Down）→ 遊戲在前景、滑鼠鍵還要游標在遊戲矩形內 → 查觸發表 → push ＋ <code>SetEvent</code>。</li>
+        <li>把「最後一次被呼叫的時間」寫進共享記憶體，給監督判斷鉤子還在不在。</li>
+        <li>整段包在 <code>catch_unwind</code>，panic 時放行。刻意不攔 Ctrl+F9、Ctrl+F10。</li>
+      </ul>
+      <div class="comp-why">鉤子逾時太多次會被 Windows 悄悄移除，程式不會知道。callback 只做固定、很短的工作，就不會逾時。</div>
+    </div>
+
+    <div class="comp">
+      <div class="comp-name"><b>Trigger Table</b><span>觸發表</span><span class="src new">新增</span></div>
+      <ul>
+        <li>固定大小的陣列：每個虛擬鍵（含 5 個滑鼠鍵）一格 <code>AtomicU32</code>，記錄哪些修飾鍵組合要攔截。</li>
+        <li>控制執行緒用 seqlock 更新：寫入前後各把版本號加 1；鉤子讀到奇數或前後版本不同就重讀。</li>
+        <li>只在引擎停止時更新，平常鉤子讀到的版本不會變。</li>
+      </ul>
+      <div class="comp-why">v0.1 讓鉤子用 ArcSwap 讀設定，舊設定的最後一個參考可能剛好在 callback 裡被釋放。改成固定陣列後，鉤子裡沒有任何記憶體配置或釋放。</div>
+    </div>
+
+    <div class="comp">
+      <div class="comp-name"><b>Event Queues</b><span>事件佇列</span><span class="src">Astra</span></div>
+      <ul>
+        <li>兩條 <code>rtrb</code> SPSC：鉤子 → 引擎（按鍵＋焦點），控制 → 引擎（指令）。一條佇列只有一個生產者。</li>
+        <li>容量 4096，啟動時配置一次，push 不配置記憶體。</li>
+        <li>推不進去時：設 <code>OVERFLOW</code> 旗標並喚醒引擎，引擎進入安全停止。GUI 顯示發生次數。</li>
+      </ul>
+      <div class="comp-why">v0.1 在佇列滿時直接放行；如果放行的剛好是放開事件，引擎永遠收不到，連點就停不下來。</div>
+    </div>
+
+    <div class="comp">
+      <div class="comp-name"><b>Engine Thread</b><span>引擎執行緒</span><span class="src">融合</span></div>
+      <ul>
+        <li>唯一擁有：執行中的動作、左鍵擁有者、帳本寫入權、遊戲矩形副本、目前的設定。</li>
+        <li>迴圈：<code>WaitForMultipleObjects([喚醒, 計時器, STOP])</code> → 最多處理 64 個事件 → <code>step(now)</code> → Driver → 更新心跳。</li>
+        <li>每個動作自己記 <code>next_at</code>，計時器設到所有動作裡最近的那個；動作一刪，期限就跟著消失。</li>
+        <li>每圈對照實體按鍵位元集：觸發鍵已經放開的動作直接停掉。</li>
+        <li>epoch：停止或換設定時加 1，停止前已經排隊的事件一律丟棄。</li>
+      </ul>
+      <div class="comp-why">不需要另外的計時事件堆積，也就沒有舊計時事件復活的問題。每圈處理量有上限，突發輸入不會讓到期的動作一直被延後。</div>
+    </div>
+
+    <div class="comp">
+      <div class="comp-name"><b>Precise Timing</b><span>精準計時</span><span class="src">融合</span></div>
+      <ul>
+        <li><code>CreateWaitableTimerExW</code> 加 <code>CREATE_WAITABLE_TIMER_HIGH_RESOLUTION</code>；時鐘一律用 <code>Instant</code>（QPC）。</li>
+        <li>卡幀這類精準動作：計時器等到截止前約 0.5ms，剩下用 spin 補；spin 每圈檢查 STOP。0.5ms 是校準前的預設值。</li>
+        <li>啟動時用 <code>SetProcessInformation</code> 關閉電源節流，也關閉「忽略計時精度要求」。</li>
+        <li>鉤子 <code>THREAD_PRIORITY_TIME_CRITICAL</code>、引擎 <code>THREAD_PRIORITY_HIGHEST</code>；程序維持一般優先權。</li>
+      </ul>
+      <div class="comp-why">kanata 用 REALTIME_PRIORITY_CLASS 加 <code>timeBeginPeriod(1)</code>；這裡不照搬，避免跟遊戲搶 CPU。要不要再提高，看校準第 1 層的數字。</div>
+    </div>
+
+    <div class="comp">
+      <div class="comp-name"><b>Action Model</b><span>動作模型</span><span class="src">融合</span></div>
+      <ul>
+        <li><code>enum Action</code>：<code>Tap</code>、<code>DoubleTap</code>、<code>Repeat</code>、<code>Card</code>、<code>Hold</code>、<code>Drag</code>。</li>
+        <li>每種動作有自己的時間語意，見下一節。</li>
+        <li>多個拖曳輪流使用左鍵，每圈完整走完才交出；左鍵被持有時連點略過。</li>
+        <li>所有間隔與按住時間都從 timing profile 讀。</li>
+      </ul>
+      <div class="comp-why">非法狀態用型別寫不出來；時間語意跟著動作類型走，排程器不用猜。</div>
+    </div>
+
+    <div class="comp">
+      <div class="comp-name"><b>Driver</b><span>輸出層＋帳本</span><span class="src">融合</span></div>
+      <ul>
+        <li>同一時刻的輸出合成一次 <code>SendInput</code>；需要間隔的步驟一定分開送。</li>
+        <li>先記再送：送 Down 前先在共享記憶體帳本設位元，Up 送成功後才清掉。帳本永遠是「可能還按著」的超集。</li>
+        <li>核對回傳筆數；少於送出的筆數就標記 Faulted 並停止。</li>
+        <li>送出前再看一次 STOP 和前景旗標；每筆帶自家 <code>dwExtraInfo</code> 標記。</li>
+        <li>滑鼠用 <code>MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK</code>；0–65535 的換算要對到正確像素，測試時用 <code>GetCursorPos</code> 核對。</li>
+      </ul>
+      <div class="comp-why">同一次 SendInput 的事件不會被其他輸入插進來，但兩次呼叫之間會。引擎被終止時，監督讀帳本就知道要放開哪些鍵。</div>
+    </div>
+
+    <div class="comp">
+      <div class="comp-name"><b>Control Thread</b><span>控制執行緒</span><span class="src">Astra</span></div>
+      <ul>
+        <li>用 overlapped Named Pipe 收設定與啟停指令，把狀態快照回傳給介面。</li>
+        <li>換設定：確認引擎已停止 → 更新觸發表 → 把新設定交給引擎 → 回報版本。舊設定的記憶體由控制執行緒釋放，引擎不跑大型解構。</li>
+        <li>收到「重新掛鉤」：<code>PostThreadMessage</code> 叫鉤子執行緒重掛。</li>
+        <li>同時等待介面程式的 process handle：介面結束 → 停止、放鍵、自己結束。</li>
+      </ul>
+      <div class="comp-why">引擎執行緒從不等待管線或介面，介面卡住也不影響輸出。</div>
+    </div>
+  </div>
+
+  <div class="group safe">
+    <h3>監督與紀錄（程序 A ＋ 共享記憶體）</h3>
+
+    <div class="comp">
+      <div class="comp-name"><b>Supervisor</b><span>監督執行緒</span><span class="src">融合</span></div>
+      <ul>
+        <li>每 50ms 讀共享記憶體：引擎心跳超過 250ms → 執行停止協定。</li>
+        <li>只在遊戲在前景時，比對 <code>GetLastInputInfo</code> 和鉤子最後呼叫時間；差太多就請引擎重新掛鉤，失敗就重啟引擎。</li>
+        <li><code>RegisterHotKey</code>：Ctrl+F9 緊急停止、Ctrl+F10 錄點，不依賴低階鉤子。</li>
+        <li>引擎結束後：依帳本放鍵 → 倒出環形紀錄 → 重啟成「未啟用」。</li>
+      </ul>
+      <div class="comp-why">引擎如果只是變慢，可能在監督放鍵之後又醒來按下。先確認它停了或結束了，再放鍵。</div>
+    </div>
+
+    <div class="comp">
+      <div class="comp-name"><b>Flight Recorder</b><span>環形紀錄</span><span class="src">融合</span></div>
+      <ul>
+        <li>放在共享記憶體。每筆記：收到時間、預定期限、SendInput 前後時間、epoch、動作階段、回傳筆數。</li>
+        <li>寫入只是記憶體寫入，不呼叫系統；引擎不寫檔。</li>
+        <li>引擎被終止也讀得到；監督把它倒成檔案，可以直接丟回測試重播。</li>
+        <li>校準第 1 層的數字也從這裡算。</li>
+      </ul>
+      <div class="comp-why">出問題時能分辨是我們的邏輯、系統排程，還是遊戲沒吃到輸入。</div>
+    </div>
+  </div>
+
+  <div class="group">
+    <h3>設定與介面（程序 A）</h3>
+
+    <div class="comp">
+      <div class="comp-name"><b>Config Pipeline</b><span>設定管線</span><span class="src">融合</span></div>
+      <ul>
+        <li>serde 模型 → 編譯：熱鍵正規化成 <code>Chord { mods, key }</code>、衝突分析、拒絕把左鍵設成觸發鍵 → 觸發表＋動作表。</li>
+        <li>編譯在介面程式做，引擎只收編譯好的結果。</li>
+        <li>換設定一定走停止協定，不在動作進行中換。</li>
+      </ul>
+      <div class="comp-why">衝突用結構比對，不比字串；引擎不會讀到一半新、一半舊的設定。</div>
+    </div>
+
+    <div class="comp">
+      <div class="comp-name"><b>GUI</b><span>介面</span><span class="src">Claude v0.1</span></div>
+      <ul>
+        <li><code>eframe</code>／<code>egui</code>，所有表格以 ID 為鍵。</li>
+        <li>按鍵擷取：經管線請引擎的鉤子把下一個輸入轉過來，側鍵、滑鼠鍵、Space、Tab 都抓得到。</li>
+        <li>錄點覆蓋層：置頂、滑鼠穿透、透明、無邊框；錄點那一下由鉤子攔下，不會點進遊戲。</li>
+        <li>狀態列：鉤子存活、OVERFLOW 次數、遊戲前景、目前的 timing profile。主視窗按 Esc 不會結束程式。</li>
+      </ul>
+      <div class="comp-why">修掉 AHK 版用名稱＋熱鍵反查選錯列、Hotkey 控制項抓不到滑鼠鍵、錄點誤點遊戲。</div>
+    </div>
+
+    <div class="comp">
+      <div class="comp-name"><b>Coordinates</b><span>座標系統</span><span class="src">融合</span></div>
+      <ul>
+        <li>新設定：0–1 相對座標，基準是遊戲客戶區裡的內容區（長寬比可設定，預設 16:9）。</li>
+        <li>舊 AHK 檔：保留「相對鎖定螢幕」的意思，匯入時標記，GUI 詢問要不要轉換。</li>
+        <li>拖曳途中遊戲視窗移動或改變大小：取消這一圈拖曳。</li>
+      </ul>
+      <div class="comp-why">遊戲晚開、換螢幕、視窗化都不會偏，舊檔也不會被默默改掉意思。</div>
+    </div>
+
+    <div class="comp">
+      <div class="comp-name"><b>Storage &amp; Import</b><span>存檔與匯入</span><span class="src">Claude v0.1</span></div>
+      <ul>
+        <li><code>serde_json</code>，檔案帶 schema 版本號；存檔寫 <code>.tmp</code> → flush → <code>rename</code>。</li>
+        <li>匯入 <code>baauto-points-v1</code>、舊版 <code>keys</code>、<code>function_keys.json</code>、MuMu <code>keymaps</code>。</li>
+        <li>數值欄位同時接受數字和 <code>false</code>／<code>true</code>：AHK 舊檔會把 0、1 寫成布林。</li>
+        <li>載入後 ID 從現有最大值往後編。</li>
+      </ul>
+      <div class="comp-why">修掉 .json.json、ID 撞號、先刪檔再寫造成的設定遺失。</div>
+    </div>
+  </div>
+</section>
+
+<section id="timing">
+  <h2>時間語意</h2>
+  <p class="section-intro">引擎晚醒的時候怎麼辦，三種動作答案不一樣。這是兩份設計裡最值得保留的 Astra 論點。</p>
+  <figure>
+    <div class="diagram small">
+      <svg class="arch" viewBox="0 0 980 300" role="img" aria-label="三種時間語意。連點：固定節拍，晚了照送一次，但錯過的節拍直接略過，不補送。拖曳：MOVE 晚醒時，UP 跟著往後推，保住最小間隔。卡幀：用高精度計時器等到截止前約 0.5 毫秒，剩下用忙等補，在截止時間送出第二個 ESC。">
+        <!-- 列 1：連點 -->
+        <text class="t-title" x="20" y="64">連點 Repeat</text>
+        <text class="t-sub" x="20" y="84">固定節拍・過期就略過</text>
+        <line class="axis" x1="200" y1="74" x2="956" y2="74"/>
+        <line class="tick" x1="220" y1="66" x2="220" y2="82"/><line class="tick" x1="310" y1="66" x2="310" y2="82"/>
+        <line class="tick" x1="400" y1="66" x2="400" y2="82"/><line class="tick" x1="490" y1="66" x2="490" y2="82"/>
+        <line class="tick" x1="580" y1="66" x2="580" y2="82"/><line class="tick" x1="670" y1="66" x2="670" y2="82"/>
+        <line class="tick" x1="760" y1="66" x2="760" y2="82"/><line class="tick" x1="850" y1="66" x2="850" y2="82"/>
+        <line class="tick" x1="940" y1="66" x2="940" y2="82"/>
+        <circle class="dot" cx="220" cy="74" r="6"/>
+        <circle class="dot" cx="310" cy="74" r="6"/>
+        <circle class="dot-plan" cx="400" cy="74" r="6"/>
+        <line class="late" x1="406" y1="74" x2="424" y2="74"/>
+        <circle class="dot" cx="430" cy="74" r="6"/>
+        <circle class="dot" cx="490" cy="74" r="6"/>
+        <circle class="dot-plan" cx="580" cy="74" r="6"/>
+        <line class="skip" x1="664" y1="68" x2="676" y2="80"/><line class="skip" x1="676" y1="68" x2="664" y2="80"/>
+        <circle class="dot" cx="706" cy="74" r="6"/>
+        <circle class="dot" cx="760" cy="74" r="6"/>
+        <circle class="dot" cx="850" cy="74" r="6"/>
+        <circle class="dot" cx="940" cy="74" r="6"/>
+        <path class="bracket" d="M580,52 L580,46 L706,46 L706,52"/>
+        <text class="t-edge" x="643" y="38" text-anchor="middle">卡住一下：只送一次，錯過的節拍不補</text>
+        <text class="t-edge" x="415" y="100" text-anchor="middle">晚一點：照送，下一拍回到節拍上</text>
+
+        <!-- 列 2：拖曳 -->
+        <text class="t-title" x="20" y="164">拖曳 Drag</text>
+        <text class="t-sub" x="20" y="184">最小間隔・晚了就順延</text>
+        <line class="axis" x1="200" y1="174" x2="566" y2="174"/>
+        <circle class="dot" cx="220" cy="174" r="6"/>
+        <text class="t-sub" x="220" y="200" text-anchor="middle">DOWN</text>
+        <circle class="dot-plan" cx="310" cy="174" r="6"/>
+        <line class="late" x1="316" y1="174" x2="344" y2="174"/>
+        <circle class="dot" cx="350" cy="174" r="6"/>
+        <text class="t-sub" x="350" y="200" text-anchor="middle">MOVE</text>
+        <circle class="dot-plan" cx="400" cy="174" r="6"/>
+        <line class="late" x1="406" y1="174" x2="434" y2="174"/>
+        <circle class="dot" cx="440" cy="174" r="6"/>
+        <text class="t-sub" x="440" y="200" text-anchor="middle">UP</text>
+        <circle class="dot" cx="530" cy="174" r="6"/>
+        <text class="t-sub" x="530" y="200" text-anchor="middle">DOWN</text>
+        <path class="bracket" d="M350,156 L350,150 L440,150 L440,156"/>
+        <text class="t-edge" x="395" y="142" text-anchor="middle">gap 不縮短</text>
+        <text class="t-edge" x="580" y="168">MOVE 晚醒 → UP 和下一圈跟著往後推，</text>
+        <text class="t-edge" x="580" y="186">不會為了追進度把 MOVE、UP 一起送出</text>
+
+        <!-- 列 3：卡幀 -->
+        <text class="t-title" x="20" y="254">卡幀 Frame</text>
+        <text class="t-sub" x="20" y="274">精準・計時器＋spin</text>
+        <line class="axis" x1="200" y1="264" x2="524" y2="264"/>
+        <circle class="dot" cx="220" cy="264" r="6"/>
+        <text class="t-sub" x="220" y="290" text-anchor="middle">ESC</text>
+        <rect class="bar-timer" x="230" y="258" width="238" height="12" rx="2"/>
+        <rect class="bar-spin" x="468" y="258" width="22" height="12" rx="2"/>
+        <circle class="dot" cx="496" cy="264" r="6"/>
+        <text class="t-sub" x="496" y="290" text-anchor="middle">ESC</text>
+        <text class="t-edge" x="349" y="250" text-anchor="middle">高精度計時器等待</text>
+        <text class="t-edge hot" x="479" y="250" text-anchor="middle">spin</text>
+        <text class="t-edge" x="540" y="258">截止前約 0.5ms 改成忙等，</text>
+        <text class="t-edge" x="540" y="276">每一圈都檢查 STOP</text>
+      </svg>
+    </div>
+    <div class="legend" aria-hidden="true">
+      <span><i class="l-dot"></i>實際送出</span>
+      <span><i class="l-plan"></i>原定時間</span>
+      <span><i class="l-skip">✕</i>略過</span>
+    </div>
+    <figcaption>示意圖，不按比例。AHK 版的 <code>nextTick := A_TickCount + 20</code> 是「做完再等 20ms」，誤差會一圈一圈累積；這裡改成依動作類型決定怎麼對齊。</figcaption>
+  </figure>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>參數</th><th>用在</th><th>AHK 版</th><th>校準前的預設</th></tr></thead>
+      <tbody>
+        <tr><td><code>repeat.period</code></td><td>技能連點、滑鼠連點、卡幀開牌</td><td class="num">1ms 計時器，實際約 15.6ms</td><td class="num">16ms</td></tr>
+        <tr><td><code>key.hold</code></td><td>送出按鍵時，按下到放開</td><td class="num">0（同一次 Send）</td><td class="num">0ms</td></tr>
+        <tr><td><code>drag.gap</code></td><td>拖曳的按下→移動、移動→放開、放開→下一圈</td><td class="num">20／20／20ms（實際約 31ms）</td><td class="num">20／20／20ms</td></tr>
+        <tr><td><code>frame.fast</code>／<code>frame.slow</code></td><td>卡幀暫停兩次 Esc 之間</td><td class="num">16／50ms（實際約 31／62ms）</td><td class="num">16／50ms</td></tr>
+        <tr><td><code>card.pre_esc</code></td><td>卡幀開牌第一個 Esc 之後</td><td class="num">10ms（實際約 15.6ms）</td><td class="num">10ms</td></tr>
+        <tr><td><code>spin.tail</code></td><td>精準動作的忙等尾段</td><td class="num">無</td><td class="num">0.5ms</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">AHK 欄的「實際」是 Windows 預設 15.6ms 計時粒度下的推算值。預設值只是起點，校準後會被 timing profile 取代。</p>
+</section>
+
+<section id="stop">
+  <h2>停止協定</h2>
+  <p class="section-intro">放開熱鍵屬於一般停止，由引擎自己處理：刪掉動作，如果它正持有左鍵就送 LEFTUP。下面是緊急停止或引擎心跳逾時時的流程。</p>
+  <ol class="steps safe">
+    <li><span class="who">Supervisor</span><p>設定具名的 STOP Event。這一步不經過 Named Pipe，管線塞住也停得了。</p></li>
+    <li><span class="who">Engine</span><p>從等待或 spin 中醒來，進入 Stopping：不再開始新動作、epoch 加 1、送出帳本裡所有鍵的放開、清帳本，最後在共享記憶體寫入 Stopped。</p></li>
+    <li><span class="who">Supervisor</span><p>等 Stopped，最多 150ms（可調）。等到了就跳到第 5 步。</p></li>
+    <li><span class="who">Supervisor</span><p>逾時：<code>TerminateProcess</code> 引擎，<code>WaitForSingleObject</code> 確認它真的結束，再依帳本送出放開。</p></li>
+    <li><span class="who">Supervisor</span><p>把環形紀錄倒成檔案，重啟引擎並進入「未啟用」。</p></li>
+    <li><span class="who">Engine</span><p>等所有綁定鍵都放開，才接受新的按下。不會自動恢復連點。</p></li>
+  </ol>
+  <div class="bounds">
+    <b>這套協定保證不了的事</b>
+    <span>已經送進 Windows 的事件不能撤回。焦點檢查和 SendInput 之間仍有極短的空窗。帳本是「可能還按著」的超集，所以放鍵時也可能放掉你正用手按著的同一個鍵。</span>
+  </div>
+</section>
+
+<section id="calibrate">
+  <h2>校準：量出遊戲能承受的最低間距</h2>
+  <p class="section-intro">程式這端能做到 0.1ms 等級，但遊戲多快讀一次輸入、按住多久才不會漏，只能在遊戲裡量。量的時候分三層，各自決定不同的參數。</p>
+  <div class="layers">
+    <div class="layer">
+      <span class="tag">第 1 層</span>
+      <h3>我們這端準不準</h3>
+      <dl>
+        <dt>量</dt><dd>預定期限和 SendInput 實際時間的差</dd>
+        <dt>工具</dt><dd>環形紀錄（QPC 時間）</dd>
+        <dt>看</dt><dd>P50、P99、P99.9、最大誤差</dd>
+        <dt>決定</dt><dd>spin 尾段長度、要不要提高優先權</dd>
+      </dl>
+    </div>
+    <div class="layer">
+      <span class="tag">第 2 層</span>
+      <h3>遊戲多久跑一幀</h3>
+      <dl>
+        <dt>量</dt><dd>BlueArchive.exe 每一幀的時間和抖動</dd>
+        <dt>工具</dt><dd>PresentMon</dd>
+        <dt>看</dt><dd>平均幀時間；60fps 約 16.7ms</dd>
+        <dt>決定</dt><dd>間距的參考下限；多數遊戲每幀處理一次輸入，但仍以第 3 層實測為準</dd>
+      </dl>
+    </div>
+    <div class="layer">
+      <span class="tag">第 3 層</span>
+      <h3>遊戲有沒有反應</h3>
+      <dl>
+        <dt>量</dt><dd>送出輸入到畫面出現變化，以及成功率</dd>
+        <dt>工具</dt><dd>DXGI Desktop Duplication 擷取指定區域，時間戳也是 QPC，和紀錄同一個時鐘；需要時用 240fps 慢動作錄影對照</dd>
+        <dt>看</dt><dd>每個間距的成功率、輸入到畫面的延遲</dd>
+        <dt>決定</dt><dd>每種動作的最低間距和按住時間</dd>
+      </dl>
+    </div>
+  </div>
+  <ol class="steps">
+    <li><span class="who">選目標</span><p>選一種動作和要看的畫面區域。例如卡幀暫停看暫停選單有沒有出現，技能連點看技能有沒有發動。</p></li>
+    <li><span class="who">從安全值開始</span><p>例如 50ms。每個間距連續跑 200 次以上，記錄成功率和延遲分布。</p></li>
+    <li><span class="who">往下搜尋</span><p>用二分搜尋找出成功率 ≥ 99.5% 的最小間距（建議值）。按住時間和間距分開找，拖曳三段也分開找。</p></li>
+    <li><span class="who">加安全邊際</span><p>建議取第 1 層 P99.9 誤差的 2 倍，至少 2ms，存成 timing profile。</p></li>
+    <li><span class="who">條件變了就重測</span><p>改了遊戲幀率、解析度、視窗模式，或換電腦、換顯示器，都重跑一次，存成不同的 profile。</p></li>
+  </ol>
+  <p class="note">遊戲要用視窗或無邊框模式，DXGI 才擷取得到。校準請在練習關卡這類非排名內容進行。校準指令由介面送給引擎，影像分析在程序 A 做，都不在熱路徑上。</p>
+</section>
+
+<section id="failure">
+  <h2>出錯時怎麼辦</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>情況</th><th>怎麼發現</th><th>怎麼反應</th></tr></thead>
+      <tbody>
+        <tr><td>遊戲失焦</td><td>WinEvent 前景事件，和按鍵事件走同一條佇列</td><td>鉤子停止攔截；引擎停止所有動作、放開所有按鍵</td></tr>
+        <tr><td>放開事件遺失</td><td>引擎每圈對照實體按鍵位元集</td><td>停掉觸發鍵已經放開的動作</td></tr>
+        <tr><td>佇列滿</td><td>push 失敗 → <code>OVERFLOW</code> 旗標</td><td>安全停止，所有鍵放開後才重新啟用；GUI 顯示次數</td></tr>
+        <tr><td>鉤子被 Windows 拔掉</td><td>監督：遊戲在前景時，<code>GetLastInputInfo</code> 比鉤子最後呼叫時間新太多</td><td>停止所有動作，請引擎重新掛鉤；掛不回來就重啟引擎</td></tr>
+        <tr><td>引擎卡住或變慢</td><td>心跳超過 250ms 沒更新</td><td>停止協定：先確認停止或結束，再放鍵</td></tr>
+        <tr><td>引擎 panic</td><td>迴圈外層的 <code>catch_unwind</code></td><td>放鍵、標記 Faulted、結束；監督重啟成未啟用</td></tr>
+        <tr><td>鉤子 callback panic</td><td><code>catch_unwind</code></td><td>當作放行。Rust 1.81 起，panic 穿出 <code>extern "system"</code> 函式會直接 abort，所以一定要在 callback 裡接住</td></tr>
+        <tr><td>SendInput 筆數不足</td><td>回傳值少於送出的筆數</td><td>標記 Faulted、停止，記下 <code>GetLastError</code></td></tr>
+        <tr><td>遊戲權限比較高</td><td>被 UIPI 擋下時，回傳值和 <code>GetLastError</code> 都不會說原因，所以啟動時先檢查遊戲的完整性等級</td><td>GUI 提示：本程式也要以系統管理員身分開啟</td></tr>
+        <tr><td>介面程式結束</td><td>引擎控制執行緒等待介面的 process handle</td><td>引擎自己停止、放鍵、結束；Windows 移除它的鉤子</td></tr>
+        <tr><td>拖曳中視窗移動</td><td><code>EVENT_OBJECT_LOCATIONCHANGE</code></td><td>取消這一圈拖曳，放開左鍵</td></tr>
+        <tr><td>按下 Ctrl+F9</td><td><code>RegisterHotKey</code>，不經過低階鉤子</td><td>停止協定，然後結束兩個程序</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="layout">
+  <h2>專案結構與依賴</h2>
+  <div class="two">
+<pre>baauto-rs/
+├─ crates/
+│  ├─ core/        <span class="c">純邏輯，不依賴 Windows</span>
+│  │  ├─ config    <span class="c">設定模型、Chord、衝突分析、編譯器</span>
+│  │  ├─ engine    <span class="c">動作狀態機、時間語意、左鍵仲裁、epoch</span>
+│  │  ├─ coords    <span class="c">相對座標 ↔ 實體像素</span>
+│  │  ├─ import    <span class="c">AHK 舊格式、MuMu keymaps</span>
+│  │  └─ calib     <span class="c">間距搜尋、成功率統計</span>
+│  ├─ shared/      <span class="c">兩個程序共用</span>
+│  │  ├─ ipc       <span class="c">Named Pipe 訊息格式（帶版本）</span>
+│  │  └─ shm       <span class="c">共享記憶體版面：心跳、帳本、紀錄</span>
+│  ├─ platform/    <span class="c">Windows 實作（windows crate）</span>
+│  │  ├─ hook      <span class="c">鉤子執行緒、前景追蹤、觸發表</span>
+│  │  ├─ driver    <span class="c">SendInput、先記再送</span>
+│  │  ├─ timer     <span class="c">高精度計時器、spin、電源節流</span>
+│  │  └─ capture   <span class="c">DXGI 擷取，只給校準用</span>
+│  ├─ engine-bin/  <span class="c">程序 B：baauto-engine.exe</span>
+│  └─ host-bin/    <span class="c">程序 A：baauto.exe（GUI、監督）</span>
+└─ tests/          <span class="c">重播、proptest、loom、故障注入</span></pre>
+    <ul class="crates">
+      <li><code>windows</code><span>Win32 API 綁定（微軟官方）</span></li>
+      <li><code>eframe / egui</code><span>GUI 與錄點覆蓋層</span></li>
+      <li><code>rtrb</code><span>鉤子 → 引擎、控制 → 引擎的無等待佇列</span></li>
+      <li><code>serde / serde_json</code><span>設定檔與匯入</span></li>
+      <li><code>tracing</code><span>只在程序 A 寫日誌；引擎只寫環形紀錄</span></li>
+      <li><code>proptest</code><span>測試用：隨機事件序列驗證不變量</span></li>
+      <li><code>loom</code><span>測試用：觸發表、旗標、帳本順序的交錯</span></li>
+      <li><code>PresentMon</code><span>外部工具，只在校準時用</span></li>
+      <li><code>arc-swap</code><span class="no">不再使用：鉤子改讀固定大小的觸發表。</span></li>
+      <li><code>tokio</code><span class="no">不使用：沒有網路 I/O，計時器也是毫秒級。</span></li>
+    </ul>
+  </div>
+</section>
+
+<section id="testing">
+  <h2>測試策略</h2>
+  <ul class="tests">
+    <li><b>core 是純邏輯：</b>引擎吃「事件＋假時鐘」，吐出「輸出列表」，不用開遊戲就能測。</li>
+    <li><b>proptest 不變量：</b>LEFTDOWN／LEFTUP 永遠成對；同一時間最多一個左鍵擁有者；失焦後沒有按住的鍵；連點間隔和拖曳每段間隔都不小於設定值（晚醒也一樣）；停止確認之後沒有任何輸出；舊 epoch 的事件不產生輸出。</li>
+    <li><b>Loom：</b>觸發表的 seqlock、<code>OVERFLOW</code>／STOP 旗標、帳本「先記再送」的順序。</li>
+    <li><b>重播：</b>環形紀錄倒出來的檔案直接變成回歸測試。</li>
+    <li><b>故障注入（Windows 實機）：</b>拖曳途中殺掉引擎；手動 <code>UnhookWindowsHookEx</code> 模擬鉤子被拔；塞滿佇列；讓 SendInput 失敗；讓引擎故意卡 300ms 再恢復，確認監督放鍵之後它不會再按下。</li>
+    <li><b>長時間測試：</b>多鍵交錯連續跑 8 小時，看 P99.9 與最差延遲，以及有沒有任何卡鍵。</li>
+  </ul>
+</section>
+
+<section id="milestones">
+  <h2>里程碑</h2>
+  <p class="section-intro">校準排在 GUI 前面，因為量出來的間距會決定這套設計夠不夠用。</p>
+  <ol class="steps miles">
+    <li><p><b>core：</b>動作狀態機、時間語意、epoch，用假時鐘和 proptest 驗證。完全不碰 Windows。</p></li>
+    <li><p><b>引擎程序熱路徑：</b>鉤子、觸發表、佇列、Driver，加上共享記憶體的帳本和環形紀錄。</p></li>
+    <li><p><b>監督程序：</b>停止協定、緊急停止、心跳、重新掛鉤，跑一輪故障注入測試。</p></li>
+    <li><p><b>校準模式：</b>先量第 1 層，再量遊戲的最低間距，寫出第一份 timing profile。</p></li>
+    <li><p><b>GUI：</b>編輯器、錄點、匯入舊 JSON 與 MuMu。</p></li>
+    <li><p><b>長時間測試：</b>8 小時多鍵交錯，確認最差延遲和零卡鍵。</p></li>
+  </ol>
+</section>
+
+<section id="kanata">
+  <h2>從 kanata 借了什麼</h2>
+  <p class="section-intro">以下對照 kanata 目前 main 分支的原始碼。</p>
+  <div class="cols">
+    <div>
+      <span class="tag">借用的設計</span>
+      <ul>
+        <li>輸入迴圈和處理迴圈分在不同執行緒，中間用有界通道。</li>
+        <li>判斷時間到了沒看單調時鐘，不靠 sleep 的精度。</li>
+        <li>平台 I/O 抽象成 trait，核心邏輯可以單獨測試。</li>
+      </ul>
+    </div>
+    <div>
+      <span class="tag">不借用</span>
+      <ul>
+        <li>核心包在 <code>Arc&lt;Mutex&gt;</code> 裡：這裡由引擎執行緒獨占。</li>
+        <li>REALTIME_PRIORITY_CLASS 加 <code>timeBeginPeriod(1)</code>：這裡用高精度計時器，程序維持一般優先權。</li>
+        <li>部分延遲直接 <code>thread::sleep</code>：這裡只排下一個期限，等待期間還能處理停止。</li>
+        <li>巨集重複與取消的語意：kanata 同時按住多個重複巨集只重複最後一個，取消時一次取消全部。</li>
+        <li>程式碼本身：kanata 是 LGPL-3.0，只參考設計。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="ahk">
+  <h2>對照 AHK 版的問題</h2>
+  <div class="table-wrap">
+    <table class="wrap-first">
+      <thead><tr><th>AHK 版的問題</th><th>新架構的處理方式</th></tr></thead>
+      <tbody>
+        <tr><td>Sleep 16 實際約 31ms</td><td>高精度計時器加 spin 尾段，依動作類型對齊時間</td></tr>
+        <tr><td>鉤子逾時被拔，熱鍵全部失效</td><td>callback 只做固定的短工作；監督偵測後重新掛鉤</td></tr>
+        <tr><td>滑鼠熱鍵要等主執行緒判斷前景</td><td>前景旗標由鉤子執行緒自己維護</td></tr>
+        <tr><td>RuntimeTick 先複製再寫回，取消的動作可能復活</td><td>動作只在引擎執行緒裡刪改，沒有快照寫回</td></tr>
+        <tr><td>每輪都更新心跳，看不出動作有沒有進展</td><td>心跳只代表引擎迴圈活著；動作進度記在環形紀錄</td></tr>
+        <tr><td>點位存成 .json.json</td><td>用 <code>Path</code> 處理副檔名</td></tr>
+        <tr><td>存檔先刪舊檔再寫</td><td><code>.tmp</code> → <code>rename</code> 原子替換</td></tr>
+        <tr><td>匯入後 ID 撞號、編輯時丟 PropertyError</td><td>強型別模型，載入後重新編號</td></tr>
+        <tr><td>清單用名稱＋熱鍵反查</td><td>表格以 ID 為鍵</td></tr>
+        <tr><td>帶入候選點沒清選取，儲存蓋到別的點位</td><td>帶入時一律建立新項目</td></tr>
+        <tr><td>0、1 被存成 false、true</td><td>serde 依型別序列化；匯入時兩種都接受</td></tr>
+        <tr><td>timing_ms 寫了不讀</td><td>所有時間參數都在 timing profile 裡，而且實際使用</td></tr>
+        <tr><td>螢幕只在啟動時鎖定一次</td><td>持續追蹤遊戲視窗客戶區</td></tr>
+        <tr><td>預設鍵可設成左鍵</td><td>編譯器拒絕</td></tr>
+        <tr><td>錄點的點擊會點進遊戲</td><td>錄點時由鉤子攔下該次點擊</td></tr>
+        <tr><td>主視窗按 Esc 直接結束</td><td>Esc 不結束程式</td></tr>
+        <tr><td>註解說只有緊急停止是全域，錄製其實也是</td><td>兩個都用 <code>RegisterHotKey</code>，明確是全域</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <h2>參考資料</h2>
+  <ul class="refs">
+    <li><a href="https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput">SendInput – Microsoft Learn</a>：同一次呼叫不會被插入、UIPI 不會回報原因</li>
+    <li><a href="https://learn.microsoft.com/windows/win32/winmsg/lowlevelkeyboardproc">LowLevelKeyboardProc – Microsoft Learn</a>：鉤子逾時與靜默移除</li>
+    <li><a href="https://learn.microsoft.com/en-us/archive/blogs/alejacma/global-hooks-getting-lost-on-windows-7">Global hooks getting lost on Windows 7</a>：300ms、第 11 次逾時被移除</li>
+    <li><a href="https://learn.microsoft.com/en-us/windows/win32/api/dxgi1_2/ns-dxgi1_2-dxgi_outdupl_frame_info">DXGI_OUTDUPL_FRAME_INFO – Microsoft Learn</a>：LastPresentTime 用 QPC</li>
+    <li><a href="https://github.com/jtroo/kanata">kanata 原始碼</a>：處理迴圈、優先權與計時設定</li>
+  </ul>
+</footer>
+</div>
+</body></html>
