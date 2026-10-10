@@ -243,3 +243,46 @@ fn receiver_fixtures_compile_in_both_modes() {
         assert!(!k.timing.verified);
     }
 }
+
+#[test]
+fn hook_decisions_allocate_nothing() {
+    let mut s = state();
+    let info = allocation_counter::measure(|| {
+        for _ in 0..100_000 {
+            let down = s.decide(raw(87, true));
+            assert!(down.swallow);
+            let up = s.decide(raw(87, false));
+            assert!(up.swallow);
+        }
+    });
+    assert_eq!(info.count_total, 0);
+}
+#[test]
+fn modifier_family_stays_held_until_both_sides_are_released() {
+    let mut s = state();
+    s.decide(raw(162, true));
+    s.decide(raw(163, true));
+    s.decide(raw(162, false));
+    assert!(s.physical[17]);
+    s.decide(raw(163, false));
+    assert!(!s.physical[17]);
+}
+#[test]
+fn exact_modifier_chord_cancels_on_extra_modifier_down() {
+    let mut c = cfg();
+    let id = c.triggers[88][0];
+    c.triggers[90].fill(NO_TRIGGER);
+    c.triggers[90][1] = id;
+    let mut s = HookState::new(&c, 123);
+    s.focused = true;
+    assert!(s.arm(SessionId(1), &c));
+    s.decide(raw(162, true));
+    assert!(s.decide(raw(90, true)).swallow);
+    let d = s.decide(raw(160, true));
+    assert!(
+        d.events
+            .iter()
+            .any(|e| matches!(e.kind, InputKind::PressCancelled { .. }))
+    );
+    assert!(s.decide(raw(90, false)).swallow);
+}

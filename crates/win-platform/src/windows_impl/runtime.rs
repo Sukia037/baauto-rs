@@ -482,6 +482,11 @@ impl HookThread {
                 }
                 (kh, mh, fh, gh)
             };
+            // SAFETY: Hooks are installed but the session is not armed and no press can have been intercepted. A fresh snapshot closes the pre-install observation gap.
+            rt.state.seed_physical(std::array::from_fn(
+                |i| unsafe { GetAsyncKeyState(i as i32) } < 0,
+            ));
+            rt.publish_physical();
             // SAFETY: GetCurrentThreadId is a value lookup with no pointer arguments.
             let id = unsafe { GetCurrentThreadId() };
             let _ = ready_tx.send(id);
