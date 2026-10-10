@@ -46,7 +46,7 @@ pub struct TickTiming {
     pub gap_max: u64,
     pub card_pre_esc: u64,
     pub maintain: u64,
-    pub lateness: u64,
+    pub stage_lateness: [Option<u64>; 7],
     pub trailing: TrailingEscPolicy,
     pub auto_repeat: AutoRepeatPolicy,
 }
@@ -266,13 +266,34 @@ pub fn compile_with_params(
         t.escape_gap_ms[1],
         t.card_pre_esc_ms,
         t.hold_maintain_period_ms,
-        t.allowed_lateness_ms,
+        t.allowed_lateness_ms.double_esc_second,
     ];
     let mut ticks = [0; 9];
     for (i, v) in vals.into_iter().enumerate() {
         match ticks_ms(v, rate) {
             Ok(n) => ticks[i] = n,
             Err(e) => errors.push(e),
+        }
+    }
+    let l = &t.allowed_lateness_ms;
+    let mut stage_lateness = [None; 7];
+    for (i, value) in [
+        l.tap_start,
+        l.repeat_click,
+        l.card_start,
+        l.card_click,
+        Some(l.double_esc_second),
+        l.hold_start,
+        l.card_key_start,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if let Some(v) = value {
+            match ticks_ms(v, rate) {
+                Ok(n) => stage_lateness[i] = Some(n),
+                Err(e) => errors.push(e),
+            }
         }
     }
     let a = analyze_conflicts(p, k);
@@ -289,7 +310,7 @@ pub fn compile_with_params(
         gap_max: ticks[5],
         card_pre_esc: ticks[6],
         maintain: ticks[7],
-        lateness: ticks[8],
+        stage_lateness,
         trailing: t.card_trailing_esc,
         auto_repeat: t.auto_repeat,
     };

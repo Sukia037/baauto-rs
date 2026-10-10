@@ -222,6 +222,31 @@ pub enum ProfileSource {
     Manual,
     Calibrated,
 }
+/// Lateness is stage-specific. None allows late execution; release stages are never dropped.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LatenessTable {
+    pub tap_start: Option<f64>,
+    pub repeat_click: Option<f64>,
+    pub card_start: Option<f64>,
+    pub card_click: Option<f64>,
+    pub double_esc_second: f64,
+    pub hold_start: Option<f64>,
+    pub card_key_start: Option<f64>,
+}
+impl Default for LatenessTable {
+    fn default() -> Self {
+        Self {
+            tap_start: None,
+            repeat_click: None,
+            card_start: None,
+            card_click: None,
+            double_esc_second: 0.0,
+            hold_start: None,
+            card_key_start: None,
+        }
+    }
+}
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TimingProfile {
@@ -235,7 +260,7 @@ pub struct TimingProfile {
     pub escape_gap_ms: [f64; 2],
     pub card_pre_esc_ms: f64,
     pub hold_maintain_period_ms: f64,
-    pub allowed_lateness_ms: f64,
+    pub allowed_lateness_ms: LatenessTable,
     pub card_trailing_esc: TrailingEscPolicy,
     pub auto_repeat: AutoRepeatPolicy,
 }

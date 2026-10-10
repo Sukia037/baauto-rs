@@ -13,7 +13,7 @@ fn config(mode: Mode, side: CardUiSide, follow: bool) -> CompiledConfig {
     k.timing.escape_gap_ms = [3., 6.];
     k.timing.card_pre_esc_ms = 2.;
     k.timing.hold_maintain_period_ms = 4.;
-    k.timing.allowed_lateness_ms = 0.;
+    k.timing.allowed_lateness_ms = LatenessTable::default();
     k.timing.auto_repeat = if follow {
         AutoRepeatPolicy::FollowTypematic
     } else {
@@ -475,4 +475,127 @@ fn sim_exports_csv() {
     let csv = d.csv();
     assert!(csv.starts_with("batch_id,action,stage,deadline,begin,end\n"));
     assert!(csv.lines().count() > 1);
+}
+
+#[test]
+fn cancel_waiting_repeat_does_not_release_another_actions_key() {
+    let mut r = Rig::new();
+    r.down(87, 1, p());
+    r.send(0);
+    r.down(50, 2, p());
+    r.ev(InputKind::PressCancelled { press: PressId(2) });
+    assert!(r.e.next_batch(Ticks(1)).is_none());
+    assert!(r.e.held().contains(OutKey::Key(Key(49))));
+    assert_eq!(r.send(2).events.as_slice(), &[OutEvent::KeyUp(Key(49))]);
+}
+#[test]
+fn stop_during_inflight_down_accounts_then_releases() {
+    let mut r = Rig::new();
+    r.down(90, 1, p());
+    let b = r.batch(0);
+    r.e.request_stop(StopReason::Emergency, Ticks(1));
+    r.e.commit(
+        b.id,
+        SubmitOutcome::Ok {
+            begin: Ticks(0),
+            end: Ticks(1),
+        },
+        Ticks(1),
+    );
+    assert!(r.e.held().contains(OutKey::LeftButton));
+    assert_eq!(r.send(1).events.as_slice(), &[OutEvent::LeftUp]);
+    assert!(matches!(r.e.state(), EngineState::Stopped(_)));
+}
+#[test]
+fn short_down_is_conservatively_held_and_never_retried() {
+    let mut r = Rig::new();
+    r.down(87, 1, p());
+    let b = r.batch(0);
+    r.e.commit(
+        b.id,
+        SubmitOutcome::Short {
+            inserted: 0,
+            end: Ticks(0),
+        },
+        Ticks(0),
+    );
+    assert!(r.e.held().contains(OutKey::Key(Key(49))));
+    assert!(r.e.next_batch(Ticks(100)).is_none());
+    assert!(r.e.arm(SessionId(2), Ticks(100)).is_err());
+}
+#[test]
+fn repeat_arbiter_serves_multiple_actions_without_stealing_mouse() {
+    let mut r = Rig::new();
+    r.down(50, 1, p());
+    r.down(51, 2, p());
+    for n in [0, 2, 5, 7] {
+        r.send(n);
+    }
+    assert_eq!(r.send(7).events[0], OutEvent::KeyDown(Key(50)));
+    for n in [9, 12, 14] {
+        r.send(n);
+    }
+    assert_eq!(r.send(14).events[0], OutEvent::KeyDown(Key(49)));
+}
+#[test]
+fn card_normal_release_finishes_trailing_escape_pulse() {
+    let mut r = Rig::new();
+    r.down(65, 1, p());
+    r.send(0);
+    r.send(2);
+    r.up(1);
+    r.e.next_batch(Ticks(3));
+    assert_eq!(r.send(3).events[0], OutEvent::KeyDown(Key::ESC));
+    assert_eq!(r.send(5).events[0], OutEvent::KeyUp(Key::ESC));
+    assert!(r.e.held().is_empty());
+}
+#[test]
+fn expired_tap_start_cancels_without_down() {
+    let mut r = Rig::new();
+    r.c.timing.stage_lateness[0] = Some(1);
+    r.e = Engine::new(Arc::new(r.c.clone()), TickRate(1000));
+    r.e.arm(SessionId(1), Ticks(0)).unwrap();
+    r.down(87, 1, p());
+    assert!(r.e.next_batch(Ticks(2)).is_none());
+    assert!(r.e.reports().contains(&Report::LateCancelled));
+    assert!(r.e.held().is_empty());
+}
+#[test]
+fn invalid_commit_retains_possible_downs() {
+    let mut r = Rig::new();
+    r.down(87, 1, p());
+    let b = r.batch(0);
+    r.e.commit(
+        b.id,
+        SubmitOutcome::Ok {
+            begin: Ticks(2),
+            end: Ticks(1),
+        },
+        Ticks(2),
+    );
+    assert!(matches!(
+        r.e.state(),
+        EngineState::Faulted(_, FaultKind::InvalidCommit)
+    ));
+    assert!(r.e.held().contains(OutKey::Key(Key(49))));
+}
+proptest! {
+    #[test]
+    fn short_send_at_random_phase_preserves_possible_holds(short_at in 0usize..10, delays in prop::collection::vec(0u64..5,10)) {
+        let mut r=Rig::new();r.down(50,1,p());let mut possible=[false;257];
+        for (i,delay) in delays.into_iter().enumerate() {
+            r.now=r.e.next_wake().unwrap().0.max(r.now)+delay;
+            if let Some(b)=r.e.next_batch(Ticks(r.now)) {
+                for ev in &b.events {match *ev {OutEvent::KeyDown(k)=>possible[k.0 as usize]=true,OutEvent::LeftDown=>possible[256]=true,_=>{}}}
+                if i==short_at {
+                    r.e.commit(b.id,SubmitOutcome::Short{inserted:0,end:Ticks(r.now)},Ticks(r.now));
+                    for (k,held) in possible.iter().enumerate(){if *held {prop_assert!(r.e.held().contains(if k==256{OutKey::LeftButton}else{OutKey::Key(Key(k as u8))}), "possible hold was cleared");}}
+                    prop_assert!(r.e.next_batch(Ticks(r.now+100)).is_none());break;
+                } else {
+                    for ev in &b.events {match *ev {OutEvent::KeyUp(k)=>possible[k.0 as usize]=false,OutEvent::LeftUp=>possible[256]=false,_=>{}}}
+                    r.e.commit(b.id,SubmitOutcome::Ok{begin:Ticks(r.now),end:Ticks(r.now)},Ticks(r.now));
+                }
+            }
+        }
+    }
 }

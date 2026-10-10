@@ -2,6 +2,5 @@
 name = "baauto-win-platform"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
 
 [dependencies]

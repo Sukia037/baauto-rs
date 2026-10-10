@@ -352,18 +352,17 @@ impl Engine {
                     .flatten()
                     .find(|b| b.press == press)
                     .copied()
+                    && let Some(spec) = self.cfg.actions.get(binding.trigger as usize)
                 {
-                    if let Some(spec) = self.cfg.actions.get(binding.trigger as usize) {
-                        let policy = if matches!(spec, ActionSpec::CardKey) {
-                            self.cfg.card_auto_repeat
-                        } else {
-                            self.cfg.timing.auto_repeat
-                        };
-                        if policy == AutoRepeatPolicy::FollowTypematic
-                            && matches!(spec, ActionSpec::Tap(_) | ActionSpec::CardKey)
-                        {
-                            self.start(press, binding.trigger, cursor, now);
-                        }
+                    let policy = if matches!(spec, ActionSpec::CardKey) {
+                        self.cfg.card_auto_repeat
+                    } else {
+                        self.cfg.timing.auto_repeat
+                    };
+                    if policy == AutoRepeatPolicy::FollowTypematic
+                        && matches!(spec, ActionSpec::Tap(_) | ActionSpec::CardKey)
+                    {
+                        self.start(press, binding.trigger, cursor, now);
                     }
                 }
             }
@@ -593,6 +592,29 @@ impl Engine {
             inspected[i] = true;
             let mut a = self.slots[i].unwrap();
             let mut events = ArrayVec::new();
+            let late_index = match (a.phase, a.spec) {
+                (Phase::Start, ActionSpec::Tap(_)) => Some(0),
+                (Phase::ClickDown, ActionSpec::Repeat { .. }) => Some(1),
+                (Phase::Start, ActionSpec::Card(_)) => Some(2),
+                (Phase::ClickDown, ActionSpec::Card(_)) => Some(3),
+                (Phase::Start, ActionSpec::HoldPoint(_)) => Some(5),
+                (Phase::Start, ActionSpec::CardKey) => Some(6),
+                _ => None,
+            };
+            if late_index
+                .and_then(|i| self.cfg.timing.stage_lateness[i])
+                .is_some_and(|limit| now > a.due.after(limit))
+            {
+                self.report(Report::LateCancelled);
+                if matches!(a.spec, ActionSpec::Card(_)) && a.card_started {
+                    self.report(Report::ConfirmPause);
+                }
+                a.phase = Phase::Clean;
+                a.trailing = false;
+                a.due = now;
+                self.slots[i] = Some(a);
+                continue;
+            }
             if a.phase == Phase::WaitCycle {
                 if self.mouse.is_some() || a.key.is_some_and(|k| self.key_busy(k, Some(a.id))) {
                     continue;
@@ -633,7 +655,7 @@ impl Engine {
                         if now.0
                             > a.last_esc_up
                                 .after(self.cfg.timing.gap_max)
-                                .after(self.cfg.timing.lateness)
+                                .after(self.cfg.timing.stage_lateness[4].unwrap_or(0))
                                 .0
                         {
                             self.report(Report::LateCancelled);
@@ -692,28 +714,24 @@ impl Engine {
         let p = self.pending.take().unwrap();
         let b = p.batch;
         if matches!(outcome, SubmitOutcome::NotSubmitted) {
-            if let Some(id) = b.action {
-                if let Some(a) = self.slots[id.slot as usize].as_mut() {
-                    if a.phase == Phase::WaitCycle {
-                        if self.mouse == Some(a.id) {
-                            self.mouse = None;
-                        }
-                        a.mouse = false;
-                        a.key_reserved = false;
-                    }
+            if let Some(id) = b.action
+                && let Some(a) = self.slots[id.slot as usize].as_mut()
+                && a.phase == Phase::WaitCycle
+            {
+                if self.mouse == Some(a.id) {
+                    self.mouse = None;
                 }
+                a.mouse = false;
+                a.key_reserved = false;
             }
             return;
         }
-        let (end, ok) = match outcome {
+        let (end, ok, invalid) = match outcome {
             SubmitOutcome::Ok { begin, end } => {
-                if begin > end || end < b.deadline {
-                    self.state = EngineState::Faulted(self.session, FaultKind::InvalidCommit);
-                    return;
-                }
-                (end, true)
+                let invalid = begin > end || begin < b.deadline;
+                (end, !invalid, invalid)
             }
-            SubmitOutcome::Short { end, .. } => (end, false),
+            SubmitOutcome::Short { end, .. } => (end, false, false),
             SubmitOutcome::NotSubmitted => unreachable!(),
         };
         for ev in &b.events {
@@ -724,6 +742,10 @@ impl Engine {
                 OutEvent::LeftUp if ok => self.held.0[256] = false,
                 _ => {}
             }
+        }
+        if invalid {
+            self.state = EngineState::Faulted(self.session, FaultKind::InvalidCommit);
+            return;
         }
         if !ok {
             self.state = EngineState::Faulted(self.session, FaultKind::ShortSend);
@@ -836,7 +858,9 @@ impl Engine {
         }
         let mut due = self.health;
         for a in self.slots.iter().flatten() {
-            if a.phase == Phase::WaitCycle && self.mouse.is_some() {
+            if a.phase == Phase::WaitCycle
+                && (self.mouse.is_some() || a.key.is_some_and(|k| self.key_busy(k, Some(a.id))))
+            {
                 continue;
             }
             due = due.min(a.due);
