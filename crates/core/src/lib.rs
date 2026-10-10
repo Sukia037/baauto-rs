@@ -288,6 +288,13 @@ impl Engine {
     pub fn progress(&self) -> Progress {
         self.progress
     }
+    pub fn actions_for_press(&self, press: PressId) -> impl Iterator<Item = ActionId> + '_ {
+        self.slots
+            .iter()
+            .flatten()
+            .filter(move |a| a.press == press)
+            .map(|a| a.id)
+    }
     pub fn active_actions(&self) -> usize {
         self.slots.iter().filter(|a| a.is_some()).count()
     }
@@ -475,14 +482,14 @@ impl Engine {
         }
         for a in self.slots.iter_mut().flatten() {
             if a.press == press
-                && !matches!(
-                    a.spec,
-                    ActionSpec::Tap(_) | ActionSpec::CardKey | ActionSpec::DoubleEsc { .. }
-                )
+                && (forced
+                    || !matches!(
+                        a.spec,
+                        ActionSpec::Tap(_) | ActionSpec::CardKey | ActionSpec::DoubleEsc { .. }
+                    ))
             {
                 a.trailing = !forced
                     && matches!(a.spec, ActionSpec::Card(_))
-                    && a.card_started
                     && self.cfg.timing.trailing == TrailingEscPolicy::IfStarted;
                 a.phase = Phase::Clean;
                 a.due = now;
@@ -684,7 +691,7 @@ impl Engine {
                             events.push(OutEvent::LeftUp);
                         }
                         if events.is_empty() {
-                            if a.trailing {
+                            if a.trailing && a.card_started {
                                 a.phase = Phase::TrailingDown;
                                 a.due = now;
                                 self.slots[i] = Some(a);
@@ -764,6 +771,9 @@ impl Engine {
         let Some(mut a) = self.slots[i].filter(|a| a.id == id) else {
             return;
         };
+        if b.stage == Phase::Start as u32 && matches!(a.spec, ActionSpec::Card(_)) {
+            a.card_started = true;
+        }
         // A stop/cancel may arrive while the batch is in flight. Account for it, then only clean up.
         if matches!(self.state, EngineState::Stopping(..)) {
             return;
@@ -837,7 +847,7 @@ impl Engine {
             }
             Phase::Maintain => a.due = end.after(t.maintain),
             Phase::Clean => {
-                if a.trailing {
+                if a.trailing && a.card_started {
                     a.phase = Phase::TrailingDown;
                     a.due = end.after(t.card_pre_esc);
                 } else {

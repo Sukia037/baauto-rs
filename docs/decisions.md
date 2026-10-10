@@ -19,3 +19,5 @@
 - 2026-10-11｜M1｜零配置測試需要 unsafe global allocator，但 repo 限制 unsafe 位置｜另加測試輔助 crate／使用安全封裝｜使用 allocation-counter 的安全 measure API；另加 serde_path_to_error 保留巢狀 JSON 路徑，兩者都是驗收所需的小型依賴｜待決定
 - 2026-10-11｜M2｜任務草案 --config 單一檔與規格兩種 JSON 衝突｜合併檔／分開輸入｜以規格為準：CLI 使用 --points、--keys、--settings，各自讀取；--config 僅接受點位檔作相容別名，不建立合併格式｜待決定
 - 2026-10-11｜全部｜里程碑總覽要求 Windows 驗收後才進下一個，使用者授權一路實作但目前是 macOS｜停等 Windows／繼續開發並保留驗收門檻｜繼續實作與交叉編譯；Windows／遊戲及真實舊檔驗收列為未執行，不宣稱里程碑全面驗收完成｜待決定
+- 2026-10-11｜M2｜鍵盤 wVk＋wScan 是否啟用 SCANCODE｜虛擬鍵／掃描碼｜先用 wVk 並填 MapVirtualKeyW 的 wScan，不設 KEYEVENTF_SCANCODE；需接收器及遊戲實測後決定｜待決定
+- 2026-10-11｜M2｜帳本只提供合成持有，無法識別實體先按、合成後按的衝突｜只查帳本／另共享原子實體鍵表｜Progress 增加固定 4 個 AtomicU64，Hook 發布實體表，Driver 在 Down 前核對；Hook 同時檢查反向情境｜待決定

@@ -65,6 +65,41 @@ pub struct CompiledConfig {
     pub reports: Vec<ConfigError>,
     pub candidates: [bool; 256],
 }
+impl CompiledConfig {
+    /// Relevant physical keys must be released before Arm, including modifier families.
+    pub fn related_keys(&self) -> [bool; 256] {
+        let mut keys = self.candidates;
+        for (i, table) in self.triggers.iter().enumerate() {
+            if table.iter().any(|id| *id != NO_TRIGGER) {
+                keys[i] = true;
+                for (bit, family) in [
+                    (1, &[17, 162, 163][..]),
+                    (2, &[16, 160, 161][..]),
+                    (4, &[18, 164, 165][..]),
+                    (8, &[91, 92][..]),
+                ] {
+                    if table
+                        .iter()
+                        .enumerate()
+                        .any(|(m, id)| *id != NO_TRIGGER && m & bit != 0 && table[m & !bit] != *id)
+                    {
+                        for k in family {
+                            keys[*k] = true;
+                        }
+                    }
+                }
+            }
+        }
+        for family in [[16, 160, 161], [17, 162, 163], [18, 164, 165]] {
+            if family.iter().any(|i| keys[*i]) {
+                for i in family {
+                    keys[i] = true;
+                }
+            }
+        }
+        keys
+    }
+}
 #[derive(Clone, Debug, Default)]
 pub struct ConflictAnalysis {
     pub preset_errors: Vec<ConfigError>,

@@ -599,3 +599,48 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn forced_cancel_stops_second_escape() {
+    let mut r = Rig::new();
+    r.down(40, 1, p());
+    r.send(0);
+    r.send(2);
+    r.ev(InputKind::PressCancelled { press: PressId(1) });
+    assert!(r.e.next_batch(Ticks(5)).is_none());
+    assert!(r.e.held().is_empty());
+    assert_eq!(r.e.active_actions(), 0);
+}
+#[test]
+fn card_release_during_first_escape_finishes_trailing_pulse() {
+    for in_flight in [false, true] {
+        let mut r = Rig::new();
+        r.down(65, 1, p());
+        let first = r.batch(0);
+        if !in_flight {
+            r.e.commit(
+                first.id,
+                SubmitOutcome::Ok {
+                    begin: Ticks(0),
+                    end: Ticks(0),
+                },
+                Ticks(0),
+            );
+        }
+        r.up(1);
+        if in_flight {
+            r.e.commit(
+                first.id,
+                SubmitOutcome::Ok {
+                    begin: Ticks(0),
+                    end: Ticks(0),
+                },
+                Ticks(0),
+            );
+        }
+        assert_eq!(r.send(0).events[0], OutEvent::KeyUp(Key::ESC));
+        assert_eq!(r.send(2).events[0], OutEvent::KeyDown(Key::ESC));
+        assert_eq!(r.send(4).events[0], OutEvent::KeyUp(Key::ESC));
+        assert!(r.e.held().is_empty());
+    }
+}
