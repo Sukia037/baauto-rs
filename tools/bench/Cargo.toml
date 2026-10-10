@@ -4,3 +4,12 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+baauto-config = { path = "../../crates/config" }
+baauto-protocol = { path = "../../crates/protocol" }
+baauto-win-platform = { path = "../../crates/win-platform" }
+serde.workspace = true
+serde_json.workspace = true
+
+[[bin]]
+name = "baauto-receiver"
+path = "src/bin/receiver.rs"
