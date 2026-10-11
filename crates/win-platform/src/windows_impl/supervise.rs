@@ -931,8 +931,9 @@ pub fn run_supervisor(
                 }
             }
             let state = fsm.state();
-            if last_status != Some((state, wanted, resume_guard.token())) {
-                last_status = Some((state, wanted, resume_guard.token()));
+            let records = window.record_count();
+            if last_status != Some((state, wanted, resume_guard.token(), records)) {
+                last_status = Some((state, wanted, resume_guard.token(), records));
                 let detail = if target.is_none() {
                     "等待遊戲前景與按鍵放開"
                 } else if target.is_some_and(|t| t.warning()) {
@@ -944,7 +945,7 @@ pub fn run_supervisor(
                     state,
                     session,
                     detail: detail.into(),
-                    records: window.record_count(),
+                    records,
                     resume_generation: resume_guard.token(),
                     wanted,
                 });
