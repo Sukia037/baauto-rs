@@ -56,3 +56,54 @@ fn compiled_wire_roundtrip_and_invalid_indices_rejected() {
     invalid.candidates[27] = false;
     assert!(CompiledConfig::try_from(invalid).is_err());
 }
+
+#[test]
+fn trial_mode_and_result_preserve_session_and_command() {
+    use baauto_config::*;
+    let cfg = compile(
+        &template_points(),
+        &template_keys(),
+        &HandSettings::default(),
+        TickRate(1_000_000),
+    )
+    .unwrap();
+    let trial = TrialSpec {
+        id: 9,
+        action: ActionSpec::Tap(Key(49)),
+        timing: cfg.timing,
+        start: Ticks(100),
+        duration: 100_000,
+        cursor: NormPoint { x: 0.5, y: 0.5 },
+    };
+    assert!(trial.allowed_outputs(&cfg));
+    let message = AppToEngine::RunTrial {
+        cmd_seq: 8,
+        session: SessionId(3),
+        trial: Box::new(trial),
+    };
+    assert_eq!(
+        decode_frame::<AppToEngine>(&encode_frame(&message).unwrap()).unwrap(),
+        message
+    );
+    let result = TrialResult {
+        id: 9,
+        cmd_seq: 8,
+        started: Ticks(100),
+        finished: Ticks(200),
+        outcome: TrialOutcome::Stopped,
+    };
+    let reply = EngineToApp::TrialResult {
+        session: SessionId(3),
+        cmd_seq: 8,
+        result,
+    };
+    assert_eq!(
+        decode_frame::<EngineToApp>(&encode_frame(&reply).unwrap()).unwrap(),
+        reply
+    );
+    let bad = TrialSpec {
+        action: ActionSpec::Tap(Key(255)),
+        ..trial
+    };
+    assert!(!bad.allowed_outputs(&cfg));
+}

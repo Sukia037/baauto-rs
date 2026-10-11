@@ -202,6 +202,7 @@ pub struct TrialEvidence {
     pub selected_ms: f64,
     pub p999_late_ms: Option<f64>,
     pub measured_fps: Option<f64>,
+    pub outcomes_sha256: Option<String>,
 }
 impl TrialEvidence {
     pub fn verified(&self, plan: &Plan) -> Result<bool, Error> {
@@ -236,6 +237,10 @@ impl TrialEvidence {
             && safe_choice
             && self.min_success == plan.min_success
             && self.confidence == plan.confidence
+            && self
+                .outcomes_sha256
+                .as_ref()
+                .is_some_and(|h| h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit()))
             && self.detector_validated
             && self.detector_error.is_finite()
             && self.detector_error <= plan.max_detector_error
@@ -567,4 +572,53 @@ impl Pixels {
             present: self.present,
         })
     }
+}
+
+/// Independent manual outcomes preserve all failure categories and exclude only game-ineligible trials.
+pub fn classified_samples(plan: &Plan, csv: &str) -> Result<Vec<ScanPoint>, Error> {
+    plan.validate()?;
+    let rows = csv_rows(csv)?;
+    let header = rows.first().ok_or("empty trials CSV")?;
+    let column = |name: &str| {
+        header
+            .iter()
+            .position(|h| h == name)
+            .ok_or_else(|| format!("missing {name}"))
+    };
+    let (id, value, label) = (column("id")?, column("value_ms")?, column("label")?);
+    let mut ids = std::collections::BTreeSet::new();
+    let mut samples: Vec<ScanPoint> = Vec::new();
+    for row in rows.iter().skip(1) {
+        if row.len() != header.len() {
+            return Err("trial column mismatch".into());
+        }
+        let trial_id: u64 = row[id].parse().map_err(|_| "invalid trial id")?;
+        if trial_id == 0 || !ids.insert(trial_id) {
+            return Err("duplicate/zero trial id".into());
+        }
+        let v: f64 = row[value].parse().map_err(|_| "invalid scan value")?;
+        if !v.is_finite() || v < 0. {
+            return Err("invalid scan value".into());
+        }
+        let success = match row[label].as_str() {
+            "Valid" => true,
+            "Ineligible" => continue,
+            "Missed" | "Misoperation" | "WrongOrder" | "Duplicate" => false,
+            _ => return Err("every trial requires an independent human outcome".into()),
+        };
+        let index = if let Some(i) = samples.iter().position(|s| s.value_ms == v) {
+            i
+        } else {
+            samples.push(ScanPoint {
+                value_ms: v,
+                successes: 0,
+                attempts: 0,
+            });
+            samples.len() - 1
+        };
+        samples[index].attempts += 1;
+        samples[index].successes += u64::from(success);
+    }
+    samples.sort_by(|a, b| a.value_ms.total_cmp(&b.value_ms));
+    Ok(samples)
 }

@@ -101,6 +101,7 @@ fn plan_hash_and_precommitted_gates_control_verification() {
         selected_ms: 30.,
         p999_late_ms: Some(1.),
         measured_fps: Some(60.),
+        outcomes_sha256: Some(sha256(b"synthetic outcomes")),
     };
     assert!(result.verified(&p).unwrap());
     assert!(!result.verified(&changed).unwrap());
@@ -139,4 +140,49 @@ fn trial_phases_are_recorded_and_bounded() {
     assert!(values.iter().all(|v| *v < 100));
     let mean = values.iter().sum::<u64>() as f64 / values.len() as f64;
     assert!((mean - 49.5).abs() < 1.);
+}
+
+#[test]
+fn manual_outcomes_exclude_ineligible_and_do_not_hide_wrong_order() {
+    let plan = Plan::example();
+    let csv = "id,value_ms,detected,label\n1,20,true,Valid\n2,20,true,WrongOrder\n3,20,false,Ineligible\n4,20,false,Missed\n";
+    let points = classified_samples(&plan, csv).unwrap();
+    assert_eq!(
+        points,
+        vec![ScanPoint {
+            value_ms: 20.,
+            successes: 1,
+            attempts: 3
+        }]
+    );
+    assert!(classified_samples(&plan, "id,value_ms,label\n1,20,\n").is_err());
+    assert!(classified_samples(&plan, "id,value_ms,label\n1,20,Valid\n1,20,Valid\n").is_err());
+}
+
+#[test]
+fn pixel_detector_uses_roi_and_exports_top_down_bitmap() {
+    let before = Pixels {
+        width: 2,
+        height: 2,
+        bgra: vec![0; 16],
+        present: Ticks(100),
+    };
+    let mut after = before.clone();
+    after.bgra[0..4].copy_from_slice(&[90, 90, 90, 255]);
+    let roi = HandRect {
+        x: [0., 0.5],
+        y: [0., 0.5],
+        calibrated: true,
+    };
+    assert_eq!(after.mean_difference(&before, roi).unwrap(), 90.);
+    let crop = after.crop(roi).unwrap();
+    assert_eq!((crop.width, crop.height), (1, 1));
+    let bmp = crop.bmp().unwrap();
+    assert_eq!(&bmp[..2], b"BM");
+    assert_eq!(i32::from_le_bytes(bmp[22..26].try_into().unwrap()), -1);
+    assert!(
+        after
+            .mean_difference(&before, HandRect { x: [1., 0.], ..roi })
+            .is_err()
+    );
 }

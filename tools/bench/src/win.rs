@@ -56,6 +56,22 @@ impl ManagedBench {
         }
         Ok(managed)
     }
+    fn arm(&self) -> Result<(), Error> {
+        self.tx
+            .send(SupervisorCommand::Enable)
+            .map_err(|e| e.to_string())?;
+        for _ in 0..300 {
+            if let Ok(s) = self.status.recv_timeout(Duration::from_millis(100)) {
+                if matches!(s.state, baauto_protocol::supervisor::State::Armed(_)) {
+                    return Ok(());
+                }
+                if s.state == baauto_protocol::supervisor::State::Faulted {
+                    return Err(s.detail);
+                }
+            }
+        }
+        Err("Arm timed out during stop sampling".into())
+    }
     fn inspect(&self) -> Result<(Arc<Mapping>, Arc<Process>), Error> {
         let (tx, rx) = mpsc::channel();
         self.tx
@@ -95,6 +111,7 @@ pub struct BenchOptions {
     pub settings: Option<PathBuf>,
     pub presentmon: Option<PathBuf>,
     pub output: PathBuf,
+    pub stop_cycles: u32,
 }
 fn configuration(
     points: &Path,
@@ -287,7 +304,7 @@ pub fn measure(
     experiment: Option<EngineParams>,
     exercise: bool,
 ) -> Result<AbResult, Error> {
-    if seconds == 0 {
+    if seconds == 0 || bench.stop_cycles == 0 || bench.stop_cycles > 100_000 {
         return Err("measurement duration must be positive".into());
     }
     fs::create_dir(&bench.output).map_err(|e| e.to_string())?;
@@ -374,6 +391,11 @@ pub fn measure(
     let cpu_end = process.cpu_100ns().map_err(|e| e.to_string())?;
     let end = clock.now();
     managed.stop()?;
+    for _ in 1..bench.stop_cycles {
+        drain(&mut reader, &mapping, &mut rows, &mut discarded);
+        managed.arm()?;
+        managed.stop()?;
+    }
     drain(&mut reader, &mapping, &mut rows, &mut discarded);
     let text = ring_text(&rows);
     create_file(&bench.output.join("ring.csv"), text.as_bytes())?;
@@ -677,6 +699,7 @@ pub fn run_scan(
         selected_ms: selected,
         p999_late_ms: p999,
         measured_fps,
+        outcomes_sha256: None,
     };
     create_file(
         &bench.output.join("result.json"),

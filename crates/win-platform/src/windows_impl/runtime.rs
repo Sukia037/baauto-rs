@@ -580,6 +580,22 @@ impl HookThread {
                                         let _ =
                                             reply.send(Err(failure("cannot install while armed")));
                                     } else {
+                                        if let Err(error) = validate_experiment(cfg.params) {
+                                            let _ = reply.send(Err(error));
+                                            continue;
+                                        }
+                                        // SAFETY: Disarmed Hook message loop changes only its own thread priority, outside callbacks.
+                                        let priority = if cfg.params.hook_time_critical {
+                                            THREAD_PRIORITY_TIME_CRITICAL
+                                        } else {
+                                            THREAD_PRIORITY_NORMAL
+                                        };
+                                        if let Err(error) = unsafe {
+                                            SetThreadPriority(GetCurrentThread(), priority)
+                                        } {
+                                            let _ = reply.send(Err(error));
+                                            continue;
+                                        }
                                         if target.pid != rt.target.pid {
                                             // SAFETY: Disarmed message loop owns the geometry hook; install replacement before unregistering the old PID filter.
                                             let replacement = unsafe {

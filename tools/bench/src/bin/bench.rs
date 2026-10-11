@@ -104,6 +104,24 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 result.valid
             );
         }
+        Some("finalize") => {
+            let plan: Plan = load(Path::new(&args.next().ok_or("sealed plan required")?))?;
+            let mut evidence: TrialEvidence =
+                load(Path::new(&args.next().ok_or("scan evidence required")?))?;
+            if evidence.plan_hash != plan.hash()? {
+                return Err("evidence/plan hash differs".into());
+            }
+            let labels = decode_json(&fs::read(
+                args.next().ok_or("independent outcomes CSV required")?,
+            )?)?;
+            let output = PathBuf::from(args.next().ok_or("new final evidence JSON required")?);
+            evidence.samples = classified_samples(&plan, &labels)?;
+            evidence.outcomes_sha256 = Some(sha256(labels.as_bytes()));
+            evidence.selected_ms =
+                choose_with_margin(&evidence.samples, &plan, evidence.margin_ms)?.unwrap_or(-1.);
+            println!("verified={}", evidence.verified(&plan)?);
+            new_file(&output, to_json(&evidence)?.as_bytes())?;
+        }
         Some("apply") => {
             let plan: Plan = load(Path::new(&args.next().ok_or("sealed plan required")?))?;
             let result: TrialEvidence =
@@ -139,7 +157,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             println!("retain={}", keep_experiment(&base, &variant));
         }
         Some("--help" | "help") => println!(
-            "baauto-bench plan <draft.json>\nseal <draft.json> <sealed.json> [settings.json]\nanalyze <ring.csv> <QPC frequency> <out.md>\nalign <PresentMon.csv> <ring.csv> <out.csv>\nvalidate-detector <plan.json> <labelled-trials.csv> <validation.json>\napply <plan.json> <result.json> [keys JSON]\nmeasure --points <JSON> --keys <JSON> --out <new directory> [--seconds N] [--settings JSON] [--target-exe EXE] [--engine EXE] [--presentmon EXE] [--exercise-receiver]\nscan --plan <sealed.json> --out <new directory> [--pilot-count N | --validation JSON] [native options]\nab [measure options] [--spin-us N]; requires bench-experiments build\ncompare <baseline.json> <variant.json>"
+            "baauto-bench plan <draft.json>\nseal <draft.json> <sealed.json> [settings.json]\nanalyze <ring.csv> <QPC frequency> <out.md>\nalign <PresentMon.csv> <ring.csv> <out.csv>\nvalidate-detector <plan.json> <labelled-trials.csv> <validation.json>\nfinalize <plan.json> <result.json> <labelled-trials.csv> <final.json>\napply <plan.json> <result.json> [keys JSON]\nmeasure --points <JSON> --keys <JSON> --out <new directory> [--seconds N] [--settings JSON] [--target-exe EXE] [--engine EXE] [--presentmon EXE] [--exercise-receiver]\nscan --plan <sealed.json> --out <new directory> [--pilot-count N | --validation JSON] [native options]\nab [measure options] [--spin-us N]; requires bench-experiments build\ncompare <baseline.json> <variant.json>"
         ),
         _ => return Err("unknown bench command".into()),
     }
@@ -162,6 +180,7 @@ fn native(command: &str, args: Vec<std::ffi::OsString>) -> Result<(), Box<dyn st
         settings: None,
         presentmon: None,
         output: PathBuf::from("bench-output"),
+        stop_cycles: 1,
     };
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
@@ -181,6 +200,9 @@ fn native(command: &str, args: Vec<std::ffi::OsString>) -> Result<(), Box<dyn st
             Some("--plan") => plan_path = Some(PathBuf::from(value)),
             Some("--validation") => validation = Some(PathBuf::from(value)),
             Some("--pilot-count") => pilot = Some(value.to_str().ok_or("invalid count")?.parse()?),
+            Some("--stop-cycles") => {
+                bench.stop_cycles = value.to_str().ok_or("invalid stop count")?.parse()?
+            }
             Some("--seconds") => seconds = value.to_str().ok_or("invalid seconds")?.parse()?,
             Some("--spin-us") => spin = value.to_str().ok_or("invalid spin")?.parse()?,
             _ => return Err("unknown native option".into()),
@@ -200,8 +222,18 @@ fn native(command: &str, args: Vec<std::ffi::OsString>) -> Result<(), Box<dyn st
             if !cfg!(feature = "bench-experiments") {
                 return Err("A/B requires bench-experiments build".into());
             }
+            if bench.stop_cycles == 1 {
+                bench.stop_cycles = 1000;
+            }
             fs::create_dir(&bench.output)?;
             let root = bench.output.clone();
+            let base_params = bench
+                .settings
+                .as_deref()
+                .map(read_machine)
+                .transpose()?
+                .map(|(_, p)| p)
+                .unwrap_or_default();
             let mut results = Vec::new();
             for hook in [true, false] {
                 for engine in [false, true] {
@@ -217,7 +249,7 @@ fn native(command: &str, args: Vec<std::ffi::OsString>) -> Result<(), Box<dyn st
                             hook_time_critical: hook,
                             engine_highest: engine,
                             tail_spin_us: tail,
-                            ..EngineParams::default()
+                            ..base_params
                         };
                         results.push(measure(
                             &points,
