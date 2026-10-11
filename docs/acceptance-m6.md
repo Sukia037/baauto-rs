@@ -2,6 +2,8 @@
 
 2026-10-11：實作與可攜式測試已完成，本表原生操作項目均未執行。macOS 的24張離線 GUI 截圖只驗證實際介面呈現；沒有 Windows、BlueArchive、真實舊檔、8小時接收器或已驗證時序數據。請保留每次測試的 Git SHA、OS、螢幕／DPI、遊戲版本、QPC frequency、profile SHA／模式、起訖時間、失敗與原始 CSV，不把未勾選的項目寫成通過。
 
+2026-10-11 原生補測：Windows自動檢查160項通過，IPC與部分實際送鍵/連點/持有/全域停止通過；有10張目前zoom=1的淺/深色原生framebuffer。故障注入5通過、掛起案例1失敗，原本Ctrl+F9仍註冊衝突；測試使用隔離替代熱鍵。完整證據、修正和未測項目見 [Windows實測報告](test-results/windows-20261011/README.md)。以下仍未勾選的項目沒有因此視為通過。
+
 ## 準備與自動檢查
 
 ```powershell
@@ -12,9 +14,9 @@ powershell -ExecutionPolicy Bypass -File tests/windows/M6.ps1 -Interactive
 powershell -ExecutionPolicy Bypass -File tests/windows/M6.ps1 -Screenshots
 ```
 
-- [ ] Windows `fmt`、`clippy --all-targets --all-features`、`cargo test`、正式 release build 通過。
-- [ ] 互動 IPC 測試通過：Armed 拒絕，Point capture逾時，Hotkey capture取消，Space Down／Up都沒有到接收器，舊恢復代號不能重新 Arm。
-- [ ] 正式版重新建置，不用 test-hooks／fault-injection 執行遊戲。
+- [x] Windows `fmt`、`clippy --all-targets --all-features`、`cargo test`、正式 release build 通過。
+- [x] 互動 IPC 測試通過（隔離替代熱鍵）：Armed 拒絕，Point capture逾時，Hotkey capture取消，Space Down／Up都沒有到接收器，舊恢復代號不能重新 Arm。
+- [x] 正式版重新建置，不用 test-hooks／fault-injection 執行遊戲；遊戲本身仍未執行。
 - [ ] 實際 Windows 100%、150%、200% DPI，各四分頁淺／深色、1000×660與900×560：無方框字、文字不互相覆蓋、可捲動至每個項目。另在100%＋200%混合DPI、負座標螢幕測試覆蓋層；將各組截圖放到不同資料夾，記錄OS DPI，不能把 `--qa-scale` 當成OS DPI。
 
 ## 檔案與編輯
@@ -79,7 +81,7 @@ powershell -ExecutionPolicy Bypass -File tests/windows/M6.ps1 -Screenshots
 
 | 實測項目 | 結果／證據路徑 | 狀態 |
 |---|---|---|
-| Windows DPI／覆蓋層／IPC | 待填 | 未執行 |
+| Windows DPI／覆蓋層／IPC | [短程IPC與GUI截圖](test-results/windows-20261011/README.md)；DPI／覆蓋層未測 | 部分完成 |
 | 真實舊檔對照 | 待填 | 未執行 |
 | 8小時接收器：零卡鍵、lost、P99.9 | 待填 | 未執行 |
 | 六人遊戲1小時 | 待填 | 未執行 |

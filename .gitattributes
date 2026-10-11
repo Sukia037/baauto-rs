@@ -1,0 +1,4 @@
+# Preserve native evidence and profile hashes across Windows/Linux checkouts.
+docs/test-results/windows-20261011/** -text whitespace=cr-at-eol
+# Raw command output can intentionally contain trailing spaces/blank lines.
+docs/test-results/windows-20261011/*.log -whitespace

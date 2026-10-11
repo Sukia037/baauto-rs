@@ -1,0 +1,60 @@
+   Compiling baauto-win-platform v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\crates\win-platform)
+   Compiling baauto-bench v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\tools\bench)
+   Compiling baauto-app v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\bins\baauto-app)
+   Compiling baauto-engine v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\bins\baauto-engine)
+    Finished `release` profile [optimized] target(s) in 10.47s
+   Compiling baauto-win-platform v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\crates\win-platform)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.41s
+     Running tests\windows_capture.rs (target\debug\deps\windows_capture-83b1ef01a8f90f44.exe)
+
+running 1 test
+test ipc_capture_timeout_cancel_chord_and_armed_rejection ... receiver lost events: 0
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.94s
+
+   Compiling baauto-win-platform v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\crates\win-platform)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.93s
+     Running tests\windows_faults.rs (target\debug\deps\windows_faults-a9f622333581a13b.exe)
+
+running 6 tests
+test abort_recovers ... receiver lost events: 0
+abort@2: evidence C:\Users\anric\AppData\Local\Temp\baauto-fault-66896-abort_2
+ok
+test hang_then_resume_cannot_output_after_recovery ... receiver lost events: 0
+
+thread 'hang_then_resume_cannot_output_after_recovery' (62752) panicked at crates\win-platform\tests\windows_faults.rs:177:13:
+engine must not move or press after recovery release
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test hook_stall_recovers ... receiver lost events: 0
+hook-stall: evidence C:\Users\anric\AppData\Local\Temp\baauto-fault-66896-hook-stall
+ok
+
+thread '<unnamed>' (63996) panicked at crates\win-platform\src\windows_impl\runtime.rs:994:45:
+injected engine panic
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+engine panic (0x80004005)
+test panic_recovers ... receiver lost events: 0
+panic@2: evidence C:\Users\anric\AppData\Local\Temp\baauto-fault-66896-panic_2
+ok
+test pipe_drop_recovers ... receiver lost events: 0
+pipe-drop@2: evidence C:\Users\anric\AppData\Local\Temp\baauto-fault-66896-pipe-drop_2
+ok
+input fault: ledger retained (0x80004005)
+test short_send_recovers ... receiver lost events: 0
+short@2: evidence C:\Users\anric\AppData\Local\Temp\baauto-fault-66896-short_2
+ok
+
+failures:
+
+failures:
+    hang_then_resume_cannot_output_after_recovery
+
+test result: FAILED. 5 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.58s
+
+error: test failed, to rerun pass `-p baauto-win-platform --test windows_faults`
+   Compiling baauto-engine v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\bins\baauto-engine)
+   Compiling baauto-bench v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\tools\bench)
+   Compiling baauto-app v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\bins\baauto-app)
+    Finished `release` profile [optimized] target(s) in 3.46s

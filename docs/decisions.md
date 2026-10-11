@@ -66,3 +66,10 @@
 - 還沒看到遊戲時，像素座標先用這個視窗所在螢幕的解析度換算；看到遊戲後改用遊戲所在螢幕。狀態列分別顯示「螢幕 W×H」或「全螢幕 W×H（16:9）」。
 - 預設視窗由 960×620 改為 1000×660（最小仍是 900×560）；QA 截圖加 `--qa-tab 4`（點位分頁選牌鍵）。
 - 待確認：只在 Linux 建置與截圖驗證；Windows 交叉檢查在這次的環境無法執行（下載 Windows 目標被擋），需要在 Windows 上跑 `tests/windows/M6.ps1` 確認。
+
+## 原生 Windows 實測補充（2026-10-11）
+
+- M6｜規格要求自家dwExtraInfo標記，但未規定位寬｜完整64位元／分鍵盤滑鼠標記或正規化／共用非零32位元｜原生CSV證明滑鼠只回傳鍵盤標記的低32位元，造成test-hooks把自家LeftDown當實體衝突。暫採RNG產生非零32位元，保持Hook完整相等比對；實際送鍵、連點、持有、全域停止及標記一致斷言通過。仍需其他Windows版本及跨位元組合驗證｜待決定。
+- M3/M6｜掛起驗收禁止復原釋放後收到任何WM_MOUSEMOVE，但規格§7只保證停止正常API呼叫，不保證OS已消費在途事件；本機在已確認退出及成功LeftUp後產生同座標、extra_info=0的WM_MOUSEMOVE｜保留現行訊息判據／加入來源與API提交證據，區分Win32生成或延後派送的訊息｜暫時保留原斷言並回報失敗，不删測試、不降低停止保證；待決定如何建立正確來源判據。原始紀錄與Microsoft依據見 [Windows報告](test-results/windows-20261011/README.md)｜待決定。
+- 接收器只對自己的HWND解除IME context，修正中文輸入法把數字Down記為VK_PROCESSKEY的問題；CSV追加extra_info，前四欄保留，故障JSON追加stop_reason。新增的Win32_UI_Input_Ime只是現有windows官方依賴的feature，沒有新增第三方crate。
+- 本機Ctrl+F9註冊失敗，占用來源未確認。原生測試在隔離profile以BAAUTO_TEST_STOP_HOTKEY／BAAUTO_TEST_RECORD_HOTKEY指定替代組合，正式預設JSON與使用者測試資料夾不改；未把替代組合的通過算作原本Ctrl+F9可用。

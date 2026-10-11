@@ -1,0 +1,391 @@
+    Checking baauto-win-platform v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\crates\win-platform)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.45s
+   Compiling baauto-win-platform v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\crates\win-platform)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.60s
+     Running unittests src\lib.rs (target\debug\deps\baauto_app-e14e777bcdcb03eb.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (target\debug\deps\baauto_app-f7fc67772acbd5f8.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\backend.rs (target\debug\deps\backend-e9d6a153c0f7b27b.exe)
+
+running 2 tests
+test worker_routes_by_content_and_keeps_other_document_when_opening_external_keys ... ok
+test worker_saves_each_json_without_combining_machine_settings_or_losing_retry_fingerprint ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests\state.rs (target\debug\deps\state-972ce32988b02ac9.exe)
+
+running 6 tests
+test all_calibration_edges_and_corners_adjust_only_the_selected_boundaries ... ok
+test calibration_drag_mirror_and_center_pair_validate_boundaries ... ok
+test invalid_save_cancel_and_failed_worker_never_arm ... ok
+test switching_one_json_requires_stop_and_preserves_other_dirty_document ... ok
+test global_control_bindings_require_keyboard_but_actions_accept_side_buttons ... ok
+test conflict_sort_selection_and_button_conditions_use_item_ids ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\baauto_bench-e99658f5d170c03d.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\bench.rs (target\debug\deps\baauto_bench-cc16bf274dcaa392.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\receiver.rs (target\debug\deps\baauto_receiver-7cdc602039a1a3d3.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\analysis.rs (target\debug\deps\analysis-dc3acdedfa12c18c.exe)
+
+running 9 tests
+test pixel_detector_uses_roi_and_exports_top_down_bitmap ... ok
+test ring_and_presentmon_csv_parsing_and_missing_fields ... ok
+test non_monotonic_scan_finds_every_reliable_segment ... ok
+test manual_outcomes_exclude_ineligible_and_do_not_hide_wrong_order ... ok
+test wilson_known_values_and_minimum_attempts ... ok
+test detector_confusion_and_synthetic_pipeline ... ok
+test quantiles_require_enough_tail_samples ... ok
+test trial_phases_are_recorded_and_bounded ... ok
+test plan_hash_and_precommitted_gates_control_verification ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\windows_capture.rs (target\debug\deps\windows_capture-60bbfd8efc236501.exe)
+
+running 1 test
+test receiver_dxgi_change_has_raw_qpc_and_exportable_roi ... ignored, needs a focused fullscreen receiver and physical key press
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\baauto_config-30622cedb99b2d11.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\acceptance.rs (target\debug\deps\acceptance-11fa3788c5dfc663.exe)
+
+running 15 tests
+test config_hotkey_string_roundtrip ... ok
+test config_cycle_shorter_than_stages_rejected ... ok
+test config_rejects_left_button_trigger ... ok
+test config_point_hotkey_conflict_disables_point ... ok
+test tap_zero_hold_requires_verified_profile ... ok
+test config_reports_json_path_on_error ... ok
+test config_templates_load_and_compile ... ok
+test integer_time_conversion_rounds_up ... ok
+test points_card_item_needs_no_coord ... ok
+test hand_slot_keys_need_five_unique ... ok
+test config_hand_rect_must_be_valid ... ok
+test config_preset_conflict_blocks_save ... ok
+test mode_picks_hand_rect_and_slot_count ... ok
+test points_item_conflict_disables_item_but_file_saves ... ok
+test switching_keys_file_keeps_points_file ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\compat.rs (target\debug\deps\compat-29eca62bd36f4f23.exe)
+
+running 12 tests
+test absolute_coordinates_require_resolution ... ok
+test import_points_json_to_pointset_with_mode ... ok
+test deleted_ids_not_reused_and_invalid_edit_keeps_document ... ok
+test editor_uses_ids_and_never_overwrites_candidates ... ok
+test import_alternating_becomes_card_items ... ok
+test ahk_default_keys_and_modifiers ... ok
+test mumu_candidates_follow_reference_rules ... ok
+test editor_timing_changes_clear_verification_transactionally ... ok
+test real_legacy_files_never_panic ... ok
+test import_functions_json_to_keys ... ok
+test set_mode_six_to_ten_and_back ... ok
+test every_synthetic_import_matches_golden_document_and_report ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\store.rs (target\debug\deps\store-abb8ae506799b3b4.exe)
+
+running 11 tests
+test encoding_utf8_bom_utf16 ... ok
+test half_write_leaves_old_file_and_removes_only_owned_temporary ... ok
+test paths_unicode_spaces_unc_long ... ok
+test interrupted_save_keeps_old_file_and_roundtrip_order ... ok
+test same_file_not_opened_twice ... ok
+test external_change_detected_before_save ... ok
+test legacy_converted_next_to_original ... ok
+test open_detects_kind_by_content ... ok
+test missing_file_tab_marked_and_bad_settings_preserved ... ok
+test failed_settings_update_rolls_back_tab_and_file_operations ... ok
+test store_first_start_save_rename_trash_and_tabs ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running unittests src\lib.rs (target\debug\deps\baauto_core-13fcf7115c7587c3.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\acceptance.rs (target\debug\deps\acceptance-dc5a70ca74e7b8dd.exe)
+
+running 40 tests
+test card_key_seam_and_boundary ... ok
+test card_key_completes_pulse_after_release ... ok
+test card_key_outside_hand_sends_nothing_and_reports ... ok
+test card_key_ignores_auto_repeat_by_default ... ok
+test card_key_follow_typematic_when_configured ... ok
+test card_key_runs_alongside_hold_point ... ok
+test card_key_left_side_uses_left_layout ... ok
+test auto_repeat_policy_ignore_vs_follow ... ok
+test cancel_waiting_repeat_does_not_release_another_actions_key ... ok
+test card_key_rejected_when_slot_key_held ... ok
+test card_normal_release_finishes_trailing_escape_pulse ... ok
+test card_key_slot_order_right_to_left ... ok
+test double_esc_cancels_when_beyond_max_gap ... ok
+test card_key_sends_key_of_slot_under_cursor ... ok
+test esc_resource_is_exclusive ... ok
+test card_no_trailing_esc_on_focus_loss ... ok
+test focus_loss_stops_session ... ok
+test expired_tap_start_cancels_without_down ... ok
+test idle_engine_still_advances_health ... ok
+test forced_cancel_stops_second_escape ... ok
+test geometry_change_cancels_hold_point_and_releases_left ... ok
+test card_release_during_first_escape_finishes_trailing_pulse ... ok
+test hold_point_rejected_while_another_hold_point_active ... ok
+test invalid_commit_retains_possible_downs ... ok
+test modifier_release_cancels_press ... ok
+test quick_release_repress_uses_new_press ... ok
+test repeat_with_click_takes_mouse_for_whole_cycle ... ok
+test seq_gap_stops_session ... ok
+test repeat_arbiter_serves_multiple_actions_without_stealing_mouse ... ok
+test repeat_late_wake_shifts_click_stage ... ok
+test repeat_skips_overdue_cycles_without_burst ... ok
+test short_down_is_conservatively_held_and_never_retried ... ok
+test stale_session_events_are_ignored ... ok
+test sim_exports_csv ... ok
+test short_send_goes_faulted_and_keeps_held ... ok
+test stop_during_inflight_down_accounts_then_releases ... ok
+test stop_releases_everything_then_silent ... ok
+test short_send_at_random_phase_preserves_possible_holds ... ok
+test randomized_engine_invariants ... ok
+test steady_state_zero_allocations ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.22s
+
+     Running tests\calibration.rs (target\debug\deps\calibration-45c114a11062e2d3.exe)
+
+running 4 tests
+test expired_trial_releases_held_mouse_and_never_repeats ... ok
+test run_trial_only_in_calibration_session_and_uses_its_timing ... ok
+test trial_repeat_is_bounded_and_stop_cannot_resurrect ... ok
+test calibration_trials_allocate_nothing_after_engine_construction ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src\main.rs (target\debug\deps\baauto_engine-0b16b4d2d97fe25d.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\baauto_protocol-b7fd7fa54f998176.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\acceptance.rs (target\debug\deps\acceptance-eccbbb69cfcc77a3.exe)
+
+running 7 tests
+test ledger_short_send_does_not_clear_up ... ok
+test ledger_is_superset_at_any_kill_point ... ok
+test wake_protocol_never_sleeps_with_pending_events ... ok
+test shm_layout_has_no_pointers ... ok
+test slow_reader_counts_overwrites ... ok
+test concurrent_ring_reader_never_observes_mixed_fields ... ok
+test ring_reader_detects_torn_record ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests\ipc.rs (target\debug\deps\ipc-cb09c39ea42a8e0a.exe)
+
+running 5 tests
+test ipc_roundtrip_and_versions ... ok
+test ipc_truncated_unknown_and_oversized_frames_rejected ... ok
+test capture_ipc_preserves_session_request_and_cancel_boundary ... ok
+test trial_mode_and_result_preserve_session_and_command ... ok
+test compiled_wire_roundtrip_and_invalid_indices_rejected ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\supervisor.rs (target\debug\deps\supervisor-b2876d3587c64e1c.exe)
+
+running 17 tests
+test chained_file_jobs_keep_the_original_resume_generation_after_stop ... ok
+test fsm_disarmed_raw_input_is_not_charged_to_next_session ... ok
+test fsm_hotkey_registration_failure_blocks_ready ... ok
+test fsm_late_arm_cannot_undo_stop ... ok
+test fsm_failed_recovery_release_blocks_rearming ... ok
+test fsm_late_raw_input_matches_earlier_hook_observation ... ok
+test fsm_cooperative_stop ... ok
+test fsm_timeout_terminates_then_waits_exit_then_releases ... ok
+test fsm_idle_engine_not_treated_as_stuck ... ok
+test fsm_no_auto_resume_after_fault ... ok
+test fsm_raw_input_without_hook_observation_stops_after_timeout ... ok
+test fsm_header_mismatch_uses_candidate_set ... ok
+test fsm_raw_without_foreground_and_input_never_accuses_hook ... ok
+test fsm_rehook_only_when_disarmed ... ok
+test fsm_stale_stopped_from_old_session_ignored ... ok
+test fsm_expired_hook_credit_cannot_hide_removal ... ok
+test resume_guard_rejects_continuation_after_emergency_or_manual_stop ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\baauto_win_platform-7a23613bf728e428.exe)
+
+running 4 tests
+test windows_impl::kernel::tests::auto_wake_is_consumed_without_reset ... ok
+test windows_impl::kernel::tests::manual_stop_stays_signaled_and_sessions_get_distinct_events ... ok
+test windows_impl::kernel::tests::mapping_rejects_wrong_session_and_survives_creator_drop ... ok
+test windows_impl::kernel::tests::waitable_timer_wakes_at_deadline ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\acceptance.rs (target\debug\deps\acceptance-5ff2d7421aa98ae7.exe)
+
+running 17 tests
+test coordinates_negative_origin_multiple_monitors ... ok
+test geometry_norm_roundtrip_and_warning ... ok
+test decide_own_injection_passes ... ok
+test decide_foreign_injection_does_not_trigger ... ok
+test decide_auto_repeat ... ok
+test decide_mouse_outside_window_passes ... ok
+test decide_physical_conflict_stops ... ok
+test decide_up_pairs_after_focus_loss ... ok
+test decide_modifier_release_cancels ... ok
+test exact_modifier_chord_cancels_on_extra_modifier_down ... ok
+test physical_before_synthetic_is_rejected ... ok
+test modifier_family_stays_held_until_both_sides_are_released ... ok
+test decide_side_modifier_matches_generic_trigger_and_ledger ... ok
+test decide_overflow_only_swallows_paired_up ... ok
+test receiver_fixtures_compile_in_both_modes ... ok
+test coordinates_extremely_wide_desktop ... ok
+test hook_decisions_allocate_nothing ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s
+
+     Running tests\capture.rs (target\debug\deps\capture-eedf497f93ea4bf6.exe)
+
+running 7 tests
+test capture_timeout_cancel_and_armed_rejection ... ok
+test record_first_click_outside_foreground_is_swallowed_and_rejected ... ok
+test emergency_chord_cancels_capture_and_swallows_its_release ... ok
+test capture_callbacks_allocate_nothing_and_ignore_injected_input ... ok
+test focus_loss_cancels_point_capture_without_releasing_swallowed_pairs ... ok
+test chord_and_record_swallow_complete_physical_pairs_after_cancel_or_focus_loss ... ok
+test space_side_button_escape_backspace_left_and_slot_rules ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\fault_rules.rs (target\debug\deps\fault_rules-2e6f2577a4ae5edd.exe)
+
+running 1 test
+test rules_are_explicit_and_bounded ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\hotkeys.rs (target\debug\deps\hotkeys-81befdaa9146f256.exe)
+
+running 1 test
+test global_registration_preserves_atleast_and_exact_modifier_semantics ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\windows_capture.rs (target\debug\deps\windows_capture-5a2167b5371d984e.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\windows_faults.rs (target\debug\deps\windows_faults-a69223337765800f.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\windows_interactive.rs (target\debug\deps\windows_interactive-c1dd4cc0b95f095c.exe)
+
+running 1 test
+test foreground_hook_focus_loss_and_paired_up ... ignored, needs receiver and physical foreground/focus interactions
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\windows_marker.rs (target\debug\deps\windows_marker-13d0512d95e441f8.exe)
+
+running 1 test
+test random_marker_fits_mouse_extra_info_width ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\windows_store.rs (target\debug\deps\windows_store-c751d4b273cb8ce3.exe)
+
+running 2 tests
+test paths_unc_native ... ignored, requires a writable UNC share supplied by BAAUTO_TEST_UNC_ROOT
+test native_unicode_long_case_slash_backup_and_readonly ... ok
+
+test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+   Doc-tests baauto_app
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests baauto_bench
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests baauto_config
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests baauto_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests baauto_protocol
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests baauto_win_platform
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+    Finished `release` profile [optimized] target(s) in 0.22s
+Complete docs/acceptance-m6.md for mouse recording, all 23 actions, the 8-hour receiver run and both 1-hour game runs. These are not implied by compilation.

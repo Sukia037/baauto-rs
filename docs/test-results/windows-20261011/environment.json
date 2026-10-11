@@ -1,0 +1,33 @@
+{
+  "baseline_git_sha": "1968d10efec974ef4bf3ee313c41189db813c441",
+  "date": "2026-10-11",
+  "os": "Microsoft Windows 11 家用版",
+  "version": "10.0.26200",
+  "build": "26200",
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "monitor_pixels": [
+    1920,
+    1080
+  ],
+  "os_dpi": "not independently measured",
+  "qa_zoom": 1,
+  "profiles": [
+    {
+      "file": "keys-original.json",
+      "Hash": "A20B9D20C9010847A85BD502E38E22454C8FBE6A4056733EB3244D9D53AE38CE"
+    },
+    {
+      "file": "keys-test.json",
+      "Hash": "47C0F389CEB919A3B448A1028254C5A566E8775E22BDD2D6837C4B9F3948763E"
+    },
+    {
+      "file": "points.json",
+      "Hash": "4485BE2C41B39F1C30783DD16EA32F11E83C0A008260AA9E030C304B4B7B629A"
+    },
+    {
+      "file": "settings.json",
+      "Hash": "DDCB1D01BC08EA3ECBE2EDC37D9EF57599D41E5BA18667C72464072FB272233E"
+    }
+  ],
+  "implementation_git_sha": "948689795b714bdc14cb0b014f6f8936683fb657"
+}

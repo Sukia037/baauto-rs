@@ -1,0 +1,21 @@
+{
+  "exit_confirm": 13712861297937,
+  "ledger_keys": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "ledger_mouse": 1,
+  "qpc_frequency": 10000000,
+  "release": {
+    "begin": 13712861297968,
+    "end": 13712861301660,
+    "expected": 1,
+    "inserted": 1
+  },
+  "release_success": true,
+  "session": 1,
+  "stop_reason": 9,
+  "stop_request": 13712859781092
+}

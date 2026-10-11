@@ -1,0 +1,94 @@
+{
+  "schema": "baauto-rs-settings-v1",
+  "hand": {
+    "card_ui_side": "right",
+    "slot_order": "left_to_right",
+    "slot_keys": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+    ],
+    "card_auto_repeat": "ignore",
+    "rects": {
+      "six": {
+        "right": {
+          "x": [
+            0.664,
+            0.91
+          ],
+          "y": [
+            0.781,
+            0.924
+          ],
+          "calibrated": false
+        },
+        "left": {
+          "x": [
+            0.08999999999999997,
+            0.33599999999999997
+          ],
+          "y": [
+            0.781,
+            0.924
+          ],
+          "calibrated": false
+        }
+      },
+      "ten": {
+        "right": {
+          "x": [
+            0.5,
+            0.91
+          ],
+          "y": [
+            0.781,
+            0.924
+          ],
+          "calibrated": false
+        },
+        "left": {
+          "x": [
+            0.08999999999999997,
+            0.5
+          ],
+          "y": [
+            0.781,
+            0.924
+          ],
+          "calibrated": false
+        }
+      }
+    }
+  },
+  "engine": {
+    "max_actions": 64,
+    "queue_capacity": 1024,
+    "max_events_per_round": 64,
+    "max_batches_per_round": 16,
+    "health_period_us": 50000,
+    "hook_time_critical": true,
+    "engine_highest": false,
+    "tail_spin_us": 0
+  },
+  "current_points": "\\\\?\\C:\\BAauto-test\\points\\範例.json",
+  "current_keys": "\\\\?\\C:\\BAauto-test\\keys\\預設按鍵.json",
+  "point_tabs": [
+    "\\\\?\\C:\\BAauto-test\\points\\範例.json"
+  ],
+  "key_tabs": [
+    "\\\\?\\C:\\BAauto-test\\keys\\預設按鍵.json"
+  ],
+  "ui": {
+    "dark": true,
+    "scale": 1.0,
+    "confirm_delete": true,
+    "window_size": [
+      1000.0,
+      660.0
+    ],
+    "selected_tab": 3,
+    "theme": null
+  }
+}

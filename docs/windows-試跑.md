@@ -40,6 +40,8 @@ powershell -ExecutionPolicy Bypass -File tests/windows/M6.ps1
 
 `--data-dir` 是測試用資料夾，裡面會放範本 JSON、settings.json 和 logs，不會動到別的地方。
 
+如果紀錄分頁顯示「全域熱鍵 =Ctrl+F9 註冊失敗」，這時引擎沒有就緒。先關閉占用該組合的程式，或關閉 BAauto、在測試資料夾的預設按鍵 JSON 將 `global_stop.hotkey` 改成另一組未被占用的鍵盤熱鍵，再重開。2026-10-11 原生測試以隔離的 `=Ctrl+Alt+F24` 停止、`=Ctrl+Alt+F23` 錄點完成短程驗證，原本 Ctrl+F9 的占用來源仍待確認；詳見 [實測報告](test-results/windows-20261011/README.md)。
+
 ## 4. 要看的地方
 
 **介面**
