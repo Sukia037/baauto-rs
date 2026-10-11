@@ -62,30 +62,12 @@ powershell -ExecutionPolicy Bypass -File tests/windows/M6.ps1 -Screenshots
 - [ ] 失焦、移動目標視窗、所有等待階段與繁忙GUI時Ctrl+F9均能停止；故障不重播／不自動恢復舊連點，重新Arm前按鍵已放開。
 - [ ] 非全螢幕16:9有警告；不提供視窗／黑邊／內容區校準選項。
 
-## 8小時接收器測試
+## 不做的測試（2026-10-12，使用者決定）
 
-使用一個GUI＋一個引擎，避免另一個bench引擎同時輸出。GUI背景觀測器持續寫 `logs/run-*.csv` 與同名JSON（QPC頻率／lost_records），故障另外存fault CSV／JSON。停止或換session不截斷紀錄；程序重啟會開新檔。寫入錯誤或lost_records>0使這輪證據不能當成完整驗收。
-
-- [ ] 啟動接收器及GUI，保留初始points／keys／settings與Git SHA；同時啟動PresentMon記錄接收器的原始CPUStartQPC（設定與版本見bench-howto）。
-- [ ] 先確認錄點及所有23項；交錯保持／放開牌鍵、連點、卡幀、普通點位，涵蓋資源拒絕與公平服務。
-- [ ] 持續8小時，事先固定隨機種子與排程，隨機切焦點、移動視窗、切兩種檔與六／十人。每次操作寫時間／session／種類，不只測純連點。
-- [ ] 定時測Ctrl+F9、校準／擷取中停止、存檔中停止、故障後明確Arm；確認沒有舊動作自動恢復。
-- [ ] 結束時關閉GUI並等待兩程序結束，再用Alt+F4關閉接收器，確認同名JSON的complete=true且lost_records=0，然後讀完整接收器CSV核對每個合成Down／Up及最終零持有；確認每個run JSON的lost_records=0，無短送／來源缺口／未處理故障。
-- [ ] 用每個run JSON的qpc_frequency執行 `baauto-bench analyze <run.csv> <frequency> <report.md>`；用 `align <PresentMon.csv> <run.csv> <aligned.csv>` 對齊下一幀。跨程序重啟分檔分析再彙總，不能平均各檔P99.9。記錄樣本數、遺失筆數、P99.9、停止分布、CPU、幀時間及任何被排除區段；不足10000筆不能報P99.9。
-- [ ] 依所有原始紀錄評估，零卡鍵／不恢復／完整遺失統計才勾通過；不從少量展示推論8小時穩定。
-
-## 遊戲及實驗定案
-
-- [ ] 正式版在非排名六人內容使用1小時；逐格、普通點位、卡幀、切焦點、切檔、停止均核對，保留版本／模式／校準來源／問題紀錄。
-- [ ] 正式版在非排名十人內容使用1小時，同樣保留證據。
-- [ ] 依M5預先計畫及人工標註、PresentMon、DXGI／高解析度timer、足量樣本產生verified校準結果；確認identity限制相符。
-- [ ] 原生A/B證據通過規格§3才決定非預設優先權／自旋。現在沒有A/B證據，維持Hook TIME_CRITICAL、Engine NORMAL、spin=0，設定讀EngineParams。
+超過20分鐘的測試全部不做：8小時接收器、六人／十人遊戲各1小時、M5足量樣本的verified校準、優先權／自旋A/B實驗。改成平常實際使用時發現問題再回報。範本時間維持「未驗證」標示；Hook TIME_CRITICAL、Engine NORMAL、spin=0 維持預設。
 
 | 實測項目 | 結果／證據路徑 | 狀態 |
 |---|---|---|
 | Windows DPI／覆蓋層／IPC | [逐項補測](test-results/windows-20261011/expanded/README.md)；覆蓋層顯示／逾時和IPC通過，拖拉／儲存／DPI未驗收 | 部分完成 |
 | 真實舊檔對照 | 待填 | 未執行 |
-| 8小時接收器：零卡鍵、lost、P99.9 | 待填 | 未執行 |
-| 六人遊戲1小時 | 待填 | 未執行 |
-| 十人遊戲1小時 | 待填 | 未執行 |
 | M5遊戲校準、滿載A/B | 待填 | 未執行 |

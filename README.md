@@ -8,7 +8,7 @@ Blue Archive PC 版輸入輔助工具的 Rust 重寫版，取代原本的 AutoHo
 - 接收器逐項對照23項預設功能：使用替代全域熱鍵時22項通過，**原始時序的慢卡幀失敗，只送第一組Esc**。原因是第二組Esc的排定時間等於最晚期限；2026-10-12已整組移除晚到上限，第二組Esc一定送出（macOS 156項測試與Windows交叉clippy通過），**尚待Windows重跑接收器確認**。
 - 六人／十人各格牌鍵、左右與反向順序、框外不送鍵、錄點、右鍵／側鍵／Space／Tab擷取通過。這些是測試版本的Windows輸入注入，尚未驗收實體硬體與真實遊戲。
 - 本機Ctrl+F9被其他程式佔用。2026-10-12起熱鍵被佔用時app不會卡住：首頁頂部顯示紅色警告並停用「啟用」，到「預設按鍵」改鍵儲存後立即恢復，不用重開（尚待Windows實機確認）。故障注入5項通過、掛起案例1項仍失敗。
-- 校準覆蓋層顯示、前景切換與逾時已測；拖拉／確認儲存、完整GUI切檔／匯入、Windows DPI、8小時接收器及六人／十人遊戲各1小時仍待驗收。
+- 校準覆蓋層顯示、前景切換與逾時已測；拖拉／確認儲存、完整GUI切檔／匯入、Windows DPI仍待驗收。超過20分鐘的長時間與遊戲測試依使用者決定不做。
 
 完整CSV、測試profile、修正、重跑指令與未測項目見[Windows補測報告](docs/test-results/windows-20261011/expanded/README.md)。正式release已重新建置，不含`test-hooks`／`fault-injection`。
 
@@ -71,7 +71,7 @@ cargo build -p baauto-app
 - [實際介面截圖](docs/screenshots/README.md)：四分頁＋牌鍵詳細、淺深色、三種應用程式縮放，共30張；來源是Linux離線預覽，不能代替Windows DPI／遊戲驗收。
 - [Windows原生截圖](docs/screenshots/windows-20261011-current-dpi/)：10張淺／深色介面，加上校準覆蓋層與錄點候選；目前縮放的截圖不代表100%／150%／200% OS DPI均通過。
 - [最新Windows實測](docs/test-results/windows-20261011/expanded/README.md)：23項接收器對照、各格牌鍵、錄點與擷取；列出失敗與未驗收項目。
-- [M6 Windows 驗收清單](docs/acceptance-m6.md)：錄點、側鍵、停止、8小時接收器與六人／十人各1小時遊戲測試。
+- [M6 Windows 驗收清單](docs/acceptance-m6.md)：錄點、側鍵、停止、校準、切檔與匯入；長時間測試不做。
 - [M6 實作回報](docs/implementation/M6-report.md)：介面、安全界線、依賴、待決定事項及複查位置。
 
 手上的舊點位 JSON、`function_keys.json`、MuMu 設定可用「匯入舊檔／MuMu…」轉換；目前只有合成相容性測試，仍需真實舊檔核對。時序範本保持未驗證；只有 M5 完整證據通過後才能載入已驗證的校準結果。

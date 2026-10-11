@@ -32,4 +32,4 @@ if ($Interactive) {
         Checked 'cargo' @('build','--release','--workspace')
     }
 }
-Write-Host 'Interactive receiver results are separate from real-game, calibration drag/DPI and long-run acceptance. Complete docs/acceptance-m6.md; compilation does not imply those passed.'
+Write-Host 'Interactive receiver results are separate from real-game, calibration drag and DPI checks. Complete docs/acceptance-m6.md; compilation does not imply those passed.'

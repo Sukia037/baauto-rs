@@ -1,6 +1,6 @@
 # M1–M6 提交與驗證總表
 
-GitHub：`Sukia037/baauto-rs`（private）。M1–M6 的來源實作、可攜式測試及 Windows GNU 交叉檢查已完成，每個里程碑保留至少三筆實質提交。**原生 Windows、真實舊檔、遊戲、性能及長時間驗收尚未完成**；各報告列出限制，不以編譯通過代替實測。
+GitHub：`Sukia037/baauto-rs`（private）。M1–M6 的來源實作、可攜式測試及 Windows GNU 交叉檢查已完成，每個里程碑保留至少三筆實質提交。**原生 Windows 與真實舊檔驗收尚未完成；超過20分鐘的遊戲、性能及長時間測試依使用者決定（2026-10-12）不做**；各報告列出限制，不以編譯通過代替實測。
 
 | 里程碑 | 測試／契約 | 功能實作 | 實質修正 | 回報 |
 |---|---|---|---|---|
@@ -27,7 +27,7 @@ M6 四分頁 × 淺深色 × 三種應用程式 zoom 的 24 張原生 macOS GUI 
 | 監督、崩潰／失聯、退出後釋放 | `tests/windows/M3.ps1` | 原生故障注入與 Raw Input 健康 |
 | 原子存檔、匯入、Unicode／長路徑 | `tests/windows/M4.ps1`、真實舊檔 | Windows 檔案系統與使用者樣本 |
 | DXGI／PresentMon／校準／八組 A/B | [bench-howto](../bench-howto.md)、`tests/windows/M5.ps1` | 原生性能／六分類／足量樣本；不產生虛構 verified |
-| GUI、真實 DPI、擷取、23 功能、長測 | [M6 驗收清單](../acceptance-m6.md)、`tests/windows/M6.ps1` | 8 小時接收器、六／十人各 1 小時非排名遊戲 |
+| GUI、真實 DPI、擷取、23 功能、長測 | [M6 驗收清單](../acceptance-m6.md)、`tests/windows/M6.ps1` | 校準拖拉、切檔／匯入、DPI（長時間測試不做） |
 
 目前正式預設維持 Hook TIME_CRITICAL、Engine NORMAL、spin=0。設定範本的時間是未驗證值；原生校準與性能結果沒有完成前，不能聲稱達到遊戲內成功率、延遲分位數或零卡鍵。
 
