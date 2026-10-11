@@ -178,3 +178,28 @@ fn integer_time_conversion_rounds_up() {
     assert!(ticks_ms(f64::INFINITY, TickRate(1)).is_err());
     assert!(ticks_ms(1., TickRate(0)).is_err());
 }
+#[test]
+fn removed_lateness_table_still_loads_and_is_dropped_on_save() {
+    let mut legacy: serde_json::Value =
+        serde_json::from_str(include_str!("../../../keys/預設按鍵.json")).unwrap();
+    legacy["timing"]["allowed_lateness_ms"] = serde_json::json!({
+        "tap_start": null,
+        "repeat_click": null,
+        "card_start": null,
+        "card_click": null,
+        "double_esc_second": 0,
+        "hold_start": null,
+        "card_key_start": null
+    });
+    let k: KeysProfile = from_json(&legacy.to_string()).unwrap();
+    assert_eq!(k, keys());
+    assert!(!to_json(&k).unwrap().contains("allowed_lateness_ms"));
+    legacy["timing"]["unknown_field"] = serde_json::json!(1);
+    assert!(from_json::<KeysProfile>(&legacy.to_string()).is_err());
+}
+#[test]
+fn escape_gaps_are_independent_waits() {
+    let mut k = keys();
+    k.timing.escape_gap_ms = [50., 16.];
+    assert!(check(&points(), &k, &HandSettings::default()).is_ok());
+}

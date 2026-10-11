@@ -13,7 +13,6 @@ fn config(mode: Mode, side: CardUiSide, follow: bool) -> CompiledConfig {
     k.timing.escape_gap_ms = [3., 6.];
     k.timing.card_pre_esc_ms = 2.;
     k.timing.hold_maintain_period_ms = 4.;
-    k.timing.allowed_lateness_ms = LatenessTable::default();
     k.timing.auto_repeat = if follow {
         AutoRepeatPolicy::FollowTypematic
     } else {
@@ -178,14 +177,16 @@ fn short_send_goes_faulted_and_keeps_held() {
     assert!(r.e.held().contains(OutKey::LeftButton));
 }
 #[test]
-fn double_esc_cancels_when_beyond_max_gap() {
+fn slow_double_esc_sends_second_esc_even_when_late() {
     let mut r = Rig::new();
-    r.down(40, 1, p());
+    r.down(38, 1, p());
     r.send(0);
     r.send(2);
-    assert!(r.e.next_batch(Ticks(9)).is_none());
+    assert!(r.e.next_batch(Ticks(7)).is_none());
+    assert_eq!(r.send(50).events.as_slice(), &[OutEvent::KeyDown(Key::ESC)]);
+    assert_eq!(r.send(52).events.as_slice(), &[OutEvent::KeyUp(Key::ESC)]);
     assert_eq!(r.e.active_actions(), 0);
-    assert!(r.e.reports().contains(&Report::LateCancelled));
+    assert!(r.e.held().is_empty());
 }
 #[test]
 fn card_no_trailing_esc_on_focus_loss() {
@@ -550,14 +551,11 @@ fn card_normal_release_finishes_trailing_escape_pulse() {
     assert!(r.e.held().is_empty());
 }
 #[test]
-fn expired_tap_start_cancels_without_down() {
+fn late_tap_start_still_sends_down() {
     let mut r = Rig::new();
-    r.c.timing.stage_lateness[0] = Some(1);
-    r.e = Engine::new(Arc::new(r.c.clone()), TickRate(1000));
-    r.e.arm(SessionId(1), Ticks(0)).unwrap();
     r.down(87, 1, p());
-    assert!(r.e.next_batch(Ticks(2)).is_none());
-    assert!(r.e.reports().contains(&Report::LateCancelled));
+    assert_eq!(r.send(50).events.as_slice(), &[OutEvent::KeyDown(Key(49))]);
+    assert_eq!(r.send(52).events.as_slice(), &[OutEvent::KeyUp(Key(49))]);
     assert!(r.e.held().is_empty());
 }
 #[test]
