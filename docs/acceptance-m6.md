@@ -8,6 +8,8 @@
 
 ## 準備與自動檢查
 
+2026-10-12 自動回歸：在 `4272d3a`，`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test` 均通過（163 passed、0 failed、3 ignored）。本次未執行 all-features、release build 或互動驗收；下方既有勾選沿用先前證據，未將慢卡幀實際送鍵、首頁警告呈現或其他未完成項目改成通過。見 [本次完整結果與略過清單](test-results/windows-20261012/README.md)。
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File tests/windows/M6.ps1
 # 互動桌面：會開接收器，需保持前景；最後重建正式版，移除 test-hooks。

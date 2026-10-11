@@ -15,6 +15,8 @@ M6 另保留 `bfead8a` 修正截圖模式繼承歷史視窗尺寸、`4e3fe50` �
 
 ## 本機驗證
 
+最新補測（2026-10-12）：Windows MSVC、Rust / Cargo 1.99.0，在 `4272d3a` 執行 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test` 均通過；163 passed、0 failed、3 ignored。含晚到動作、舊欄位相容與停止熱鍵佔用的自動回歸；未重跑互動送鍵、故障注入、GUI／DPI或遊戲驗收。詳細略過原因與指令見 [本次測試報告](../test-results/windows-20261012/README.md)。以下 macOS 結果為初次交付紀錄。
+
 環境：macOS、Rust stable 1.99.0、edition 2024。workspace 154 個測試全部通過，fmt、Clippy `-D warnings` 通過；Windows GNU 一般版與 all-features／all-targets Clippy 交叉檢查通過，含 test-hooks 與實驗功能的 Windows 分支。Linux 與 Windows CI 已設置；此表只報告實際本機結果，不宣稱遠端 CI 或 Windows 執行結果。
 
 M6 四分頁 × 淺深色 × 三種應用程式 zoom 的 24 張原生 macOS GUI 截圖及雜湊見[截圖索引](../screenshots/README.md)。這不是 Windows OS DPI 驗收。
