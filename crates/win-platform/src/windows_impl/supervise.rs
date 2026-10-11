@@ -74,6 +74,11 @@ pub struct SupervisorStatus {
     pub detail: String,
     pub records: u64,
 }
+struct PendingTargetView {
+    deadline: baauto_config::Ticks,
+    generation: u64,
+    reply: mpsc::Sender<std::result::Result<[i32; 4], String>>,
+}
 struct Child {
     process: Arc<Process>,
     mapping: Arc<Mapping>,
@@ -236,6 +241,7 @@ pub fn run_supervisor(
         .after(ticks(options.health_timeout_ms.saturating_mul(2)));
     let mut last_status = None;
     let mut last_target = None;
+    let mut target_view: Option<PendingTargetView> = None;
     let mut dump_workers = Vec::new();
     let mut restart = false;
     let mut arm_deadline = None;
@@ -347,27 +353,31 @@ pub fn run_supervisor(
                         }
                     }
                     SupervisorCommand::ViewTarget { reply } => {
-                        let result = (|| -> std::result::Result<[i32; 4], String> {
+                        let result = (|| -> std::result::Result<(), String> {
                             if fsm.state() != State::Disarmed {
                                 return Err("校準需要停止引擎".into());
                             }
-                            if let Some(target) = last_target {
-                                let _ = activate_target(target);
+                            if target_view.is_some() {
+                                return Err("校準正在等待遊戲前景".into());
                             }
-                            let t = target_for_foreground(&options.target)
-                                .map_err(|e| e.to_string())?
+                            let t = last_target
+                                .or(target_for_foreground(&options.target)
+                                    .map_err(|e| e.to_string())?)
                                 .ok_or("請先切回遊戲再校準")?;
-                            if t.warning() {
-                                return Err("遊戲不是全螢幕16:9".into());
-                            }
-                            Ok([
-                                t.monitor.left,
-                                t.monitor.top,
-                                t.monitor.width,
-                                t.monitor.height,
-                            ])
+                            activate_target(t).map_err(|e| e.to_string())
                         })();
-                        let _ = reply.send(result);
+                        if let Err(error) = result {
+                            let _ = reply.send(Err(error));
+                        } else {
+                            // Cross-input-queue SetForegroundWindow completes asynchronously.
+                            // Keep pumping health/stop messages until foreground is observed;
+                            // use the existing control timeout rather than blocking this thread.
+                            target_view = Some(PendingTargetView {
+                                deadline: now.after(ticks(options.health_timeout_ms)),
+                                generation: resume_guard.token(),
+                                reply,
+                            });
+                        }
                     }
                     SupervisorCommand::Quiesce { reply } => {
                         if stop_barriers.len() >= 32 {
@@ -773,6 +783,33 @@ pub fn run_supervisor(
             let target = target_for_foreground(&options.target)?;
             if let Some(t) = target {
                 last_target = Some(t);
+            }
+            if let Some(pending) = &target_view {
+                let result = if fsm.state() != State::Disarmed
+                    || !resume_guard.allows(pending.generation)
+                    || quitting
+                {
+                    Some(Err("校準已取消，保持停止".into()))
+                } else if now >= pending.deadline {
+                    Some(Err("遊戲前景切換逾時，請手動切回遊戲".into()))
+                } else {
+                    target.map(|t| {
+                        if t.warning() {
+                            Err("遊戲不是全螢幕16:9".into())
+                        } else {
+                            Ok([
+                                t.monitor.left,
+                                t.monitor.top,
+                                t.monitor.width,
+                                t.monitor.height,
+                            ])
+                        }
+                    })
+                };
+                if let Some(result) = result {
+                    let pending = target_view.take().unwrap();
+                    let _ = pending.reply.send(result);
+                }
             }
             window.set_target(target.map_or(0, |t| t.hwnd));
             if let Some(c) = &child {
