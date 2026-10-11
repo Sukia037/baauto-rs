@@ -18,3 +18,13 @@ pub fn to_json<T: serde::Serialize>(value: &T) -> Result<String, ConfigError> {
         .map(|s| s + "\n")
         .map_err(|e| ConfigError::new("$", e.to_string()))
 }
+
+pub mod editor;
+pub mod legacy;
+pub mod store;
+pub fn template_points() -> PointSet {
+    from_json(include_str!("../../../points/範例.json")).expect("validated embedded point template")
+}
+pub fn template_keys() -> KeysProfile {
+    from_json(include_str!("../../../keys/預設按鍵.json")).expect("validated embedded key template")
+}

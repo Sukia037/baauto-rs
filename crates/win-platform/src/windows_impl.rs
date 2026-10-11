@@ -20,3 +20,6 @@ pub use managed::*;
 
 mod supervise;
 pub use supervise::*;
+
+mod fs;
+pub use fs::*;
