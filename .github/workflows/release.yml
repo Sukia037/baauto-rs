@@ -21,7 +21,8 @@ jobs:
           Copy-Item target/release/baauto-app.exe, target/release/baauto-engine.exe, README.md $name
           Compress-Archive -Path $name -DestinationPath "$name.zip"
           $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()
-          "$hash  $name.zip" | Out-File -Encoding ascii "$name.zip.sha256"
+          # LF only, so `sha256sum -c` / `shasum -c` also work outside Windows.
+          [IO.File]::WriteAllText("$PWD/$name.zip.sha256", "$hash  $name.zip`n")
       - name: Publish
         shell: pwsh
         env:
