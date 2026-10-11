@@ -2,10 +2,11 @@
 use super::*;
 use baauto_config::{Chord, CompiledConfig};
 use baauto_core::{SessionId, StopReason};
+use baauto_protocol::capture::*;
 use baauto_protocol::{
     ipc::*,
     shm::LedgerSnapshot,
-    supervisor::{Effect, Effects, Event as FsmEvent, State, SupervisorFsm, Timeouts},
+    supervisor::{Effect, Effects, Event as FsmEvent, ResumeGuard, State, SupervisorFsm, Timeouts},
 };
 use std::{
     ffi::OsString,
@@ -20,7 +21,7 @@ pub struct SupervisorOptions {
     pub engine: PathBuf,
     pub target: OsString,
     pub stop_hotkey: Chord,
-    pub record_hotkey: Chord,
+    pub record_hotkey: Option<Chord>,
     pub health_timeout_ms: u64,
     pub recovery_timeout_ms: u64,
     pub logs: PathBuf,
@@ -28,6 +29,22 @@ pub struct SupervisorOptions {
     pub mode: RunMode,
 }
 pub enum SupervisorCommand {
+    Capture {
+        kind: CaptureKind,
+        id: u64,
+        timeout_ms: u32,
+        generation: u64,
+        reply: mpsc::Sender<std::result::Result<EngineToApp, String>>,
+    },
+    ViewTarget {
+        reply: mpsc::Sender<std::result::Result<[i32; 4], String>>,
+    },
+    Quiesce {
+        reply: mpsc::Sender<std::result::Result<u64, String>>,
+    },
+    CancelCapture {
+        through_id: u64,
+    },
     RunTrial {
         trial: Box<TrialSpec>,
         reply: mpsc::Sender<std::result::Result<TrialResult, String>>,
@@ -35,18 +52,22 @@ pub enum SupervisorCommand {
     Inspect {
         reply: mpsc::Sender<(Arc<Mapping>, Arc<Process>)>,
     },
+    EnableAfter {
+        generation: u64,
+    },
     Enable,
     Disable,
     Apply {
         cfg: Arc<CompiledConfig>,
         stop_hotkey: Chord,
-        record_hotkey: Chord,
+        record_hotkey: Option<Chord>,
     },
     Rehook,
     Quit,
 }
 #[derive(Clone, Debug)]
 pub struct SupervisorStatus {
+    pub wanted: bool,
     pub state: State,
     pub session: SessionId,
     pub detail: String,
@@ -213,10 +234,20 @@ pub fn run_supervisor(
         .now()
         .after(ticks(options.health_timeout_ms.saturating_mul(2)));
     let mut last_status = None;
+    let mut last_target = None;
     let mut dump_workers = Vec::new();
     let mut restart = false;
     let mut arm_deadline = None;
     let mut confirm_raw = None;
+    let mut stop_barriers: Vec<(u64, mpsc::Sender<std::result::Result<u64, String>>)> = Vec::new();
+    let mut resume_guard = ResumeGuard::default();
+    let mut release_floor = 0;
+    let mut last_capture_id = 0;
+    let mut cancelled_capture = 0;
+    let mut capture_replies: std::collections::BTreeMap<
+        u64,
+        mpsc::Sender<std::result::Result<EngineToApp, String>>,
+    > = std::collections::BTreeMap::new();
     let mut trial_replies = std::collections::BTreeMap::new();
     child.as_ref().unwrap().send(AppToEngine::Hello {
         cmd_seq: next_seq(&mut seq)?,
@@ -232,6 +263,18 @@ pub fn run_supervisor(
                 wanted = false;
             }
             if window.take_stop() {
+                resume_guard.cancel();
+                cancelled_capture = cancelled_capture.max(last_capture_id);
+                if let Some(c) = &child {
+                    c.send(AppToEngine::CancelRecordPoint {
+                        cmd_seq: next_seq(&mut seq)?,
+                        session,
+                        through_id: last_capture_id,
+                    })?;
+                }
+                for (_, reply) in std::mem::take(&mut capture_replies) {
+                    let _ = reply.send(Err("緊急停止已取消擷取".into()));
+                }
                 wanted = false;
                 let effects = fsm.on(FsmEvent::RequestStop {
                     reason: StopReason::Emergency,
@@ -253,6 +296,110 @@ pub fn run_supervisor(
                     break;
                 };
                 match command {
+                    SupervisorCommand::Capture {
+                        kind,
+                        id,
+                        timeout_ms,
+                        generation,
+                        reply,
+                    } => {
+                        if !resume_guard.allows(generation)
+                            || id <= cancelled_capture
+                            || fsm.state() != State::Disarmed
+                            || !capture_replies.is_empty()
+                        {
+                            let _ = reply.send(Err("capture requires Disarmed".into()));
+                            continue;
+                        }
+                        wanted = false;
+                        released = false;
+                        last_capture_id = id;
+                        let q = next_seq(&mut seq)?;
+                        release_floor = q;
+                        let message = if kind == CaptureKind::Point {
+                            AppToEngine::BeginRecordPoint {
+                                cmd_seq: q,
+                                session,
+                                request_id: id,
+                                timeout_ms,
+                                abort_chord: options.stop_hotkey,
+                            }
+                        } else {
+                            AppToEngine::CaptureNextInput {
+                                cmd_seq: q,
+                                session,
+                                request_id: id,
+                                slot_key: kind == CaptureKind::SlotKey,
+                                timeout_ms,
+                                abort_chord: options.stop_hotkey,
+                            }
+                        };
+                        if let Some(c) = &child {
+                            match c.send(message) {
+                                Ok(()) => {
+                                    capture_replies.insert(q, reply);
+                                }
+                                Err(e) => {
+                                    let _ = reply.send(Err(e.to_string()));
+                                }
+                            }
+                        }
+                    }
+                    SupervisorCommand::ViewTarget { reply } => {
+                        let result = (|| -> std::result::Result<[i32; 4], String> {
+                            if fsm.state() != State::Disarmed {
+                                return Err("校準需要停止引擎".into());
+                            }
+                            if let Some(target) = last_target {
+                                let _ = activate_target(target);
+                            }
+                            let t = target_for_foreground(&options.target)
+                                .map_err(|e| e.to_string())?
+                                .ok_or("請先切回遊戲再校準")?;
+                            if t.warning() {
+                                return Err("遊戲不是全螢幕16:9".into());
+                            }
+                            Ok([
+                                t.monitor.left,
+                                t.monitor.top,
+                                t.monitor.width,
+                                t.monitor.height,
+                            ])
+                        })();
+                        let _ = reply.send(result);
+                    }
+                    SupervisorCommand::Quiesce { reply } => {
+                        if stop_barriers.len() >= 32 {
+                            let _ = reply.send(Err("too many pending stop barriers".into()));
+                            continue;
+                        }
+                        wanted = false;
+                        stop_barriers.push((resume_guard.token(), reply));
+                        let effects = fsm.on(FsmEvent::RequestStop {
+                            reason: StopReason::User,
+                            cmd_seq: next_seq(&mut seq)?,
+                            now,
+                        });
+                        execute_effects(
+                            effects,
+                            &mut child,
+                            &options,
+                            &mut seq,
+                            &mut wanted,
+                            &mut restart,
+                            &mut dump_workers,
+                        )?;
+                    }
+                    SupervisorCommand::CancelCapture { through_id } => {
+                        cancelled_capture = cancelled_capture.max(through_id);
+                        if let Some(c) = &child {
+                            c.send(AppToEngine::CancelRecordPoint {
+                                cmd_seq: next_seq(&mut seq)?,
+                                session,
+                                through_id,
+                            })?;
+                        }
+                    }
                     SupervisorCommand::Inspect { reply } => {
                         if let Some(c) = &child {
                             let _ = reply.send((c.mapping.clone(), c.process.clone()));
@@ -282,8 +429,20 @@ pub fn run_supervisor(
                             }
                         }
                     }
-                    SupervisorCommand::Enable => wanted = true,
+                    SupervisorCommand::EnableAfter { generation } => {
+                        if resume_guard.allows(generation)
+                            && fsm.state() != State::Faulted
+                            && !quitting
+                        {
+                            wanted = true;
+                        }
+                    }
+                    SupervisorCommand::Enable => {
+                        resume_guard.cancel();
+                        wanted = true;
+                    }
                     SupervisorCommand::Disable => {
+                        resume_guard.cancel();
                         wanted = false;
                         let effects = fsm.on(FsmEvent::RequestStop {
                             reason: StopReason::User,
@@ -373,6 +532,49 @@ pub fn run_supervisor(
             }
             for message in received {
                 match message {
+                    message @ EngineToApp::CaptureReady {
+                        session: msg_session,
+                        cmd_seq,
+                        ..
+                    } => {
+                        if msg_session == session
+                            && let Some(reply) = capture_replies.get(&cmd_seq)
+                        {
+                            let _ = reply.send(Ok(message));
+                        }
+                    }
+                    message @ (EngineToApp::PointRecorded {
+                        session: msg_session,
+                        cmd_seq,
+                        ..
+                    }
+                    | EngineToApp::CapturedInput {
+                        session: msg_session,
+                        cmd_seq,
+                        ..
+                    }) => {
+                        if msg_session == session
+                            && matches!(
+                                &message,
+                                EngineToApp::CapturedInput {
+                                    result: CaptureResult {
+                                        outcome: CaptureOutcome::EmergencyStop,
+                                        ..
+                                    },
+                                    ..
+                                }
+                            )
+                        {
+                            resume_guard.cancel();
+                            wanted = false;
+                            cancelled_capture = cancelled_capture.max(last_capture_id);
+                        }
+                        if msg_session == session
+                            && let Some(reply) = capture_replies.remove(&cmd_seq)
+                        {
+                            let _ = reply.send(Ok(message));
+                        }
+                    }
                     EngineToApp::TrialResult {
                         session: s,
                         cmd_seq,
@@ -406,8 +608,11 @@ pub fn run_supervisor(
                     EngineToApp::KeysReleased {
                         session: s,
                         version,
-                        ..
-                    } if s == session && version == options.cfg.version => {
+                        cmd_seq,
+                    } if s == session
+                        && version == options.cfg.version
+                        && cmd_seq >= release_floor =>
+                    {
                         released = true;
                         fsm.on(FsmEvent::KeysReleased {
                             session: s,
@@ -480,6 +685,9 @@ pub fn run_supervisor(
                         cmd_seq,
                         why,
                     } if s == session => {
+                        if let Some(reply) = capture_replies.remove(&cmd_seq) {
+                            let _ = reply.send(Err(why.clone()));
+                        }
                         if let Some(reply) = trial_replies.remove(&cmd_seq) {
                             let _ = reply.send(Err(why.clone()));
                             continue;
@@ -489,6 +697,7 @@ pub fn run_supervisor(
                             session,
                             detail: format!("command {cmd_seq} rejected: {why}"),
                             records: window.record_count(),
+                            wanted,
                         });
                         if matches!(fsm.state(), State::AwaitArm { .. }) {
                             wanted = false;
@@ -560,6 +769,9 @@ pub fn run_supervisor(
                 }
             }
             let target = target_for_foreground(&options.target)?;
+            if let Some(t) = target {
+                last_target = Some(t);
+            }
             window.set_target(target.map_or(0, |t| t.hwnd));
             if let Some(c) = &child {
                 let p = &c.mapping.data().progress;
@@ -670,6 +882,7 @@ pub fn run_supervisor(
                 }
             }
             if wanted
+                && capture_replies.is_empty()
                 && installed
                 && released
                 && target.is_some()
@@ -701,9 +914,23 @@ pub fn run_supervisor(
                     released = false;
                 }
             }
+            if fsm.state() == State::Disarmed {
+                for (token, reply) in stop_barriers.drain(..) {
+                    let _ = reply.send(Ok(token));
+                }
+            }
+            if fsm.state() == State::Faulted {
+                for (_, reply) in stop_barriers.drain(..) {
+                    let _ =
+                        reply.send(Err("engine Faulted; verify recovery before editing".into()));
+                }
+                for (_, reply) in std::mem::take(&mut capture_replies) {
+                    let _ = reply.send(Err("capture interrupted by engine fault".into()));
+                }
+            }
             let state = fsm.state();
-            if last_status != Some(state) {
-                last_status = Some(state);
+            if last_status != Some((state, wanted)) {
+                last_status = Some((state, wanted));
                 let detail = if target.is_none() {
                     "等待遊戲前景與按鍵放開"
                 } else if target.is_some_and(|t| t.warning()) {
@@ -716,6 +943,7 @@ pub fn run_supervisor(
                     session,
                     detail: detail.into(),
                     records: window.record_count(),
+                    wanted,
                 });
             }
             if quitting && matches!(state, State::Disarmed | State::Faulted | State::Booting) {

@@ -1,11 +1,18 @@
 #![forbid(unsafe_code)]
 #[cfg(not(windows))]
 fn main() {
-    eprintln!("baauto-app engine supervision requires Windows.");
+    if let Err(e) = run_gui() {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
 }
 #[cfg(windows)]
 fn main() {
-    if let Err(e) = run() {
+    if let Err(e) = if std::env::args_os().any(|a| a == "--headless") {
+        run()
+    } else {
+        run_gui()
+    } {
         eprintln!("{e}");
         std::process::exit(1);
     }
@@ -112,7 +119,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         stop_hotkey: k.presets["global_stop"]
             .hotkey
             .ok_or("missing emergency hotkey")?,
-        record_hotkey: k.presets["record"].hotkey.ok_or("missing record hotkey")?,
+        record_hotkey: k.presets["record"]
+            .enabled
+            .then_some(k.presets["record"].hotkey)
+            .flatten(),
         health_timeout_ms: health,
         recovery_timeout_ms: recovery,
         logs: PathBuf::from("logs"),
@@ -185,9 +195,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                                 .collect::<Vec<_>>()
                                 .join("\n")
                         })?;
-                        if next_k.presets["global_stop"].hotkey.is_none()
-                            || next_k.presets["record"].hotkey.is_none()
-                        {
+                        if next_k.presets["global_stop"].hotkey.is_none() {
                             return Err("emergency and record hotkeys must be assigned".into());
                         }
                         (p, k, h, params) = (next_p, next_k, next_h, next_params);
@@ -198,7 +206,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     match result {
                         Ok(c) => {
                             match (k.presets["global_stop"].hotkey, k.presets["record"].hotkey) {
-                                (Some(stop_hotkey), Some(record_hotkey)) => {
+                                (Some(stop_hotkey), record_hotkey) => {
                                     Some(SupervisorCommand::Apply {
                                         cfg: c,
                                         stop_hotkey,
@@ -230,4 +238,81 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     drop(tx);
     let _ = status_worker.join();
     outcome.map_err(Into::into)
+}
+
+fn run_gui() -> Result<(), Box<dyn std::error::Error>> {
+    use eframe::egui;
+    // winit 0.30.13 event_loop.rs enables PMv2 before creating windows; explicitly set through safe win-platform wrapper first.
+    #[cfg(windows)]
+    baauto_win_platform::set_dpi_awareness()?;
+    let mut root = std::env::current_exe()?
+        .parent()
+        .ok_or("app directory missing")?
+        .to_path_buf();
+    let mut preview = !cfg!(windows);
+    let mut target = std::ffi::OsString::from("BlueArchive.exe");
+    let mut qa_dir = None;
+    let mut qa_dark = false;
+    let mut qa_scale = 1.0f32;
+    let mut qa_tab = 0u8;
+    let mut args = std::env::args_os().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--preview") => preview = true,
+            Some("--data-dir") => root = args.next().ok_or("data directory missing")?.into(),
+            Some("--target-exe") => target = args.next().ok_or("target executable missing")?,
+            Some("--qa-dir") => {
+                qa_dir = Some(std::path::PathBuf::from(
+                    args.next().ok_or("QA directory missing")?,
+                ))
+            }
+            Some("--qa-dark") => qa_dark = true,
+            Some("--qa-scale") => {
+                qa_scale = args
+                    .next()
+                    .ok_or("scale missing")?
+                    .to_str()
+                    .ok_or("scale invalid")?
+                    .parse()?
+            }
+            Some("--qa-tab") => {
+                qa_tab = args
+                    .next()
+                    .ok_or("tab missing")?
+                    .to_str()
+                    .ok_or("tab invalid")?
+                    .parse()?
+            }
+            Some("--help") => {
+                println!(
+                    "baauto-app [--preview] [--data-dir PATH] [--target-exe EXE]\nUse --headless for console supervision.\nQA: --qa-dir PATH [--qa-dark] [--qa-scale 1|1.5|2] [--qa-tab 0..3]"
+                );
+                return Ok(());
+            }
+            _ => return Err("unknown GUI option; use --headless for console options".into()),
+        }
+    }
+    if qa_tab > 3 || ![1.0, 1.5, 2.0].contains(&qa_scale) {
+        return Err("invalid QA tab/scale".into());
+    }
+    let qa = qa_dir.map(|p| (p, qa_dark, qa_scale, qa_tab));
+    let backend = baauto_app::backend::Backend::start(root, preview, target);
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_title("BAauto")
+            .with_inner_size([960. * qa_scale, 620. * qa_scale])
+            .with_min_inner_size([900., 560.]),
+        renderer: eframe::Renderer::Glow,
+        ..Default::default()
+    };
+    eframe::run_native(
+        "BAauto",
+        options,
+        Box::new(move |cc| {
+            Ok(Box::new(baauto_app::gui::App::new(
+                cc, backend, preview, qa,
+            )))
+        }),
+    )?;
+    Ok(())
 }

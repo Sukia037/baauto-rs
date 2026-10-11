@@ -75,7 +75,7 @@ fn case(rule: &str) {
         engine: bin.join("baauto-engine.exe"),
         target: "baauto-receiver.exe".into(),
         stop_hotkey: k.presets["global_stop"].hotkey.unwrap(),
-        record_hotkey: k.presets["record"].hotkey.unwrap(),
+        record_hotkey: k.presets["record"].hotkey,
         health_timeout_ms: 150,
         recovery_timeout_ms: 100,
         logs: logs.clone(),

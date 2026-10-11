@@ -1,8 +1,10 @@
 use arrayvec::ArrayVec;
+use baauto_config::{Chord, ModsMatch};
 use baauto_config::{CompiledConfig, ConfigVersion, Key, NO_TRIGGER, NormPoint};
 use baauto_core::{
     GeometryVersion, InputEvent, InputKind, OutEvent, OutKey, PressId, SessionId, StopReason, Ticks,
 };
+use baauto_protocol::capture::*;
 #[derive(Clone, Copy, Debug)]
 pub enum RawKind {
     Key { key: Key, down: bool },
@@ -33,6 +35,7 @@ pub struct Decision {
     pub stop: Option<StopReason>,
     pub events: ArrayVec<InputEvent, 257>,
     pub physical: bool,
+    pub capture: Option<CaptureResult>,
 }
 impl Default for Decision {
     fn default() -> Self {
@@ -41,6 +44,7 @@ impl Default for Decision {
             stop: None,
             events: ArrayVec::new(),
             physical: false,
+            capture: None,
         }
     }
 }
@@ -57,6 +61,8 @@ pub struct HookState {
     pub marker: usize,
     seq: u64,
     press: u32,
+    capture: Option<CaptureRequest>,
+    capture_pairs: [bool; 256],
 }
 impl HookState {
     pub fn new(cfg: &CompiledConfig, marker: usize) -> Self {
@@ -73,6 +79,37 @@ impl HookState {
             marker,
             seq: 0,
             press: 0,
+            capture: None,
+            capture_pairs: [false; 256],
+        }
+    }
+    pub fn begin_capture(&mut self, request: CaptureRequest) -> Result<(), CaptureError> {
+        if self.armed {
+            return Err(CaptureError::Armed);
+        }
+        if self.capture.is_some() || self.capture_pairs.iter().any(|p| *p) {
+            return Err(CaptureError::Busy);
+        }
+        if request.id == 0 || request.deadline.0 == 0 {
+            return Err(CaptureError::InvalidRequest);
+        }
+        self.capture = Some(request);
+        Ok(())
+    }
+    pub fn cancel_capture(&mut self) -> Option<CaptureResult> {
+        self.capture.take().map(|c| CaptureResult {
+            id: c.id,
+            outcome: CaptureOutcome::Cancelled,
+        })
+    }
+    pub fn expire_capture(&mut self, now: Ticks) -> Option<CaptureResult> {
+        if self.capture.is_some_and(|c| now >= c.deadline) {
+            self.capture.take().map(|c| CaptureResult {
+                id: c.id,
+                outcome: CaptureOutcome::TimedOut,
+            })
+        } else {
+            None
         }
     }
     pub fn seed_physical(&mut self, physical: [bool; 256]) {
@@ -85,6 +122,8 @@ impl HookState {
             .enumerate()
             .all(|(i, held)| !*held || !related[i])
             && self.pairs.iter().all(Option::is_none)
+            && self.capture.is_none()
+            && self.capture_pairs.iter().all(|p| !p)
     }
     pub fn arm(&mut self, s: SessionId, cfg: &CompiledConfig) -> bool {
         if self.armed || s.0 <= self.session.0 || !self.keys_released(cfg) {
@@ -131,8 +170,12 @@ impl HookState {
         }
     }
     pub fn focus(&mut self, focused: bool, at: Ticks) -> Decision {
+        let lost = self.focused && !focused;
         self.focused = focused;
         let mut d = Decision::default();
+        if lost && self.capture.is_some_and(|r| r.kind == CaptureKind::Point) {
+            d.capture = self.cancel_capture();
+        }
         if !focused && self.armed {
             self.emit(
                 &mut d,
@@ -173,6 +216,72 @@ impl HookState {
         }
         d.physical = true;
         let mods = self.mods();
+        d.capture = self.expire_capture(raw.at);
+        if self.capture_pairs[i] {
+            d.swallow = true;
+            if !down {
+                self.capture_pairs[i] = false;
+            }
+            return d;
+        }
+        if down
+            && !repeat
+            && let Some(capture) = self.capture
+        {
+            let modifier = matches!(key.0,16..=18|91|92|160..=165);
+            if capture.kind == CaptureKind::Point
+                && key.0 != 27
+                && key != Key::LEFT
+                && !capture
+                    .abort_chord
+                    .is_some_and(|c| c.key == key && c.matches(mods))
+            {
+                return d;
+            }
+            self.capture_pairs[i] = true;
+            d.swallow = true;
+            if modifier {
+                return d;
+            }
+            let outcome = if capture
+                .abort_chord
+                .is_some_and(|c| c.key == key && c.matches(mods))
+            {
+                CaptureOutcome::EmergencyStop
+            } else {
+                match key.0 {
+                    27 => CaptureOutcome::Cancelled,
+                    8 if capture.kind != CaptureKind::Point => {
+                        if capture.kind == CaptureKind::SlotKey {
+                            CaptureOutcome::InvalidSlot
+                        } else {
+                            CaptureOutcome::Cleared
+                        }
+                    }
+                    1 if capture.kind == CaptureKind::Point => {
+                        if self.focused && raw.inside_window && raw.cursor.valid() {
+                            CaptureOutcome::Point(raw.cursor)
+                        } else {
+                            CaptureOutcome::NotForeground
+                        }
+                    }
+                    1 => CaptureOutcome::RejectedLeft,
+                    _ if capture.kind == CaptureKind::SlotKey && key.is_mouse() => {
+                        CaptureOutcome::InvalidSlot
+                    }
+                    _ => CaptureOutcome::Chord(Chord {
+                        key,
+                        mods: ModsMatch::AtLeast(mods),
+                    }),
+                }
+            };
+            self.capture = None;
+            d.capture = Some(CaptureResult {
+                id: capture.id,
+                outcome,
+            });
+            return d;
+        }
         if !down {
             if let Some(pair) = self.pairs[i].take() {
                 d.swallow = true;

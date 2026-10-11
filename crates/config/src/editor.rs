@@ -165,6 +165,12 @@ impl KeysEditor {
         enabled: bool,
         exact: bool,
     ) -> Result<bool, EditError> {
+        if role == "global_stop" && (!enabled || hotkey.is_none()) {
+            return Err(ConfigError::new(
+                "$.presets.global_stop",
+                "緊急停止必須啟用並設定熱鍵",
+            ));
+        }
         let preset = self
             .document
             .presets
@@ -283,4 +289,48 @@ impl HandEditor {
 }
 pub fn analyze(points: &PointSet, keys: &KeysProfile) -> ConflictAnalysis {
     analyze_conflicts(points, keys)
+}
+
+impl KeysEditor {
+    pub fn reset_all(&mut self) {
+        self.document.presets = template_keys().presets;
+    }
+    pub fn install_calibrated_timing(&mut self, timing: TimingProfile) -> Result<(), EditError> {
+        if timing.source != ProfileSource::Calibrated || !timing.verified {
+            return Err(ConfigError::new("$.timing", "校準結果尚未驗證"));
+        }
+        let mut proposed = self.document.clone();
+        proposed.timing = timing;
+        crate::store::Document::Keys(Box::new(proposed.clone())).validate()?;
+        self.document = proposed;
+        Ok(())
+    }
+}
+impl HandEditor {
+    pub fn mirror(&mut self, mode: Mode, side: CardUiSide) -> Result<bool, EditError> {
+        let mut view = self.document.clone();
+        view.card_ui_side = side;
+        let r = view.layout(mode);
+        let other = if side == CardUiSide::Right {
+            CardUiSide::Left
+        } else {
+            CardUiSide::Right
+        };
+        self.set_hand_rect(
+            mode,
+            other,
+            HandRect {
+                x: [1. - r.x[1], 1. - r.x[0]],
+                calibrated: false,
+                ..r
+            },
+        )
+    }
+    pub fn reset_layout(&mut self, mode: Mode, side: CardUiSide) -> Result<bool, EditError> {
+        let defaults = HandSettings {
+            card_ui_side: side,
+            ..Default::default()
+        };
+        self.set_hand_rect(mode, side, defaults.layout(mode))
+    }
 }

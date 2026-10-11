@@ -2,56 +2,102 @@ use baauto_app::state::*;
 use baauto_config::{store::FileKind, *};
 #[test]
 fn switching_one_json_requires_stop_and_preserves_other_dirty_document() {
-    let mut s=FileFlow::default();
-    s.points_dirty=true;
-    s.keys_dirty=true;
-    s.armed=true;
-    assert_eq!(s.request(FileKind::Points,"other.json".into()),Step::AskUnsaved);
-    assert_eq!(s.choose(UnsavedChoice::Save,true),Step::Stop);
-    assert_eq!(s.stopped(),Step::Save(FileKind::Points));
-    assert_eq!(s.saved(true),Step::Load(FileKind::Points,"other.json".into()));
-    assert_eq!(s.loaded(true),Step::Apply);
-    assert_eq!(s.installed(),Step::WaitReleased);
-    assert_eq!(s.keys_released(),Step::Arm);
+    let mut s = FileFlow::default();
+    s.points_dirty = true;
+    s.keys_dirty = true;
+    s.armed = true;
+    assert_eq!(
+        s.request(FileKind::Points, "other.json".into()),
+        Step::AskUnsaved
+    );
+    assert_eq!(s.choose(UnsavedChoice::Save, true), Step::Stop);
+    assert_eq!(s.stopped(), Step::Save(FileKind::Points));
+    assert_eq!(
+        s.saved(true),
+        Step::Load(FileKind::Points, "other.json".into())
+    );
+    assert_eq!(s.loaded(true), Step::Apply);
+    assert_eq!(s.installed(), Step::WaitReleased);
+    assert_eq!(s.keys_released(), Step::Arm);
     assert!(s.keys_dirty);
     assert!(!s.points_dirty);
 }
 #[test]
 fn invalid_save_cancel_and_failed_worker_never_arm() {
-    let mut s=FileFlow{keys_dirty:true,armed:true,..Default::default()};
-    assert_eq!(s.request(FileKind::Keys,"new.json".into()),Step::AskUnsaved);
-    assert_eq!(s.choose(UnsavedChoice::Save,false),Step::AskUnsaved);
-    assert_eq!(s.choose(UnsavedChoice::Cancel,false),Step::Idle);
-    s.request(FileKind::Keys,"new.json".into());
-    assert_eq!(s.choose(UnsavedChoice::Discard,true),Step::Stop);
-    assert!(matches!(s.stopped(),Step::Load(FileKind::Keys,_)));
-    assert_eq!(s.loaded(false),Step::Failed);
-    assert_eq!(s.keys_released(),Step::Idle);
+    let mut s = FileFlow::default();
+    s.keys_dirty = true;
+    s.armed = true;
+    assert_eq!(
+        s.request(FileKind::Keys, "new.json".into()),
+        Step::AskUnsaved
+    );
+    assert_eq!(s.choose(UnsavedChoice::Save, false), Step::AskUnsaved);
+    assert_eq!(s.choose(UnsavedChoice::Cancel, false), Step::Idle);
+    s.request(FileKind::Keys, "new.json".into());
+    assert_eq!(s.choose(UnsavedChoice::Discard, true), Step::Stop);
+    assert!(matches!(s.stopped(), Step::Load(FileKind::Keys, _)));
+    assert_eq!(s.loaded(false), Step::Failed);
+    assert_eq!(s.keys_released(), Step::Idle);
 }
 #[test]
 fn conflict_sort_selection_and_button_conditions_use_item_ids() {
-    let mut p=template_points();
-    let mut k=template_keys();
-    p.items=vec![PointItem{id:7,name:"same".into(),hotkey:Some("F12".parse().unwrap()),function:PointFunction::Card,x:None,y:None},PointItem{id:9,name:"same".into(),hotkey:Some("W".parse().unwrap()),function:PointFunction::Card,x:None,y:None}];
-    assert_eq!(sorted_item_ids(&p,&k)[0],9);
-    assert!(can_save_keys(&p,&k));
-    let chord=k.presets["global_stop"].hotkey;
-    k.presets.get_mut("record").unwrap().hotkey=chord;
-    assert!(!can_save_keys(&p,&k));
-    assert_eq!(selected_item(&p,7).unwrap().id,7);
-    assert!(selected_item(&p,8).is_none());
+    let mut p = template_points();
+    let mut k = template_keys();
+    p.items = vec![
+        PointItem {
+            id: 7,
+            name: "same".into(),
+            hotkey: Some("F12".parse().unwrap()),
+            function: PointFunction::Card,
+            x: None,
+            y: None,
+        },
+        PointItem {
+            id: 9,
+            name: "same".into(),
+            hotkey: Some("W".parse().unwrap()),
+            function: PointFunction::Card,
+            x: None,
+            y: None,
+        },
+    ];
+    assert_eq!(sorted_item_ids(&p, &k)[0], 9);
+    assert!(can_save_keys(&p, &k));
+    let chord = k.presets["global_stop"].hotkey;
+    k.presets.get_mut("record").unwrap().hotkey = chord;
+    assert!(!can_save_keys(&p, &k));
+    assert_eq!(selected_item(&p, 7).unwrap().id, 7);
+    assert!(selected_item(&p, 8).is_none());
 }
 #[test]
 fn calibration_drag_mirror_and_center_pair_validate_boundaries() {
-    let r=HandRect{x:[0.6,0.9],y:[0.7,0.9],calibrated:false};
-    let mirrored=mirror_rect(r);
-    assert!((mirrored.x[0]-0.1).abs()<1e-12);
-    assert_eq!(mirrored.y,r.y);
-    assert!(drag_corner(r,Corner::TopLeft,NormPoint{x:0.95,y:0.8}).is_err());
-    let moved=drag_corner(r,Corner::TopLeft,NormPoint{x:0.5,y:0.6}).unwrap();
+    let r = HandRect {
+        x: [0.6, 0.9],
+        y: [0.7, 0.9],
+        calibrated: false,
+    };
+    let mirrored = mirror_rect(r);
+    assert!((mirrored.x[0] - 0.1).abs() < 1e-12);
+    assert_eq!(mirrored.y, r.y);
+    assert!(drag_corner(r, Corner::TopLeft, NormPoint { x: 0.95, y: 0.8 }).is_err());
+    let moved = drag_corner(r, Corner::TopLeft, NormPoint { x: 0.5, y: 0.6 }).unwrap();
     assert!(moved.calibrated && moved.valid());
-    let centers=rect_from_centers(NormPoint{x:0.65,y:0.8},NormPoint{x:0.85,y:0.8},3,0.2).unwrap();
-    assert!((centers.x[0]-0.6).abs()<1e-12);
-    assert!((centers.x[1]-0.9).abs()<1e-12);
-    assert!(rect_from_centers(NormPoint{x:0.9,y:0.8},NormPoint{x:0.1,y:0.8},5,0.2).is_err());
+    let centers = rect_from_centers(
+        NormPoint { x: 0.65, y: 0.8 },
+        NormPoint { x: 0.85, y: 0.8 },
+        3,
+        0.2,
+    )
+    .unwrap();
+    assert!((centers.x[0] - 0.6).abs() < 1e-12);
+    assert!((centers.x[1] - 0.9).abs() < 1e-12);
+    assert!(
+        rect_from_centers(
+            NormPoint { x: 0.9, y: 0.8 },
+            NormPoint { x: 0.1, y: 0.8 },
+            5,
+            0.2
+        )
+        .is_err()
+    );
 }

@@ -348,3 +348,16 @@ fn fsm_expired_hook_credit_cannot_hide_removal() {
     assert!(matches!(f.state(), State::Stopping { fault: true, .. }));
     assert!(f.requires_confirmation());
 }
+
+#[test]
+fn resume_guard_rejects_continuation_after_emergency_or_manual_stop() {
+    let mut gate = baauto_protocol::supervisor::ResumeGuard::default();
+    let token = gate.token();
+    assert!(gate.allows(token));
+    gate.cancel();
+    assert!(!gate.allows(token));
+    let next = gate.token();
+    assert!(gate.allows(next));
+    gate.cancel();
+    assert!(!gate.allows(next));
+}

@@ -159,8 +159,9 @@ fn options(
             .hotkey
             .ok_or("emergency hotkey missing")?,
         record_hotkey: keys.presets["record"]
-            .hotkey
-            .ok_or("record hotkey missing")?,
+            .enabled
+            .then_some(keys.presets["record"].hotkey)
+            .flatten(),
         health_timeout_ms: 1000,
         recovery_timeout_ms: 1000,
         logs: bench.output.join("faults"),

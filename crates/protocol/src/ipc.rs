@@ -1,10 +1,11 @@
 //! Bounded diagnostic IPC. JSON allocation happens only on background/control threads.
 #![forbid(unsafe_code)]
+use crate::capture::*;
 use baauto_config::*;
 pub use baauto_core::{RunMode, TrialError};
 use baauto_core::{SessionId, StopReason};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 pub const MAX_FRAME: usize = 1024 * 1024;
 #[derive(Debug, thiserror::Error)]
 pub enum IpcError {
@@ -70,6 +71,26 @@ pub enum AppToEngine {
         stop_event: u64,
         mode: RunMode,
     },
+    BeginRecordPoint {
+        cmd_seq: u64,
+        session: SessionId,
+        request_id: u64,
+        timeout_ms: u32,
+        abort_chord: Chord,
+    },
+    CancelRecordPoint {
+        cmd_seq: u64,
+        session: SessionId,
+        through_id: u64,
+    },
+    CaptureNextInput {
+        cmd_seq: u64,
+        session: SessionId,
+        request_id: u64,
+        slot_key: bool,
+        timeout_ms: u32,
+        abort_chord: Chord,
+    },
     RunTrial {
         cmd_seq: u64,
         session: SessionId,
@@ -93,7 +114,10 @@ pub enum AppToEngine {
 impl AppToEngine {
     pub fn cmd_seq(&self) -> u64 {
         match self {
-            Self::Hello { cmd_seq, .. }
+            Self::BeginRecordPoint { cmd_seq, .. }
+            | Self::CancelRecordPoint { cmd_seq, .. }
+            | Self::CaptureNextInput { cmd_seq, .. }
+            | Self::Hello { cmd_seq, .. }
             | Self::ApplyConfig { cmd_seq, .. }
             | Self::RunTrial { cmd_seq, .. }
             | Self::Arm { cmd_seq, .. }
@@ -107,6 +131,24 @@ impl AppToEngine {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data", deny_unknown_fields)]
 pub enum EngineToApp {
+    CaptureReady {
+        session: SessionId,
+        cmd_seq: u64,
+        request_id: u64,
+    },
+    PointRecorded {
+        session: SessionId,
+        cmd_seq: u64,
+        request_id: u64,
+        screen_pos: [i32; 2],
+        monitor: [i32; 4],
+        geometry: u32,
+    },
+    CapturedInput {
+        session: SessionId,
+        cmd_seq: u64,
+        result: CaptureResult,
+    },
     TrialResult {
         session: SessionId,
         cmd_seq: u64,

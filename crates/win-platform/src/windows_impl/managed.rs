@@ -2,6 +2,7 @@
 use super::*;
 use baauto_config::CompiledConfig;
 use baauto_core::{GeometryVersion, SessionId, StopReason};
+use baauto_protocol::capture::*;
 use baauto_protocol::ipc::*;
 use rtrb::RingBuffer;
 use std::{ffi::OsStr, sync::Arc};
@@ -51,6 +52,8 @@ pub fn run_managed(shm: &str, pipe: &str, parent_pid: u32, target_exe: &OsStr) -
             .session
             .load(std::sync::atomic::Ordering::SeqCst),
     );
+    let mut capture_pending: Option<(u64, CaptureRequest)> = None;
+    let mut capture_active: Option<(u64, u64)> = None;
     let mut last_cmd = 0;
     let mut hello = false;
     let mut stop_reply = None;
@@ -67,6 +70,55 @@ pub fn run_managed(shm: &str, pipe: &str, parent_pid: u32, target_exe: &OsStr) -
             if lost {
                 let _ = stop.set();
                 shutdown = true;
+            }
+            if engine.is_none()
+                && let Some((_, request)) = capture_pending
+                && clock.now() < request.deadline
+                && let Some(mut target) = target_for_foreground(target_exe)?
+                && let (Some(h), Some(c)) = (&hook, &cfg)
+            {
+                geometry = geometry
+                    .checked_add(1)
+                    .ok_or_else(|| failure("geometry exhausted"))?;
+                target.geometry = GeometryVersion(geometry);
+                h.install(c.clone(), target)?;
+                capture_pending = None;
+            }
+            if let Some(h) = hook.as_mut() {
+                while let Some((result, target)) = h.capture_result() {
+                    if let Some((seq, id)) = capture_active
+                        && id == result.id
+                    {
+                        if let CaptureOutcome::Point(p) = result.outcome {
+                            let (x, y) = target
+                                .monitor
+                                .pixel(p)
+                                .ok_or_else(|| failure("invalid recorded point geometry"))?;
+                            io.send(EngineToApp::PointRecorded {
+                                session,
+                                cmd_seq: seq,
+                                request_id: id,
+                                screen_pos: [x, y],
+                                monitor: [
+                                    target.monitor.left,
+                                    target.monitor.top,
+                                    target.monitor.width,
+                                    target.monitor.height,
+                                ],
+                                geometry: target.geometry.0,
+                            })?;
+                        } else {
+                            io.send(EngineToApp::CapturedInput {
+                                session,
+                                cmd_seq: seq,
+                                result,
+                            })?;
+                        }
+                        capture_active = None;
+                        capture_pending = None;
+                        keys_notified = false;
+                    }
+                }
             }
             if let Some(e) = engine.as_mut() {
                 while let Some(result) = e.trial_result() {
@@ -171,6 +223,19 @@ pub fn run_managed(shm: &str, pipe: &str, parent_pid: u32, target_exe: &OsStr) -
                             })?;
                             continue;
                         }
+                        if let Some((q, request)) = capture_pending.take() {
+                            io.send(EngineToApp::CapturedInput {
+                                session,
+                                cmd_seq: q,
+                                result: CaptureResult {
+                                    id: request.id,
+                                    outcome: CaptureOutcome::Cancelled,
+                                },
+                            })?;
+                        }
+                        if let Some(h) = &hook {
+                            h.cancel_capture()?;
+                        }
                         pending = Some((Arc::new(installed), seq));
                         keys_notified = false;
                         if engine.is_some() {
@@ -187,6 +252,8 @@ pub fn run_managed(shm: &str, pipe: &str, parent_pid: u32, target_exe: &OsStr) -
                         let new_stop = Arc::new(Event::take_transferred(stop_event)?);
                         let target = target_for_foreground(target_exe)?;
                         if engine.is_some()
+                            || capture_pending.is_some()
+                            || capture_active.is_some()
                             || pending.is_some()
                             || new_session.0 <= session.0
                             || !mapping.data().header.valid(new_session)
@@ -252,6 +319,98 @@ pub fn run_managed(shm: &str, pipe: &str, parent_pid: u32, target_exe: &OsStr) -
                             session,
                             cmd_seq: seq,
                         })?;
+                    }
+                    AppToEngine::BeginRecordPoint {
+                        session: requested,
+                        request_id,
+                        timeout_ms,
+                        abort_chord,
+                        ..
+                    }
+                    | AppToEngine::CaptureNextInput {
+                        session: requested,
+                        request_id,
+                        timeout_ms,
+                        abort_chord,
+                        ..
+                    } => {
+                        let kind = match command {
+                            AppToEngine::BeginRecordPoint { .. } => CaptureKind::Point,
+                            AppToEngine::CaptureNextInput { slot_key: true, .. } => {
+                                CaptureKind::SlotKey
+                            }
+                            _ => CaptureKind::Hotkey,
+                        };
+                        keys_notified = false;
+                        if requested != session
+                            || engine.is_some()
+                            || pending.is_some()
+                            || hook.is_none()
+                            || capture_pending.is_some()
+                            || capture_active.is_some()
+                            || request_id == 0
+                            || !(1..=60_000).contains(&timeout_ms)
+                        {
+                            io.send(EngineToApp::Rejected {
+                                session,
+                                cmd_seq: seq,
+                                why:
+                                    "capture requires Disarmed, one request and timeout 1..60000ms"
+                                        .into(),
+                            })?;
+                            continue;
+                        }
+                        let request = CaptureRequest {
+                            id: request_id,
+                            kind,
+                            abort_chord: Some(abort_chord),
+                            deadline: clock
+                                .now()
+                                .after(u64::from(timeout_ms) * clock.rate.0 / 1000),
+                        };
+                        keys_notified = false;
+                        match hook.as_ref().unwrap().begin_capture(request) {
+                            Ok(()) => {
+                                capture_active = Some((seq, request_id));
+                                io.send(EngineToApp::CaptureReady {
+                                    session,
+                                    cmd_seq: seq,
+                                    request_id,
+                                })?;
+                                if kind == CaptureKind::Point {
+                                    capture_pending = Some((seq, request));
+                                }
+                            }
+                            Err(e) => {
+                                io.send(EngineToApp::Rejected {
+                                    session,
+                                    cmd_seq: seq,
+                                    why: e.to_string(),
+                                })?;
+                            }
+                        }
+                    }
+                    AppToEngine::CancelRecordPoint {
+                        session: requested,
+                        through_id,
+                        ..
+                    } => {
+                        if requested != session {
+                            io.send(EngineToApp::Rejected {
+                                session,
+                                cmd_seq: seq,
+                                why: "stale capture session".into(),
+                            })?;
+                            continue;
+                        }
+                        if capture_pending.is_some_and(|(_, r)| r.id <= through_id) {
+                            capture_pending = None;
+                        }
+                        if capture_active.is_some_and(|(_, id)| id <= through_id)
+                            && let Some(h) = &hook
+                        {
+                            h.cancel_capture()?;
+                        }
                     }
                     AppToEngine::RunTrial {
                         session: trial_session,
@@ -409,6 +568,8 @@ pub fn run_managed(shm: &str, pipe: &str, parent_pid: u32, target_exe: &OsStr) -
                 keys_notified = false;
             }
             if engine.is_none()
+                && capture_pending.is_none()
+                && capture_active.is_none()
                 && !keys_notified
                 && let (Some(h), Some(c)) = (&hook, &cfg)
                 && h.keys_released()?

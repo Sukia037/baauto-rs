@@ -64,6 +64,15 @@ pub struct UiPreferences {
     pub dark: bool,
     pub scale: f32,
     pub confirm_delete: bool,
+    #[serde(default = "default_window_size")]
+    pub window_size: [f32; 2],
+    #[serde(default)]
+    pub selected_tab: u8,
+    #[serde(default)]
+    pub theme: Option<bool>,
+}
+fn default_window_size() -> [f32; 2] {
+    [960., 620.]
 }
 impl Default for UiPreferences {
     fn default() -> Self {
@@ -71,6 +80,9 @@ impl Default for UiPreferences {
             dark: true,
             scale: 1.,
             confirm_delete: true,
+            window_size: default_window_size(),
+            selected_tab: 0,
+            theme: None,
         }
     }
 }
@@ -108,6 +120,12 @@ impl Settings {
         if self.point_tabs.is_empty()
             || self.key_tabs.is_empty()
             || !self.ui.scale.is_finite()
+            || self.ui.selected_tab > 3
+            || self
+                .ui
+                .window_size
+                .iter()
+                .any(|s| !s.is_finite() || *s < 100. || *s > 10000.)
             || !(0.5..=3.).contains(&self.ui.scale)
         {
             return Err(ConfigError::new("$.settings", "invalid tabs or UI scale"));
@@ -587,6 +605,25 @@ impl<F: FsBackend> FileStore<F> {
             let s: Settings = from_json(t)?;
             s.validate()
         })
+    }
+    pub fn save_import_report(&self, report: &ImportReport) -> Result<PathBuf, ConfigError> {
+        let dir = self.root.join("logs");
+        fs::create_dir_all(&dir).map_err(|e| file_error(&dir, e))?;
+        let mut index = 1_u64;
+        let path = loop {
+            let candidate = dir.join(format!("import-{index:04}.json"));
+            if !candidate.exists() {
+                break candidate;
+            }
+            index = index
+                .checked_add(1)
+                .ok_or_else(|| file_error(&dir, "report sequence exhausted"))?;
+        };
+        atomic_text(&self.backend, &path, &to_json(report)?, |text| {
+            from_json::<ImportReport>(text)?;
+            Ok(())
+        })?;
+        Ok(path)
     }
     pub fn import_legacy(
         &self,

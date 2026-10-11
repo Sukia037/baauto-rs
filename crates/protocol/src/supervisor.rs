@@ -385,3 +385,25 @@ impl SupervisorFsm {
         effects
     }
 }
+
+/// Prevents a completed background operation from undoing a later explicit stop.
+#[derive(Default)]
+pub struct ResumeGuard {
+    epoch: u64,
+    exhausted: bool,
+}
+impl ResumeGuard {
+    pub fn token(&self) -> u64 {
+        self.epoch
+    }
+    pub fn cancel(&mut self) {
+        if let Some(next) = self.epoch.checked_add(1) {
+            self.epoch = next;
+        } else {
+            self.exhausted = true;
+        }
+    }
+    pub fn allows(&self, token: u64) -> bool {
+        !self.exhausted && token == self.epoch
+    }
+}

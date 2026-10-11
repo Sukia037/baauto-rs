@@ -5,6 +5,7 @@ use crate::{
 };
 use baauto_config::{CompiledConfig, Key};
 use baauto_core::*;
+use baauto_protocol::capture::*;
 use baauto_protocol::{
     ipc::{RunMode, TrialOutcome, TrialResult, TrialSpec},
     shm::{LogData, RingReader},
@@ -130,9 +131,19 @@ struct HookRuntime {
     target: Target,
     clock: Clock,
     related: [bool; 256],
+    captures: Producer<(CaptureResult, Target)>,
 }
 impl HookRuntime {
+    fn capture_result(&mut self, result: CaptureResult) {
+        if self.captures.push((result, self.target)).is_err() {
+            self.state.invalidate();
+            let _ = self.stop.set();
+        }
+    }
     fn deliver(&mut self, d: Decision) {
+        if let Some(result) = d.capture {
+            self.capture_result(result);
+        }
         if d.physical {
             self.mapping
                 .data()
@@ -389,6 +400,11 @@ unsafe extern "system" fn focus_event(
                         || monitor.rcMonitor.bottom - monitor.rcMonitor.top
                             != rt.target.monitor.height;
                     if geometry_changed {
+                        let result = rt.state.cancel_capture();
+                        rt.deliver(Decision {
+                            capture: result,
+                            ..Default::default()
+                        });
                         rt.state.geometry.0 = rt.state.geometry.0.saturating_add(1);
                         rt.state.invalidate();
                         rt.mapping.data().progress.stop_reason.store(4, SeqCst);
@@ -418,11 +434,17 @@ enum HookCommand {
         stop: Arc<Event>,
         reply: mpsc::Sender<bool>,
     },
+    BeginCapture(
+        CaptureRequest,
+        mpsc::Sender<std::result::Result<(), CaptureError>>,
+    ),
+    CancelCapture,
     Disarm,
     Released(mpsc::Sender<bool>),
     Shutdown,
 }
 pub struct HookThread {
+    captures: Consumer<(CaptureResult, Target)>,
     thread_id: u32,
     commands: mpsc::Sender<HookCommand>,
     join: Option<thread::JoinHandle<Result<()>>>,
@@ -439,11 +461,13 @@ impl HookThread {
             clock,
             ..
         } = context;
+        let (captures_tx, captures) = RingBuffer::new(32);
         let (commands, rx) = mpsc::channel();
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let join = thread::spawn(move || {
             let mut rt = Box::new(HookRuntime {
                 state: HookState::new(&cfg, marker),
+                captures: captures_tx,
                 related: cfg.related_keys(),
                 cfg,
                 producer,
@@ -536,8 +560,13 @@ impl HookThread {
             let id = unsafe { GetCurrentThreadId() };
             #[cfg(feature = "fault-injection")]
             crate::fault::HOOK_THREAD.store(id, SeqCst);
+            // SAFETY: Thread timer posts WM_TIMER to this initialized message queue; no callback or borrowed storage. It only expires UI capture modes.
+            let capture_timer = unsafe { SetTimer(None, 0, 100, None) };
             let _ = ready_tx.send(id);
             let result = (|| {
+                if capture_timer == 0 {
+                    return Err(windows::core::Error::from_thread());
+                }
                 let mut msg = MSG::default();
                 loop {
                     // SAFETY: Valid initialized MSG storage; no borrowed pointer escapes the call. This wait is on the Hook message loop, outside callbacks.
@@ -547,6 +576,12 @@ impl HookThread {
                     }
                     if status == 0 {
                         break;
+                    }
+                    if msg.message == WM_TIMER && msg.wParam.0 == capture_timer {
+                        if let Some(result) = rt.state.expire_capture(rt.clock.now()) {
+                            rt.capture_result(result);
+                        }
+                        continue;
                     }
                     if msg.message == WM_PROBE {
                         #[cfg(feature = "fault-injection")]
@@ -646,6 +681,14 @@ impl HookThread {
                                 HookCommand::Released(reply) => {
                                     let _ = reply.send(rt.state.keys_released(&rt.cfg));
                                 }
+                                HookCommand::BeginCapture(request, reply) => {
+                                    let _ = reply.send(rt.state.begin_capture(request));
+                                }
+                                HookCommand::CancelCapture => {
+                                    if let Some(result) = rt.state.cancel_capture() {
+                                        rt.capture_result(result);
+                                    }
+                                }
                                 HookCommand::Shutdown => return Ok(()),
                             }
                         }
@@ -660,6 +703,7 @@ impl HookThread {
             })();
             // SAFETY: Hooks are owned by this thread and runtime remains live until unregister completes. No callback can outlive the message loop.
             unsafe {
+                let _ = KillTimer(None, capture_timer);
                 let _ = UnhookWindowsHookEx(kh);
                 let _ = UnhookWindowsHookEx(mh);
                 let _ = UnhookWinEvent(fh);
@@ -672,6 +716,7 @@ impl HookThread {
             .recv()
             .map_err(|_| failure("hook initialization failed"))?;
         Ok(Self {
+            captures,
             thread_id,
             commands,
             join: Some(join),
@@ -683,6 +728,19 @@ impl HookThread {
             .map_err(|_| failure("hook thread ended"))?;
         // SAFETY: Published thread ID has an initialized message queue; message has no borrowed pointer payload.
         unsafe { PostThreadMessageW(self.thread_id, WM_CONTROL, WPARAM(0), LPARAM(0)) }
+    }
+    pub fn begin_capture(&self, request: CaptureRequest) -> Result<()> {
+        let (tx, rx) = mpsc::channel();
+        self.command(HookCommand::BeginCapture(request, tx))?;
+        rx.recv()
+            .map_err(|_| failure("capture command lost"))?
+            .map_err(|e| failure(&format!("{e:?}")))
+    }
+    pub fn cancel_capture(&self) -> Result<()> {
+        self.command(HookCommand::CancelCapture)
+    }
+    pub fn capture_result(&mut self) -> Option<(CaptureResult, Target)> {
+        self.captures.pop().ok()
     }
     pub fn install(&self, cfg: Arc<CompiledConfig>, target: Target) -> Result<()> {
         let triggers = cfg.triggers.clone();
@@ -1343,6 +1401,72 @@ fn validate_experiment(params: baauto_config::EngineParams) -> Result<()> {
         return Err(failure(
             "priority/spin experiment requires bench-experiments build",
         ));
+    }
+    Ok(())
+}
+
+/// Read-only cursor snapshot for GUI/bench workers, never consulted by Engine decisions.
+pub fn cursor_screen() -> Result<[i32; 2]> {
+    let mut p = POINT::default();
+    // SAFETY: Initialized writable POINT remains live throughout this read-only API call.
+    unsafe {
+        GetCursorPos(&mut p)?;
+    }
+    Ok([p.x, p.y])
+}
+
+/// User-requested overlay activation; never creates synthetic input.
+pub fn activate_target(target: Target) -> Result<()> {
+    // SAFETY: Validate HWND still identifies the cached process before using a borrowed window handle. Activation is a user gesture on a control thread.
+    unsafe {
+        let hwnd = HWND(target.hwnd as *mut _);
+        let mut pid = 0;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid != target.pid || pid == 0 {
+            return Err(failure("target window changed"));
+        }
+        if !SetForegroundWindow(hwnd).as_bool() {
+            return Err(failure(
+                "foreground activation refused; switch to game manually",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Position this process's overlay in physical desktop coordinates, including negative origins.
+/// This corrects cross-monitor DPI conversions made when creating the secondary viewport.
+pub fn place_owned_overlay(title: &str, rect: [i32; 4]) -> Result<()> {
+    let title = wide(std::ffi::OsStr::new(title));
+    // SAFETY: NUL-terminated title lives for the call. HWND is used only after validating owning PID.
+    unsafe {
+        let Ok(hwnd) = FindWindowW(None, PCWSTR(title.as_ptr())) else {
+            return Ok(());
+        };
+        let mut pid = 0;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid != GetCurrentProcessId() {
+            return Err(failure("overlay is not owned by this process"));
+        }
+        let mut current = RECT::default();
+        GetWindowRect(hwnd, &mut current)?;
+        if [
+            current.left,
+            current.top,
+            current.right - current.left,
+            current.bottom - current.top,
+        ] != rect
+        {
+            SetWindowPos(
+                hwnd,
+                Some(HWND_TOPMOST),
+                rect[0],
+                rect[1],
+                rect[2],
+                rect[3],
+                SWP_NOACTIVATE,
+            )?;
+        }
     }
     Ok(())
 }

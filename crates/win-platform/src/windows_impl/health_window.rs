@@ -125,7 +125,7 @@ pub struct HealthWindow {
     state: Box<HealthState>,
     _owner: PhantomData<Rc<()>>,
     stop_hotkey: Chord,
-    record_hotkey: Chord,
+    record_hotkey: Option<Chord>,
 }
 fn modifiers(chord: Chord) -> HOT_KEY_MODIFIERS {
     let mask = match chord.mods {
@@ -154,7 +154,7 @@ fn modifiers(chord: Chord) -> HOT_KEY_MODIFIERS {
         }
 }
 impl HealthWindow {
-    pub fn new(related: [bool; 256], stop: Chord, record: Chord) -> Result<Self> {
+    pub fn new(related: [bool; 256], stop: Chord, record: Option<Chord>) -> Result<Self> {
         let mut state = Box::new(HealthState {
             related,
             target: 0,
@@ -196,7 +196,9 @@ impl HealthWindow {
                 record_hotkey: record,
             };
             RegisterHotKey(Some(hwnd), 1, modifiers(stop), u32::from(stop.key.0))?;
-            RegisterHotKey(Some(hwnd), 2, modifiers(record), u32::from(record.key.0))?;
+            if let Some(record) = record {
+                RegisterHotKey(Some(hwnd), 2, modifiers(record), u32::from(record.key.0))?;
+            }
             RegisterRawInputDevices(
                 &[
                     RAWINPUTDEVICE {
@@ -217,19 +219,23 @@ impl HealthWindow {
             Ok(window)
         }
     }
-    pub fn rebind(&mut self, stop: Chord, record: Chord) -> Result<()> {
+    pub fn rebind(&mut self, stop: Chord, record: Option<Chord>) -> Result<()> {
         // SAFETY: Called only on the owner supervisor thread after cooperative stop. Failure leaves readiness blocked; old bindings are restored where possible.
         unsafe {
             let _ = UnregisterHotKey(Some(self.hwnd), 1);
             let _ = UnregisterHotKey(Some(self.hwnd), 2);
             let result = RegisterHotKey(Some(self.hwnd), 1, modifiers(stop), u32::from(stop.key.0))
                 .and_then(|_| {
-                    RegisterHotKey(
-                        Some(self.hwnd),
-                        2,
-                        modifiers(record),
-                        u32::from(record.key.0),
-                    )
+                    if let Some(record) = record {
+                        RegisterHotKey(
+                            Some(self.hwnd),
+                            2,
+                            modifiers(record),
+                            u32::from(record.key.0),
+                        )
+                    } else {
+                        Ok(())
+                    }
                 });
             if let Err(error) = result {
                 let _ = UnregisterHotKey(Some(self.hwnd), 1);
@@ -240,12 +246,14 @@ impl HealthWindow {
                     modifiers(self.stop_hotkey),
                     u32::from(self.stop_hotkey.key.0),
                 );
-                let _ = RegisterHotKey(
-                    Some(self.hwnd),
-                    2,
-                    modifiers(self.record_hotkey),
-                    u32::from(self.record_hotkey.key.0),
-                );
+                if let Some(record) = self.record_hotkey {
+                    let _ = RegisterHotKey(
+                        Some(self.hwnd),
+                        2,
+                        modifiers(record),
+                        u32::from(record.key.0),
+                    );
+                }
                 return Err(error);
             }
         }
