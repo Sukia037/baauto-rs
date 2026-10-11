@@ -40,11 +40,11 @@ powershell -ExecutionPolicy Bypass -File tests/windows/M6.ps1
 
 `--data-dir` 是測試用資料夾，裡面會放範本 JSON、settings.json 和 logs，不會動到別的地方。
 
-如果紀錄分頁顯示「全域熱鍵 =Ctrl+F9 註冊失敗」，這時引擎沒有就緒。先關閉占用該組合的程式，或關閉 BAauto、在測試資料夾的預設按鍵 JSON 將 `global_stop.hotkey` 改成另一組未被占用的鍵盤熱鍵，再重開。2026-10-11 原生測試以隔離的 `=Ctrl+Alt+F24` 停止、`=Ctrl+Alt+F23` 錄點完成短程驗證，原本 Ctrl+F9 的占用來源仍待確認；詳見 [實測報告](test-results/windows-20261011/README.md)。
+如果首頁頂部出現紅色警告「緊急停止鍵 Ctrl+F9 被其他程式佔用」，「啟用」會暫時不能按。點警告裡的「前往「預設按鍵」改鍵」，把「緊急停止」改成另一組沒被佔用的鍵盤組合並儲存，警告消失後就能啟用，不用重開。錄點鍵被佔用只會警告，不影響啟用。
 
 ## 4. 要看的地方
 
-2026-10-11逐項接收器補測發現：預設慢卡幀（Up）只送第一組Esc；原始`double_esc_second`晚到容許值0ms，晚到即取消第二組。獨立5ms測試profile可完成，但尚非遊戲校準，正式範本未改。不要把這項當已通過；[補測結果與原始紀錄](test-results/windows-20261011/expanded/README.md)也列出已測的其餘動作、各格牌鍵和錄點。
+2026-10-11逐項接收器補測發現：預設慢卡幀（Up）只送第一組Esc；原始`double_esc_second`晚到容許值0ms，晚到即取消第二組。2026-10-12已整組移除晚到上限（見`docs/decisions.md`「移除晚到上限」），第二組Esc一定送出；重跑接收器確認前不要把這項當已通過；[補測結果與原始紀錄](test-results/windows-20261011/expanded/README.md)也列出已測的其餘動作、各格牌鍵和錄點。
 
 **介面**
 - [ ] 中文字沒有方框，四個分頁、淺色／深色都正常。

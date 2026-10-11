@@ -5,9 +5,9 @@ Blue Archive PC 版輸入輔助工具的 Rust 重寫版，取代原本的 AutoHo
 ## 目前驗證狀態（2026-10-11）
 
 - Windows `fmt`、`clippy`、160項自動測試與正式release建置通過，3項測試略過。
-- 接收器逐項對照23項預設功能：使用替代全域熱鍵時22項通過，**原始時序的慢卡幀失敗，只送第一組Esc**。獨立5ms晚到容許值控制組可完成23項，但尚非遊戲校準，正式範本未改。
+- 接收器逐項對照23項預設功能：使用替代全域熱鍵時22項通過，**原始時序的慢卡幀失敗，只送第一組Esc**。原因是第二組Esc的排定時間等於最晚期限；2026-10-12已整組移除晚到上限，第二組Esc一定送出（macOS 156項測試與Windows交叉clippy通過），**尚待Windows重跑接收器確認**。
 - 六人／十人各格牌鍵、左右與反向順序、框外不送鍵、錄點、右鍵／側鍵／Space／Tab擷取通過。這些是測試版本的Windows輸入注入，尚未驗收實體硬體與真實遊戲。
-- 本機原本Ctrl+F9註冊衝突仍未解決；故障注入5項通過、掛起案例1項仍失敗。
+- 本機Ctrl+F9被其他程式佔用。2026-10-12起熱鍵被佔用時app不會卡住：首頁頂部顯示紅色警告並停用「啟用」，到「預設按鍵」改鍵儲存後立即恢復，不用重開（尚待Windows實機確認）。故障注入5項通過、掛起案例1項仍失敗。
 - 校準覆蓋層顯示、前景切換與逾時已測；拖拉／確認儲存、完整GUI切檔／匯入、Windows DPI、8小時接收器及六人／十人遊戲各1小時仍待驗收。
 
 完整CSV、測試profile、修正、重跑指令與未測項目見[Windows補測報告](docs/test-results/windows-20261011/expanded/README.md)。正式release已重新建置，不含`test-hooks`／`fault-injection`。
@@ -54,7 +54,7 @@ cargo build --release --locked --workspace
 .\target\release\baauto-app.exe --target-exe baauto-receiver.exe --data-dir C:\BAauto-test
 ```
 
-若紀錄顯示全域熱鍵註冊失敗，引擎未就緒；處理方式及逐項操作見[Windows試跑清單](docs/windows-試跑.md)。
+若首頁頂部出現紅色的熱鍵佔用警告，點「前往「預設按鍵」改鍵」換一組沒被佔用的鍵盤組合並儲存即可；逐項操作見[Windows試跑清單](docs/windows-試跑.md)。
 
 macOS／Linux 可查看離線介面：
 
