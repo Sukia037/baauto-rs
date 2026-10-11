@@ -257,7 +257,8 @@ pub fn compile_with_params(
             ));
         }
     }
-    if params.max_actions == 0
+    if params.tail_spin_us > 5000
+        || params.max_actions == 0
         || params.max_actions > 256
         || params.queue_capacity == 0
         || params.max_events_per_round == 0

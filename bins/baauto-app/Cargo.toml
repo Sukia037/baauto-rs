@@ -10,5 +10,6 @@ baauto-protocol = { path = "../../crates/protocol" }
 baauto-win-platform = { path = "../../crates/win-platform" }
 
 [features]
+bench-experiments = ["baauto-win-platform/bench-experiments"]
 fault-injection = ["baauto-win-platform/fault-injection"]
 test-hooks = ["baauto-win-platform/test-hooks"]

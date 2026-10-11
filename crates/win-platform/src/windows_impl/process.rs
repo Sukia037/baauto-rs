@@ -108,6 +108,27 @@ impl Process {
         }
         Ok(copied.0 as usize as u64)
     }
+    pub fn cpu_100ns(&self) -> Result<u64> {
+        let (mut creation, mut exit, mut kernel, mut user) = (
+            FILETIME::default(),
+            FILETIME::default(),
+            FILETIME::default(),
+            FILETIME::default(),
+        );
+        // SAFETY: The owned process handle remains live through this value-only query; stack FILETIME outputs are valid.
+        unsafe {
+            GetProcessTimes(
+                self.handle.0,
+                &mut creation,
+                &mut exit,
+                &mut kernel,
+                &mut user,
+            )?;
+        }
+        let value =
+            |time: FILETIME| (u64::from(time.dwHighDateTime) << 32) | u64::from(time.dwLowDateTime);
+        Ok(value(kernel).saturating_add(value(user)))
+    }
     pub(crate) fn raw(&self) -> HANDLE {
         self.handle.0
     }

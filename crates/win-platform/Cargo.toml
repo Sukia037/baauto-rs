@@ -16,6 +16,7 @@ serde_json.workspace = true
 [features]
 test-hooks = []
 fault-injection = []
+bench-experiments = []
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = [

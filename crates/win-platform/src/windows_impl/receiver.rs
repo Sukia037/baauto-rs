@@ -20,6 +20,7 @@ struct ReceiverState {
     mode: Mode,
     records: Vec<Received>,
     lost: u64,
+    down_count: u64,
 }
 unsafe extern "system" fn window(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     let answer = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -48,6 +49,9 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: L
                 | WM_LBUTTONUP
                 | WM_MOUSEMOVE
         ) {
+            if matches!(msg, WM_KEYDOWN | WM_SYSKEYDOWN | WM_LBUTTONDOWN) {
+                state.down_count = state.down_count.wrapping_add(1);
+            }
             let record = Received {
                 qpc: state.clock.now().0,
                 message: msg,
@@ -76,7 +80,13 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: L
                 let dc = BeginPaint(hwnd, &mut paint);
                 let mut client = RECT::default();
                 let _ = GetClientRect(hwnd, &mut client);
-                let _ = FillRect(dc, &client, HBRUSH((COLOR_WINDOW.0 + 1) as *mut _));
+                let background = CreateSolidBrush(if state.down_count % 2 == 0 {
+                    COLORREF(0x00eeeeee)
+                } else {
+                    COLORREF(0x00aa5533)
+                });
+                let _ = FillRect(dc, &client, background);
+                let _ = DeleteObject(HGDIOBJ(background.0));
                 SetBkMode(dc, TRANSPARENT);
                 let rect = state.hand.layout(state.mode);
                 let mut origin = POINT::default();
@@ -159,6 +169,7 @@ pub fn run_receiver(mode: Mode, side: CardUiSide, output: &Path) -> Result<()> {
         mode,
         records: Vec::with_capacity(1_000_000),
         lost: 0,
+        down_count: 0,
     });
     // SAFETY: Class and callbacks are static; Box lives until all windows have been destroyed and GetMessage returns.
     unsafe {

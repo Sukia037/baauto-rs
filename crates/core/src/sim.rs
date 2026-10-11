@@ -59,3 +59,19 @@ impl FakeDriver {
         s
     }
 }
+
+/// Synthetic acceptance model. It deliberately supports disjoint, nonmonotonic regions.
+pub struct FakeGame {
+    pub accepted_ranges: Vec<[f64; 2]>,
+    pub frame_ticks: u64,
+}
+impl FakeGame {
+    pub fn accepts(&self, value_ms: f64, phase: u64) -> bool {
+        self.frame_ticks > 0
+            && phase < self.frame_ticks
+            && self
+                .accepted_ranges
+                .iter()
+                .any(|r| value_ms >= r[0] && value_ms <= r[1])
+    }
+}

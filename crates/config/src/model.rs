@@ -287,6 +287,15 @@ pub struct EngineParams {
     pub max_events_per_round: u16,
     pub max_batches_per_round: u16,
     pub health_period_us: u32,
+    #[serde(default = "default_hook_priority")]
+    pub hook_time_critical: bool,
+    #[serde(default)]
+    pub engine_highest: bool,
+    #[serde(default)]
+    pub tail_spin_us: u32,
+}
+fn default_hook_priority() -> bool {
+    true
 }
 impl Default for EngineParams {
     fn default() -> Self {
@@ -296,6 +305,9 @@ impl Default for EngineParams {
             max_events_per_round: 64,
             max_batches_per_round: 16,
             health_period_us: 50_000,
+            hook_time_critical: true,
+            engine_highest: false,
+            tail_spin_us: 0,
         }
     }
 }

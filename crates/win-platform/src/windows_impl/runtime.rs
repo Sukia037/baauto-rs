@@ -5,7 +5,10 @@ use crate::{
 };
 use baauto_config::{CompiledConfig, Key};
 use baauto_core::*;
-use baauto_protocol::shm::{LogData, RingReader};
+use baauto_protocol::{
+    ipc::{RunMode, TrialOutcome, TrialResult, TrialSpec},
+    shm::{LogData, RingReader},
+};
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::{
     cell::Cell,
@@ -138,6 +141,12 @@ impl HookRuntime {
                 .fetch_add(1, SeqCst);
         }
         if let Some(reason) = d.stop {
+            let _ = self
+                .mapping
+                .data()
+                .progress
+                .stop_request_qpc
+                .compare_exchange(0, self.clock.now().0, SeqCst, SeqCst);
             self.mapping
                 .data()
                 .progress
@@ -453,8 +462,14 @@ impl HookThread {
             rt.state.geometry = target.geometry;
             // SAFETY: Thread priority affects only this dedicated thread. PeekMessage initializes its message queue before publishing thread ID.
             unsafe {
-                SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL)?;
-                if GetThreadPriority(GetCurrentThread()) != THREAD_PRIORITY_TIME_CRITICAL.0 {
+                validate_experiment(rt.cfg.params)?;
+                let priority = if rt.cfg.params.hook_time_critical {
+                    THREAD_PRIORITY_TIME_CRITICAL
+                } else {
+                    THREAD_PRIORITY_NORMAL
+                };
+                SetThreadPriority(GetCurrentThread(), priority)?;
+                if GetThreadPriority(GetCurrentThread()) != priority.0 {
                     return Err(failure("Hook thread priority was not applied"));
                 }
                 let mut msg = MSG::default();
@@ -716,9 +731,32 @@ impl Drop for DoneGuard {
 pub struct EngineThread {
     pub done: Arc<Event>,
     join: Option<thread::JoinHandle<Result<Consumer<QueuedInput>>>>,
+    trial_input: Producer<(u64, TrialSpec)>,
+    trial_results: Consumer<TrialResult>,
+    trial_wake: Arc<Event>,
+    mode: RunMode,
 }
 impl EngineThread {
-    pub fn spawn(context: RuntimeContext, mut input: Consumer<QueuedInput>) -> Result<Self> {
+    pub fn spawn(context: RuntimeContext, input: Consumer<QueuedInput>) -> Result<Self> {
+        Self::spawn_with_mode(context, input, RunMode::Normal)
+    }
+    pub fn submit_trial(&mut self, cmd_seq: u64, trial: TrialSpec) -> Result<()> {
+        if self.mode != RunMode::Calibration {
+            return Err(failure("RunTrial requires calibration session"));
+        }
+        self.trial_input
+            .push((cmd_seq, trial))
+            .map_err(|_| failure("trial queue full"))?;
+        self.trial_wake.set()
+    }
+    pub fn trial_result(&mut self) -> Option<TrialResult> {
+        self.trial_results.pop().ok()
+    }
+    pub fn spawn_with_mode(
+        context: RuntimeContext,
+        mut input: Consumer<QueuedInput>,
+        mode: RunMode,
+    ) -> Result<Self> {
         let RuntimeContext {
             cfg,
             mapping,
@@ -731,9 +769,24 @@ impl EngineThread {
         } = context;
         let done = Arc::new(Event::new(true)?);
         let finished = done.clone();
+        let trial_wake = wake.clone();
+        let (trial_input, mut trial_queue) = RingBuffer::<(u64, TrialSpec)>::new(32);
+        let (mut result_writer, trial_results) = RingBuffer::<TrialResult>::new(32);
         let join = thread::spawn(move || {
             let _done = DoneGuard(finished);
-            let mut engine = Engine::new(cfg.clone(), clock.rate);
+            validate_experiment(cfg.params)?;
+            if cfg.params.engine_highest {
+                // SAFETY: A/B-only build, current engine thread; no process class, affinity or real-time priority is changed.
+                unsafe {
+                    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST)?;
+                }
+            }
+            let mut engine = if mode == RunMode::Calibration {
+                Engine::new_calibration(cfg.clone(), clock.rate)
+            } else {
+                Engine::new(cfg.clone(), clock.rate)
+            };
+            let mut current_trial: Option<TrialResult> = None;
             let mut driver = Driver::new(
                 marker,
                 stop.clone(),
@@ -762,7 +815,10 @@ impl EngineThread {
                                 let mut fields = [0; 16];
                                 fields[0] = 3;
                                 fields[1] = u64::from(session.0);
-                                fields[6] = now.0;
+                                let requested =
+                                    mapping.data().progress.stop_request_qpc.load(SeqCst);
+                                fields[6] = if requested == 0 { now.0 } else { requested };
+                                fields[4] = now.0;
                                 mapping.data().ring.push(LogData(fields));
                                 stop_logged = true;
                             }
@@ -770,6 +826,36 @@ impl EngineThread {
                                 stop_reason(mapping.data().progress.stop_reason.load(SeqCst)),
                                 now,
                             );
+                        }
+                        for _ in 0..cfg.params.max_events_per_round {
+                            let Ok((cmd_seq, trial)) = trial_queue.pop() else {
+                                break;
+                            };
+                            let outcome = engine.run_trial(
+                                trial.id,
+                                trial.action,
+                                trial.timing,
+                                trial.start,
+                                trial.duration,
+                                trial.cursor,
+                            );
+                            let result = TrialResult {
+                                id: trial.id,
+                                cmd_seq,
+                                started: Ticks(0),
+                                finished: Ticks(0),
+                                outcome: TrialOutcome::Complete,
+                            };
+                            match outcome {
+                                Ok(_) => current_trial = Some(result),
+                                Err(error) => result_writer
+                                    .push(TrialResult {
+                                        finished: now,
+                                        outcome: TrialOutcome::Rejected(error),
+                                        ..result
+                                    })
+                                    .map_err(|_| failure("trial result queue overflow"))?,
+                            }
                         }
                         for _ in 0..cfg.params.max_events_per_round {
                             if stop.signaled() {
@@ -848,7 +934,8 @@ impl EngineThread {
                                 .action
                                 .map_or(Trace::default(), |a| traces[a.slot as usize]);
                             let mut fields = [0; 16];
-                            fields[0] = 2;
+                            let trial_id = b.action.map_or(0, |id| engine.trial_for_action(id));
+                            fields[0] = if trial_id == 0 { 2 } else { 5 };
                             fields[1] = u64::from(session.0);
                             fields[2] = b
                                 .action
@@ -861,9 +948,14 @@ impl EngineThread {
                             fields[12] = u64::from(t.depth);
                             fields[13] = u64::from(cfg.version.0);
                             fields[14] = u64::from(target.geometry.0);
-                            fields[15] = t.seq;
+                            fields[15] = if trial_id == 0 { t.seq } else { trial_id };
                             match result {
                                 SubmitOutcome::Ok { begin, end } => {
+                                    if let Some(trial) = current_trial.as_mut()
+                                        && trial.started.0 == 0
+                                    {
+                                        trial.started = begin;
+                                    }
                                     fields[8] = begin.0;
                                     fields[9] = end.0;
                                     fields[10] = b.events.len() as u64;
@@ -903,6 +995,36 @@ impl EngineThread {
                                 }
                             }
                         }
+                        engine.drain_reports(&mut |report| {
+                            let mut fields = [0; 16];
+                            fields[0] = 6;
+                            fields[1] = u64::from(session.0);
+                            fields[2] = report as u64;
+                            fields[6] = clock.now().0;
+                            fields[15] = current_trial.as_ref().map_or(0, |trial| trial.id);
+                            mapping.data().ring.push(LogData(fields));
+                            if let Some(trial) = current_trial.as_mut()
+                                && !matches!(report, Report::ConfirmPause)
+                            {
+                                trial.outcome =
+                                    TrialOutcome::Rejected(baauto_core::TrialError::InvalidSpec);
+                            }
+                        });
+                        if current_trial.is_some() && engine.active_actions() == 0 {
+                            let mut trial = current_trial.take().unwrap();
+                            trial.finished = clock.now();
+                            if matches!(
+                                engine.state(),
+                                EngineState::Stopping(..)
+                                    | EngineState::Stopped(_)
+                                    | EngineState::Faulted(..)
+                            ) {
+                                trial.outcome = TrialOutcome::Stopped;
+                            }
+                            result_writer
+                                .push(trial)
+                                .map_err(|_| failure("trial result queue overflow"))?;
+                        }
                         let progress = engine.progress();
                         mapping
                             .data()
@@ -932,14 +1054,29 @@ impl EngineThread {
                             return Err(failure("input fault: ledger retained"));
                         }
                         let deadline = engine.next_wake().unwrap();
-                        if !input.is_empty() || deadline <= clock.now() {
+                        if !input.is_empty() || !trial_queue.is_empty() || deadline <= clock.now() {
                             continue;
                         }
-                        timer.set_deadline(deadline, clock)?;
-                        if !input.is_empty() {
+                        let spin_ticks =
+                            u64::from(cfg.params.tail_spin_us) * clock.rate.0 / 1_000_000;
+                        timer.set_deadline(
+                            Ticks(deadline.0.saturating_sub(spin_ticks).max(clock.now().0)),
+                            clock,
+                        )?;
+                        if !input.is_empty() || !trial_queue.is_empty() {
                             continue;
                         }
                         wait(&[stop.raw(), wake.raw(), timer.raw()], INFINITE)?;
+                        #[cfg(feature = "bench-experiments")]
+                        if spin_ticks > 0 && clock.now().0 >= deadline.0.saturating_sub(spin_ticks)
+                        {
+                            while clock.now() < deadline {
+                                if stop.signaled() || !input.is_empty() || !trial_queue.is_empty() {
+                                    break;
+                                }
+                                std::hint::spin_loop();
+                            }
+                        }
                     }
                 }));
             let outcome = match result {
@@ -956,6 +1093,10 @@ impl EngineThread {
         Ok(Self {
             done,
             join: Some(join),
+            trial_input,
+            trial_results,
+            trial_wake,
+            mode,
         })
     }
     pub fn join(mut self) -> Result<Consumer<QueuedInput>> {
@@ -1174,4 +1315,18 @@ pub fn wait_control_period(clock: Clock, ticks: u64) -> Result<()> {
     let timer = Timer::new()?;
     timer.set_deadline(clock.now().after(ticks), clock)?;
     wait(&[timer.raw()], INFINITE).map(|_| ())
+}
+
+fn validate_experiment(params: baauto_config::EngineParams) -> Result<()> {
+    if params.tail_spin_us > 5000 {
+        return Err(failure("experimental tail spin exceeds 5000us limit"));
+    }
+    if !cfg!(feature = "bench-experiments")
+        && (!params.hook_time_critical || params.engine_highest || params.tail_spin_us != 0)
+    {
+        return Err(failure(
+            "priority/spin experiment requires bench-experiments build",
+        ));
+    }
+    Ok(())
 }

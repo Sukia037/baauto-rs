@@ -38,10 +38,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut recovery = 1000;
     let mut injection = None;
     let mut enable = true;
+    let mut mode = baauto_protocol::ipc::RunMode::Normal;
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_str() {
             Some("--headless") => {}
+            Some("--calibration") => mode = baauto_protocol::ipc::RunMode::Calibration,
             Some("--profile" | "--points") => {
                 points = args.next().ok_or("missing points path")?.into()
             }
@@ -115,6 +117,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         recovery_timeout_ms: recovery,
         logs: PathBuf::from("logs"),
         injection,
+        mode,
     };
     let (tx, rx) = mpsc::channel();
     let (status_tx, status_rx) = mpsc::channel();

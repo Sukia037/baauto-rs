@@ -1,9 +1,10 @@
 //! Bounded diagnostic IPC. JSON allocation happens only on background/control threads.
 #![forbid(unsafe_code)]
 use baauto_config::*;
+pub use baauto_core::{RunMode, TrialError};
 use baauto_core::{SessionId, StopReason};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 pub const MAX_FRAME: usize = 1024 * 1024;
 #[derive(Debug, thiserror::Error)]
 pub enum IpcError {
@@ -67,6 +68,12 @@ pub enum AppToEngine {
         cmd_seq: u64,
         session: SessionId,
         stop_event: u64,
+        mode: RunMode,
+    },
+    RunTrial {
+        cmd_seq: u64,
+        session: SessionId,
+        trial: Box<TrialSpec>,
     },
     Stop {
         cmd_seq: u64,
@@ -88,6 +95,7 @@ impl AppToEngine {
         match self {
             Self::Hello { cmd_seq, .. }
             | Self::ApplyConfig { cmd_seq, .. }
+            | Self::RunTrial { cmd_seq, .. }
             | Self::Arm { cmd_seq, .. }
             | Self::Stop { cmd_seq, .. }
             | Self::Probe { cmd_seq }
@@ -99,6 +107,11 @@ impl AppToEngine {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data", deny_unknown_fields)]
 pub enum EngineToApp {
+    TrialResult {
+        session: SessionId,
+        cmd_seq: u64,
+        result: TrialResult,
+    },
     HelloAck {
         session: SessionId,
         cmd_seq: u64,
@@ -268,4 +281,43 @@ impl TryFrom<CompiledWire> for CompiledConfig {
             candidates,
         })
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TrialSpec {
+    pub id: u64,
+    pub action: ActionSpec,
+    pub timing: TickTiming,
+    pub start: Ticks,
+    pub duration: u64,
+    pub cursor: NormPoint,
+}
+impl TrialSpec {
+    pub fn allowed_outputs(&self, cfg: &CompiledConfig) -> bool {
+        let needed = match self.action {
+            ActionSpec::Tap(k) => vec![k],
+            ActionSpec::Card(k) => vec![k, Key::ESC, Key::LEFT],
+            ActionSpec::Repeat { key } => key.into_iter().chain([Key::LEFT]).collect(),
+            ActionSpec::DoubleEsc { .. } => vec![Key::ESC],
+            ActionSpec::HoldPoint(_) => vec![Key::LEFT],
+            ActionSpec::CardKey => cfg.slot_keys[..cfg.slots as usize].to_vec(),
+        };
+        needed.iter().all(|k| cfg.candidates[k.0 as usize])
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TrialOutcome {
+    Complete,
+    Stopped,
+    Rejected(TrialError),
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TrialResult {
+    pub id: u64,
+    pub cmd_seq: u64,
+    pub started: Ticks,
+    pub finished: Ticks,
+    pub outcome: TrialOutcome,
 }

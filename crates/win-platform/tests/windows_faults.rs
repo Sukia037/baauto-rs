@@ -80,6 +80,7 @@ fn case(rule: &str) {
         recovery_timeout_ms: 100,
         logs: logs.clone(),
         injection: Some(rule.into()),
+        mode: baauto_core::RunMode::Normal,
     };
     let (tx, rx) = mpsc::channel();
     let (status_tx, status_rx) = mpsc::channel();

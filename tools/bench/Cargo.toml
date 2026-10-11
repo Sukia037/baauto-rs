@@ -9,7 +9,20 @@ baauto-protocol = { path = "../../crates/protocol" }
 baauto-win-platform = { path = "../../crates/win-platform" }
 serde.workspace = true
 serde_json.workspace = true
+baauto-core = { path = "../../crates/core" }
+sha2 = "0.11.0"
 
 [[bin]]
 name = "baauto-receiver"
 path = "src/bin/receiver.rs"
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = ["Win32_Foundation", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common"] }
+
+[features]
+bench-experiments = ["baauto-win-platform/bench-experiments"]
+test-hooks = ["baauto-win-platform/test-hooks"]
+
+[[bin]]
+name = "baauto-bench"
+path = "src/bin/bench.rs"

@@ -2,7 +2,8 @@
 pub mod sim;
 use arrayvec::ArrayVec;
 use baauto_config::{
-    ActionSpec, AutoRepeatPolicy, CompiledConfig, NO_TRIGGER, TrailingEscPolicy, slot_at,
+    ActionSpec, AutoRepeatPolicy, CompiledConfig, NO_TRIGGER, TickTiming, TrailingEscPolicy,
+    slot_at,
 };
 pub use baauto_config::{ConfigVersion, Key, NormPoint, TickRate, Ticks};
 use serde::{Deserialize, Serialize};
@@ -177,11 +178,26 @@ enum Phase {
     TrailingDown,
     TrailingUp,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RunMode {
+    Normal,
+    Calibration,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TrialError {
+    NormalSession,
+    Disarmed,
+    Busy,
+    InvalidSpec,
+}
 #[derive(Clone, Copy, Debug)]
 struct Action {
     id: ActionId,
     press: PressId,
     spec: ActionSpec,
+    timing: TickTiming,
+    trial: u64,
+    stop_at: Option<Ticks>,
     phase: Phase,
     due: Ticks,
     key: Option<Key>,
@@ -201,6 +217,7 @@ struct Pending {
     batch: Batch,
 }
 pub struct Engine {
+    calibration: bool,
     cfg: Arc<CompiledConfig>,
     rate: TickRate,
     state: EngineState,
@@ -224,6 +241,7 @@ impl Engine {
     pub fn new(cfg: Arc<CompiledConfig>, rate: TickRate) -> Self {
         let n = usize::from(cfg.params.max_actions);
         Self {
+            calibration: false,
             cfg,
             rate,
             state: EngineState::Disarmed,
@@ -243,6 +261,62 @@ impl Engine {
             reports: ArrayVec::new(),
             fair_slot: 0,
         }
+    }
+    pub fn new_calibration(cfg: Arc<CompiledConfig>, rate: TickRate) -> Self {
+        let mut engine = Self::new(cfg, rate);
+        engine.calibration = true;
+        engine
+    }
+    pub fn trial_for_action(&self, id: ActionId) -> u64 {
+        self.slots
+            .get(id.slot as usize)
+            .and_then(|a| a.filter(|a| a.id == id))
+            .map_or(0, |a| a.trial)
+    }
+    pub fn run_trial(
+        &mut self,
+        id: u64,
+        spec: ActionSpec,
+        timing: TickTiming,
+        start: Ticks,
+        duration: u64,
+        cursor: NormPoint,
+    ) -> Result<ActionId, TrialError> {
+        if !self.calibration {
+            return Err(TrialError::NormalSession);
+        }
+        if !self.running() {
+            return Err(TrialError::Disarmed);
+        }
+        if self.active_actions() != 0 || self.pending.is_some() {
+            return Err(TrialError::Busy);
+        }
+        if id == 0
+            || duration == 0
+            || start.0.checked_add(duration).is_none()
+            || !cursor.valid()
+            || timing.repeat_period == 0
+            || timing.maintain == 0
+            || timing.gap_min > timing.gap_max
+            || matches!(spec, ActionSpec::Repeat { .. } | ActionSpec::Card(_))
+                && timing.repeat_period
+                    < timing
+                        .key_hold
+                        .saturating_add(timing.key_to_click)
+                        .saturating_add(timing.mouse_hold)
+            || matches!(spec,ActionSpec::HoldPoint(p) if !p.valid())
+            || matches!(spec,ActionSpec::Tap(k)|ActionSpec::Card(k)|ActionSpec::Repeat{key:Some(k)} if k.0==0||k.is_mouse())
+        {
+            return Err(TrialError::InvalidSpec);
+        }
+        let action = self
+            .start_spec(PressId(0), spec, cursor, start)
+            .ok_or(TrialError::Busy)?;
+        let a = self.slots[action.slot as usize].as_mut().unwrap();
+        a.timing = timing;
+        a.trial = id;
+        a.stop_at = Some(start.after(duration));
+        Ok(action)
     }
     pub fn config(&self) -> &Arc<CompiledConfig> {
         &self.cfg
@@ -405,6 +479,15 @@ impl Engine {
         let Some(spec) = self.cfg.actions.get(trigger as usize).copied() else {
             return;
         };
+        self.start_spec(press, spec, cursor, now);
+    }
+    fn start_spec(
+        &mut self,
+        press: PressId,
+        spec: ActionSpec,
+        cursor: NormPoint,
+        now: Ticks,
+    ) -> Option<ActionId> {
         let key = match spec {
             ActionSpec::Tap(k) | ActionSpec::Card(k) => Some(k),
             ActionSpec::Repeat { key } => key,
@@ -414,7 +497,7 @@ impl Engine {
                     Some(i) => Some(self.cfg.slot_keys[i as usize]),
                     None => {
                         self.report(Report::OutsideHand);
-                        return;
+                        return None;
                     }
                 }
             }
@@ -432,15 +515,15 @@ impl Engine {
                 && self.mouse.is_some())
         {
             self.report(Report::ResourceBusy);
-            return;
+            return None;
         }
         let Some(i) = self.slots.iter().position(Option::is_none) else {
             self.report(Report::Capacity);
-            return;
+            return None;
         };
         let Some(generation) = self.generations[i].checked_add(1) else {
             self.request_stop(StopReason::Overflow, now);
-            return;
+            return None;
         };
         self.generations[i] = generation;
         let id = ActionId {
@@ -458,6 +541,9 @@ impl Engine {
             id,
             press,
             spec,
+            timing: self.cfg.timing,
+            trial: 0,
+            stop_at: None,
             phase: if matches!(spec, ActionSpec::Repeat { .. }) {
                 Phase::WaitCycle
             } else {
@@ -473,6 +559,7 @@ impl Engine {
             trailing: false,
         });
         self.state = EngineState::Running(self.session);
+        Some(id)
     }
     fn cancel(&mut self, press: PressId, now: Ticks, forced: bool) {
         for b in &mut self.bindings {
@@ -490,7 +577,7 @@ impl Engine {
             {
                 a.trailing = !forced
                     && matches!(a.spec, ActionSpec::Card(_))
-                    && self.cfg.timing.trailing == TrailingEscPolicy::IfStarted;
+                    && a.timing.trailing == TrailingEscPolicy::IfStarted;
                 a.phase = Phase::Clean;
                 a.due = now;
             }
@@ -576,6 +663,14 @@ impl Engine {
         if !self.running() {
             return None;
         }
+        for i in 0..self.slots.len() {
+            if let Some(a) = self.slots[i]
+                && a.stop_at.is_some_and(|due| now >= due)
+            {
+                self.slots[i].as_mut().unwrap().stop_at = None;
+                self.cancel(a.press, now, false);
+            }
+        }
         // Scan a bounded number of preallocated slots. Resource waiters do not monopolize the loop.
         let mut inspected = [false; 256];
         for _ in 0..self.slots.len() {
@@ -609,7 +704,7 @@ impl Engine {
                 _ => None,
             };
             if late_index
-                .and_then(|i| self.cfg.timing.stage_lateness[i])
+                .and_then(|i| a.timing.stage_lateness[i])
                 .is_some_and(|limit| now > a.due.after(limit))
             {
                 self.report(Report::LateCancelled);
@@ -631,7 +726,7 @@ impl Engine {
                 a.key_reserved = a.key.is_some();
                 self.fair_slot = (i + 1) % self.slots.len();
                 if now.0 > a.due.0 {
-                    let skipped = (now.0 - a.due.0) / self.cfg.timing.repeat_period;
+                    let skipped = (now.0 - a.due.0) / a.timing.repeat_period;
                     self.progress.skipped_cycles =
                         self.progress.skipped_cycles.saturating_add(skipped);
                 }
@@ -661,8 +756,8 @@ impl Engine {
                     Phase::Gap => {
                         if now.0
                             > a.last_esc_up
-                                .after(self.cfg.timing.gap_max)
-                                .after(self.cfg.timing.stage_lateness[4].unwrap_or(0))
+                                .after(a.timing.gap_max)
+                                .after(a.timing.stage_lateness[4].unwrap_or(0))
                                 .0
                         {
                             self.report(Report::LateCancelled);
@@ -782,7 +877,7 @@ impl Engine {
             self.slots[i] = Some(a);
             return;
         }
-        let t = self.cfg.timing;
+        let t = a.timing;
         match a.phase {
             Phase::Start => {
                 a.phase = match a.spec {
@@ -868,6 +963,9 @@ impl Engine {
         }
         let mut due = self.health;
         for a in self.slots.iter().flatten() {
+            if let Some(stop_at) = a.stop_at {
+                due = due.min(stop_at);
+            }
             if a.phase == Phase::WaitCycle
                 && (self.mouse.is_some() || a.key.is_some_and(|k| self.key_busy(k, Some(a.id))))
             {

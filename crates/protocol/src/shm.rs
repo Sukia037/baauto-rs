@@ -3,7 +3,7 @@ use std::mem::{align_of, size_of};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering::SeqCst};
 
 pub const MAGIC: u64 = 0x4241_4155_544f_5253;
-pub const LAYOUT_VERSION: u32 = 2;
+pub const LAYOUT_VERSION: u32 = 3;
 pub const RING_LEN: usize = 8192;
 pub const LOG_FIELDS: usize = 16;
 #[repr(C)]
@@ -36,6 +36,7 @@ pub struct Progress {
     pub overflow_count: AtomicU64,
     pub degraded_flags: AtomicU32,
     pub stop_reason: AtomicU32,
+    pub stop_request_qpc: AtomicU64,
     pub physical_keys: [AtomicU64; 4],
 }
 impl Default for Progress {
@@ -50,6 +51,7 @@ impl Default for Progress {
             overflow_count: AtomicU64::new(0),
             degraded_flags: AtomicU32::new(0),
             stop_reason: AtomicU32::new(0),
+            stop_request_qpc: AtomicU64::new(0),
             physical_keys: std::array::from_fn(|_| AtomicU64::new(0)),
         }
     }

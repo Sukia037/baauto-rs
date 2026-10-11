@@ -68,8 +68,25 @@ pub fn run_managed(shm: &str, pipe: &str, parent_pid: u32, target_exe: &OsStr) -
                 let _ = stop.set();
                 shutdown = true;
             }
+            if let Some(e) = engine.as_mut() {
+                while let Some(result) = e.trial_result() {
+                    io.send(EngineToApp::TrialResult {
+                        session,
+                        cmd_seq: result.cmd_seq,
+                        result,
+                    })?;
+                }
+            }
             if engine.as_ref().is_some_and(|e| e.done.signaled()) {
-                let finished = engine.take().unwrap();
+                let mut finished = engine.take().unwrap();
+                // done is published after the final bounded result push. Drain again to close the poll/done race.
+                while let Some(result) = finished.trial_result() {
+                    io.send(EngineToApp::TrialResult {
+                        session,
+                        cmd_seq: result.cmd_seq,
+                        result,
+                    })?;
+                }
                 let outcome = finished.join();
                 if let Some(h) = &hook {
                     h.disarm()?;
@@ -164,6 +181,7 @@ pub fn run_managed(shm: &str, pipe: &str, parent_pid: u32, target_exe: &OsStr) -
                     AppToEngine::Arm {
                         session: new_session,
                         stop_event,
+                        mode,
                         ..
                     } => {
                         let new_stop = Arc::new(Event::take_transferred(stop_event)?);
@@ -207,6 +225,9 @@ pub fn run_managed(shm: &str, pipe: &str, parent_pid: u32, target_exe: &OsStr) -
                             })?;
                             continue;
                         }
+                        if mode == RunMode::Calibration {
+                            h.disarm()?;
+                        }
                         session = new_session;
                         stop = new_stop;
                         keys_notified = false;
@@ -220,16 +241,42 @@ pub fn run_managed(shm: &str, pipe: &str, parent_pid: u32, target_exe: &OsStr) -
                             session,
                             clock,
                         };
-                        engine = Some(EngineThread::spawn(
+                        engine = Some(EngineThread::spawn_with_mode(
                             context,
                             consumer
                                 .take()
                                 .ok_or_else(|| failure("missing input consumer"))?,
+                            mode,
                         )?);
                         io.send(EngineToApp::Armed {
                             session,
                             cmd_seq: seq,
                         })?;
+                    }
+                    AppToEngine::RunTrial {
+                        session: trial_session,
+                        trial,
+                        ..
+                    } => {
+                        let allowed = trial_session == session
+                            && cfg.as_ref().is_some_and(|c| trial.allowed_outputs(c));
+                        let result = if allowed {
+                            engine
+                                .as_mut()
+                                .ok_or_else(|| {
+                                    failure("RunTrial requires armed calibration session")
+                                })
+                                .and_then(|e| e.submit_trial(seq, *trial))
+                        } else {
+                            Err(failure("trial session or output candidate mismatch"))
+                        };
+                        if let Err(error) = result {
+                            io.send(EngineToApp::Rejected {
+                                session,
+                                cmd_seq: seq,
+                                why: error.to_string(),
+                            })?;
+                        }
                     }
                     AppToEngine::Stop {
                         session: requested,

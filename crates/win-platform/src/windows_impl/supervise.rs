@@ -25,8 +25,16 @@ pub struct SupervisorOptions {
     pub recovery_timeout_ms: u64,
     pub logs: PathBuf,
     pub injection: Option<String>,
+    pub mode: RunMode,
 }
 pub enum SupervisorCommand {
+    RunTrial {
+        trial: Box<TrialSpec>,
+        reply: mpsc::Sender<std::result::Result<TrialResult, String>>,
+    },
+    Inspect {
+        reply: mpsc::Sender<(Arc<Mapping>, Arc<Process>)>,
+    },
     Enable,
     Disable,
     Apply {
@@ -209,6 +217,7 @@ pub fn run_supervisor(
     let mut restart = false;
     let mut arm_deadline = None;
     let mut confirm_raw = None;
+    let mut trial_replies = std::collections::BTreeMap::new();
     child.as_ref().unwrap().send(AppToEngine::Hello {
         cmd_seq: next_seq(&mut seq)?,
         protocol: PROTOCOL_VERSION,
@@ -244,6 +253,35 @@ pub fn run_supervisor(
                     break;
                 };
                 match command {
+                    SupervisorCommand::Inspect { reply } => {
+                        if let Some(c) = &child {
+                            let _ = reply.send((c.mapping.clone(), c.process.clone()));
+                        }
+                    }
+                    SupervisorCommand::RunTrial { trial, reply } => {
+                        if options.mode != RunMode::Calibration
+                            || !matches!(fsm.state(), State::Armed(_))
+                        {
+                            let _ = reply
+                                .send(Err("RunTrial requires armed calibration session".into()));
+                            continue;
+                        }
+                        let cmd_seq = next_seq(&mut seq)?;
+                        if let Some(c) = child.as_ref() {
+                            match c.send(AppToEngine::RunTrial {
+                                cmd_seq,
+                                session,
+                                trial,
+                            }) {
+                                Ok(()) => {
+                                    trial_replies.insert(cmd_seq, reply);
+                                }
+                                Err(error) => {
+                                    let _ = reply.send(Err(error.to_string()));
+                                }
+                            }
+                        }
+                    }
                     SupervisorCommand::Enable => wanted = true,
                     SupervisorCommand::Disable => {
                         wanted = false;
@@ -335,6 +373,16 @@ pub fn run_supervisor(
             }
             for message in received {
                 match message {
+                    EngineToApp::TrialResult {
+                        session: s,
+                        cmd_seq,
+                        result,
+                    } if s == session => {
+                        if let Some(reply) = trial_replies.remove(&cmd_seq) {
+                            let _ = reply.send(Ok(result));
+                        }
+                    }
+
                     EngineToApp::HelloAck {
                         protocol,
                         shm_layout,
@@ -432,6 +480,10 @@ pub fn run_supervisor(
                         cmd_seq,
                         why,
                     } if s == session => {
+                        if let Some(reply) = trial_replies.remove(&cmd_seq) {
+                            let _ = reply.send(Err(why.clone()));
+                            continue;
+                        }
                         let _ = statuses.send(SupervisorStatus {
                             state: fsm.state(),
                             session,
@@ -716,6 +768,7 @@ fn execute_effects(
                 c.mapping.data().header.session.store(session.0, SeqCst);
                 c.session = session;
                 c.stop_request = None;
+                c.mapping.data().progress.stop_request_qpc.store(0, SeqCst);
                 c.exit_confirm = None;
                 c.receipt = None;
                 c.release_success = false;
@@ -725,10 +778,17 @@ fn execute_effects(
                     cmd_seq,
                     session,
                     stop_event: remote,
+                    mode: options.mode,
                 })?;
             }
             Effect::SetStop(_) => {
-                c.stop_request.get_or_insert(c.clock.now().0);
+                let requested = *c.stop_request.get_or_insert(c.clock.now().0);
+                let _ = c
+                    .mapping
+                    .data()
+                    .progress
+                    .stop_request_qpc
+                    .compare_exchange(0, requested, SeqCst, SeqCst);
                 if let Some(stop) = &c.stop {
                     stop.set()?;
                 }
