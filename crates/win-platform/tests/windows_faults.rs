@@ -2,6 +2,8 @@
 //! Interactive desktop required; temporarily sends test trigger keys to the receiver.
 //! First cargo build --release --features fault-injection,test-hooks.
 //! cargo test -p baauto-win-platform --features fault-injection,test-hooks --test windows_faults -- --ignored --nocapture --test-threads=1
+//! Occupied default hotkeys can be replaced in the test profile with
+//! BAAUTO_TEST_STOP_HOTKEY and BAAUTO_TEST_RECORD_HOTKEY.
 use baauto_config::*;
 use baauto_protocol::supervisor::State;
 use baauto_win_platform::*;
@@ -68,7 +70,18 @@ fn case(rule: &str) {
         wait_control_period(clock, clock.rate.0 / 20).unwrap();
     };
     let p: PointSet = from_json(include_str!("../../../tests/fixtures/m2-basic.json")).unwrap();
-    let k: KeysProfile = from_json(include_str!("../../../tests/fixtures/m2-keys.json")).unwrap();
+    let mut k: KeysProfile =
+        from_json(include_str!("../../../tests/fixtures/m2-keys.json")).unwrap();
+    for (preset, variable) in [
+        ("global_stop", "BAAUTO_TEST_STOP_HOTKEY"),
+        ("record", "BAAUTO_TEST_RECORD_HOTKEY"),
+    ] {
+        if let Some(chord) = std::env::var_os(variable) {
+            let chord = chord.to_str().expect("test hotkey must be valid Unicode");
+            k.presets.get_mut(preset).unwrap().hotkey =
+                Some(chord.parse().expect("test hotkey must be a valid chord"));
+        }
+    }
     let cfg = Arc::new(compile(&p, &k, &HandSettings::default(), clock.rate).unwrap());
     let options = SupervisorOptions {
         cfg,
@@ -136,6 +149,10 @@ fn case(rule: &str) {
         .unwrap();
     let meta: serde_json::Value =
         serde_json::from_slice(&std::fs::read(evidence.path()).unwrap()).unwrap();
+    assert!(
+        meta["stop_reason"].is_u64(),
+        "fault evidence must retain stop reason"
+    );
     assert!(meta["release_success"].as_bool().unwrap());
     assert!(
         meta["exit_confirm"].as_u64().unwrap() <= meta["release"]["begin"].as_u64().unwrap(),
