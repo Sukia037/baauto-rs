@@ -490,8 +490,8 @@ pub fn trial_timing(
         "key_to_click" => t.key_to_click = value,
         "repeat_period" => t.repeat_period = value,
         "escape_gap" => {
-            t.gap_min = value;
-            t.gap_max = value;
+            t.esc_gap_fast = value;
+            t.esc_gap_slow = value;
         }
         "card_pre_esc" => t.card_pre_esc = value,
         _ => return Err("unknown timing parameter".into()),

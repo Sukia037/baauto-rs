@@ -189,9 +189,6 @@ fn run_profile(mode: Mode, side: CardUiSide, order: SlotOrder, all_presets: bool
                 Some(chord.parse().expect("test hotkey must be a valid chord"));
         }
     }
-    if let Ok(value) = std::env::var("BAAUTO_TEST_DOUBLE_ESC_LATENESS_MS") {
-        keys.timing.allowed_lateness_ms.double_esc_second = value.parse().unwrap();
-    }
     std::fs::write(folder.join("keys.json"), to_json(&keys).unwrap()).unwrap();
     std::fs::write(
         folder.join("points.json"),

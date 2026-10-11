@@ -115,15 +115,6 @@
     ],
     "card_pre_esc_ms": 10,
     "hold_maintain_period_ms": 16,
-    "allowed_lateness_ms": {
-      "tap_start": null,
-      "repeat_click": null,
-      "card_start": null,
-      "card_click": null,
-      "double_esc_second": 0,
-      "hold_start": null,
-      "card_key_start": null
-    },
     "card_trailing_esc": "if_started",
     "auto_repeat": "follow_typematic"
   }

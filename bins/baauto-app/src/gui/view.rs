@@ -47,7 +47,7 @@ pub(super) struct TimingMeta {
     pub purpose: &'static str,
     pub rule: &'static str,
 }
-pub(super) const TIMING: [TimingMeta; 15] = [
+pub(super) const TIMING: [TimingMeta; 8] = [
     TimingMeta {
         name: "按鍵按住",
         json: "key_hold_ms",
@@ -73,16 +73,16 @@ pub(super) const TIMING: [TimingMeta; 15] = [
         rule: "不能小於「按鍵按住＋技能鍵到點擊＋點擊按住」。",
     },
     TimingMeta {
-        name: "卡幀 Esc 最短間隔",
+        name: "快卡幀 Esc 間隔",
         json: "escape_gap_ms[0]",
-        purpose: "卡幀暫停（快）兩次 Esc 之間的間隔。",
+        purpose: "卡幀暫停（快）兩次 Esc 之間的間隔。第二個 Esc 一定會送。",
         rule: "",
     },
     TimingMeta {
-        name: "卡幀 Esc 最長間隔",
+        name: "慢卡幀 Esc 間隔",
         json: "escape_gap_ms[1]",
-        purpose: "卡幀暫停（慢）兩次 Esc 之間的間隔。",
-        rule: "不能比最短間隔短。",
+        purpose: "卡幀暫停（慢）兩次 Esc 之間的間隔。第二個 Esc 一定會送。",
+        rule: "",
     },
     TimingMeta {
         name: "開牌前等待",
@@ -96,51 +96,7 @@ pub(super) const TIMING: [TimingMeta; 15] = [
         purpose: "普通點位按住時，多久把游標拉回點位一次。",
         rule: "要大於 0。",
     },
-    TimingMeta {
-        name: "單鍵",
-        json: "allowed_lateness_ms.tap_start",
-        purpose: "技能、暫停、AUTO 這類單次按鍵開始送出時。",
-        rule: "",
-    },
-    TimingMeta {
-        name: "連點的點擊",
-        json: "allowed_lateness_ms.repeat_click",
-        purpose: "連點每一輪點左鍵時。",
-        rule: "",
-    },
-    TimingMeta {
-        name: "開牌開始",
-        json: "allowed_lateness_ms.card_start",
-        purpose: "卡幀開牌送出第一個 Esc 時。",
-        rule: "",
-    },
-    TimingMeta {
-        name: "開牌的點擊",
-        json: "allowed_lateness_ms.card_click",
-        purpose: "卡幀開牌點左鍵時。",
-        rule: "",
-    },
-    TimingMeta {
-        name: "第二個 Esc",
-        json: "allowed_lateness_ms.double_esc_second",
-        purpose: "卡幀暫停的第二個 Esc，超過最長間隔多久還能送。",
-        rule: "不能設成不限。",
-    },
-    TimingMeta {
-        name: "點位開始",
-        json: "allowed_lateness_ms.hold_start",
-        purpose: "普通點位移動游標並按下左鍵時。",
-        rule: "",
-    },
-    TimingMeta {
-        name: "牌鍵",
-        json: "allowed_lateness_ms.card_key_start",
-        purpose: "牌鍵送出那一格的按鍵時。",
-        rule: "",
-    },
 ];
-const LATENESS_NOTE: &str =
-    "系統太忙、動作比預定時間晚的時候，最多容許晚多久；超過就取消這一次。不限＝晚多久都照送。";
 
 fn role_of(path: &str) -> Option<&str> {
     path.strip_prefix("$.presets.")?.strip_suffix(".hotkey")
@@ -248,12 +204,12 @@ impl App {
             },
         }
     }
-    fn timing_checks(&self) -> [Option<String>; 15] {
+    fn timing_checks(&self) -> [Option<String>; 8] {
         let t = &self.timing_draft;
         let values = timing_fields(t);
-        let mut out: [Option<String>; 15] = Default::default();
+        let mut out: [Option<String>; 8] = Default::default();
         for (i, (_, v)) in values.iter().enumerate() {
-            if v.is_some_and(|v| !v.is_finite() || v < 0.) {
+            if !v.is_finite() || *v < 0. {
                 out[i] = Some("要填 0 以上的數字".into());
             }
         }
@@ -266,9 +222,6 @@ impl App {
         let need = t.key_hold_ms + t.key_to_click_ms + t.mouse_hold_ms;
         if out[3].is_none() && t.repeat_period_ms < need {
             out[3] = Some(format!("至少要 {need}"));
-        }
-        if out[5].is_none() && t.escape_gap_ms[0] > t.escape_gap_ms[1] {
-            out[5] = Some("不能比最短間隔短".into());
         }
         if out[7].is_none() && t.hold_maintain_period_ms <= 0. {
             out[7] = Some("要大於 0".into());
@@ -1568,9 +1521,6 @@ impl App {
         k::list_box(ui, "timing", h - 34., |ui| {
             k::table_head(ui, &cols, &["項目", "數值", "檢查"]);
             for (index, (meta, (_, value))) in TIMING.iter().zip(values.iter()).enumerate() {
-                if index == 8 {
-                    k::group_row(ui, "晚到上限（進階）");
-                }
                 let (r, mut cells) = k::table_row(
                     ui,
                     ("tm", index),
@@ -1579,25 +1529,18 @@ impl App {
                     k::ROW_H,
                 );
                 k::cell(&mut cells[0], k::text(meta.name, p.ink, k::BODY));
-                match value {
-                    Some(v) => {
-                        let mut v = *v;
-                        if k::num(
-                            &mut cells[1],
-                            &mut v,
-                            1.,
-                            0.0..=100_000.0,
-                            2,
-                            checks[index].is_some(),
-                        )
-                        .changed()
-                        {
-                            edit = Some((index, Some(v)));
-                        }
-                    }
-                    None => {
-                        cells[1].label(k::text("不限", p.muted, k::SMALL));
-                    }
+                let mut v = *value;
+                if k::num(
+                    &mut cells[1],
+                    &mut v,
+                    1.,
+                    0.0..=100_000.0,
+                    2,
+                    checks[index].is_some(),
+                )
+                .changed()
+                {
+                    edit = Some((index, v));
                 }
                 match &checks[index] {
                     Some(e) => k::cell(&mut cells[2], k::text(e, p.bad, k::SMALL)),
@@ -1616,7 +1559,7 @@ impl App {
             self.edit_timing(index, value);
         }
     }
-    fn edit_timing(&mut self, index: usize, value: Option<f64>) {
+    fn edit_timing(&mut self, index: usize, value: f64) {
         let mut timing = self.timing_draft.clone();
         set_timing_field(&mut timing, index, value);
         self.timing_draft = timing.clone();
@@ -1713,21 +1656,8 @@ impl App {
                 .color(p.faint),
         );
         ui.label(k::text(meta.purpose, p.ink, k::SMALL));
-        if index >= 8 {
-            ui.label(k::text(LATENESS_NOTE, p.muted, k::SMALL));
-        }
         if !meta.rule.is_empty() {
             ui.label(k::text(meta.rule, p.muted, k::SMALL));
-        }
-        let value = timing_fields(&self.timing_draft)[index].1;
-        if index >= 8 && index != 12 {
-            let mut unlimited = value.is_none();
-            if ui
-                .checkbox(&mut unlimited, k::text("不限", p.ink, k::SMALL))
-                .changed()
-            {
-                self.edit_timing(index, if unlimited { None } else { Some(5.) });
-            }
         }
         if let Some(e) = &self.timing_checks()[index] {
             ui.label(k::text(e, p.bad, k::SMALL));

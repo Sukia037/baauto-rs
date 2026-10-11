@@ -25,7 +25,7 @@ if ($Interactive) {
         Checked 'cargo' @('build','--release','--workspace','--features','test-hooks')
         Write-Host 'Receiver will open: keep it foreground. This test checks IPC timeout/cancel/Space capture and Armed rejection.'
         Checked 'cargo' @('test','-p','baauto-win-platform','--features','test-hooks','--test','windows_capture','--','--ignored','--nocapture','--test-threads=1')
-        Write-Host 'Now testing every preset, six/ten card slots, mouse buttons and actual point capture. Default slow DoubleEsc may fail its zero-lateness deadline; preserve that result.'
+        Write-Host 'Now testing every preset, six/ten card slots, mouse buttons and actual point capture.'
         Checked 'cargo' @('test','-p','baauto-win-platform','--features','test-hooks','--test','windows_actions','--','--ignored','--nocapture','--test-threads=1')
     } finally {
         # Restore the production binaries before any actual game use.

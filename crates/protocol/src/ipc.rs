@@ -5,7 +5,7 @@ use baauto_config::*;
 pub use baauto_core::{RunMode, TrialError};
 use baauto_core::{SessionId, StopReason};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 4;
 pub const MAX_FRAME: usize = 1024 * 1024;
 #[derive(Debug, thiserror::Error)]
 pub enum IpcError {
@@ -257,10 +257,7 @@ impl TryFrom<CompiledWire> for CompiledConfig {
         {
             return Err(IpcError::Config("invalid trigger or geometry"));
         }
-        if c.timing.repeat_period == 0
-            || c.timing.maintain == 0
-            || c.timing.gap_min > c.timing.gap_max
-        {
+        if c.timing.repeat_period == 0 || c.timing.maintain == 0 {
             return Err(IpcError::Config("invalid timing"));
         }
         let mut required = [false; 256];

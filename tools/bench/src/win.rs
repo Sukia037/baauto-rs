@@ -562,10 +562,7 @@ pub fn run_scan(
                 id += 1;
                 let phase = rng.next_phase(frame_ticks);
                 let start = clock.now().after(clock.rate.0 / 10).after(phase);
-                let mut timing = trial_timing(base, &plan.parameter, *value, clock.rate)?;
-                if plan.parameter == "escape_gap" {
-                    timing.gap_max = duration.max(timing.gap_min);
-                }
+                let timing = trial_timing(base, &plan.parameter, *value, clock.rate)?;
                 let cursor = NormPoint {
                     x: (h.layout(plan.mode).x[0] + h.layout(plan.mode).x[1]) / 2.,
                     y: (h.layout(plan.mode).y[0] + h.layout(plan.mode).y[1]) / 2.,

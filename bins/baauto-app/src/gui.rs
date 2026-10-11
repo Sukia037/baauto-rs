@@ -1013,56 +1013,36 @@ fn role_description(role: &str) -> String {
         "global_stop" => "停止全部動作並放開所有按鍵，任何時候都有效。只能用鍵盤組合鍵。".into(),
         "record" => "開始錄製點位（不限遊戲在前景）。只能用鍵盤組合鍵。".into(),
         "pause" => "送出 Esc。".into(),
-        "frame_fast" => "Esc，等最短間隔，再 Esc。".into(),
-        "frame_slow" => "Esc，等最長間隔，再 Esc。".into(),
+        "frame_fast" => "Esc，等快卡幀間隔，再 Esc。".into(),
+        "frame_slow" => "Esc，等慢卡幀間隔，再 Esc。".into(),
         "auto" => "送出 a。".into(),
         "speed" => "送出 s。".into(),
         "click_spam" => "按住時一直點左鍵。".into(),
         _ => String::new(),
     }
 }
-fn timing_fields(t: &TimingProfile) -> Vec<(&'static str, Option<f64>)> {
-    vec![
-        ("key_hold_ms", Some(t.key_hold_ms)),
-        ("mouse_hold_ms", Some(t.mouse_hold_ms)),
-        ("key_to_click_ms", Some(t.key_to_click_ms)),
-        ("repeat_period_ms", Some(t.repeat_period_ms)),
-        ("escape_gap_ms[0]", Some(t.escape_gap_ms[0])),
-        ("escape_gap_ms[1]", Some(t.escape_gap_ms[1])),
-        ("card_pre_esc_ms", Some(t.card_pre_esc_ms)),
-        ("hold_maintain_period_ms", Some(t.hold_maintain_period_ms)),
-        ("lateness.tap_start", t.allowed_lateness_ms.tap_start),
-        ("lateness.repeat_click", t.allowed_lateness_ms.repeat_click),
-        ("lateness.card_start", t.allowed_lateness_ms.card_start),
-        ("lateness.card_click", t.allowed_lateness_ms.card_click),
-        (
-            "lateness.double_esc_second",
-            Some(t.allowed_lateness_ms.double_esc_second),
-        ),
-        ("lateness.hold_start", t.allowed_lateness_ms.hold_start),
-        (
-            "lateness.card_key_start",
-            t.allowed_lateness_ms.card_key_start,
-        ),
+fn timing_fields(t: &TimingProfile) -> [(&'static str, f64); 8] {
+    [
+        ("key_hold_ms", t.key_hold_ms),
+        ("mouse_hold_ms", t.mouse_hold_ms),
+        ("key_to_click_ms", t.key_to_click_ms),
+        ("repeat_period_ms", t.repeat_period_ms),
+        ("escape_gap_ms[0]", t.escape_gap_ms[0]),
+        ("escape_gap_ms[1]", t.escape_gap_ms[1]),
+        ("card_pre_esc_ms", t.card_pre_esc_ms),
+        ("hold_maintain_period_ms", t.hold_maintain_period_ms),
     ]
 }
-fn set_timing_field(t: &mut TimingProfile, index: usize, value: Option<f64>) {
+fn set_timing_field(t: &mut TimingProfile, index: usize, value: f64) {
     match index {
-        0 => t.key_hold_ms = value.unwrap_or(0.),
-        1 => t.mouse_hold_ms = value.unwrap_or(0.),
-        2 => t.key_to_click_ms = value.unwrap_or(0.),
-        3 => t.repeat_period_ms = value.unwrap_or(0.),
-        4 => t.escape_gap_ms[0] = value.unwrap_or(0.),
-        5 => t.escape_gap_ms[1] = value.unwrap_or(0.),
-        6 => t.card_pre_esc_ms = value.unwrap_or(0.),
-        7 => t.hold_maintain_period_ms = value.unwrap_or(0.),
-        8 => t.allowed_lateness_ms.tap_start = value,
-        9 => t.allowed_lateness_ms.repeat_click = value,
-        10 => t.allowed_lateness_ms.card_start = value,
-        11 => t.allowed_lateness_ms.card_click = value,
-        12 => t.allowed_lateness_ms.double_esc_second = value.unwrap_or(0.),
-        13 => t.allowed_lateness_ms.hold_start = value,
-        14 => t.allowed_lateness_ms.card_key_start = value,
+        0 => t.key_hold_ms = value,
+        1 => t.mouse_hold_ms = value,
+        2 => t.key_to_click_ms = value,
+        3 => t.repeat_period_ms = value,
+        4 => t.escape_gap_ms[0] = value,
+        5 => t.escape_gap_ms[1] = value,
+        6 => t.card_pre_esc_ms = value,
+        7 => t.hold_maintain_period_ms = value,
         _ => {}
     }
 }

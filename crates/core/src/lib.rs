@@ -128,7 +128,6 @@ pub enum ArmError {
 pub enum Report {
     ResourceBusy,
     OutsideHand,
-    LateCancelled,
     ConfirmPause,
     Capacity,
     StaleVersion,
@@ -204,7 +203,6 @@ struct Action {
     mouse: bool,
     key_reserved: bool,
     cycle_start: Ticks,
-    last_esc_up: Ticks,
     card_started: bool,
     trailing: bool,
 }
@@ -297,7 +295,6 @@ impl Engine {
             || !cursor.valid()
             || timing.repeat_period == 0
             || timing.maintain == 0
-            || timing.gap_min > timing.gap_max
             || matches!(spec, ActionSpec::Repeat { .. } | ActionSpec::Card(_))
                 && timing.repeat_period
                     < timing
@@ -554,7 +551,6 @@ impl Engine {
             mouse,
             key_reserved: reserve_key,
             cycle_start: now,
-            last_esc_up: now,
             card_started: false,
             trailing: false,
         });
@@ -694,29 +690,6 @@ impl Engine {
             inspected[i] = true;
             let mut a = self.slots[i].unwrap();
             let mut events = ArrayVec::new();
-            let late_index = match (a.phase, a.spec) {
-                (Phase::Start, ActionSpec::Tap(_)) => Some(0),
-                (Phase::ClickDown, ActionSpec::Repeat { .. }) => Some(1),
-                (Phase::Start, ActionSpec::Card(_)) => Some(2),
-                (Phase::ClickDown, ActionSpec::Card(_)) => Some(3),
-                (Phase::Start, ActionSpec::HoldPoint(_)) => Some(5),
-                (Phase::Start, ActionSpec::CardKey) => Some(6),
-                _ => None,
-            };
-            if late_index
-                .and_then(|i| a.timing.stage_lateness[i])
-                .is_some_and(|limit| now > a.due.after(limit))
-            {
-                self.report(Report::LateCancelled);
-                if matches!(a.spec, ActionSpec::Card(_)) && a.card_started {
-                    self.report(Report::ConfirmPause);
-                }
-                a.phase = Phase::Clean;
-                a.trailing = false;
-                a.due = now;
-                self.slots[i] = Some(a);
-                continue;
-            }
             if a.phase == Phase::WaitCycle {
                 if self.mouse.is_some() || a.key.is_some_and(|k| self.key_busy(k, Some(a.id))) {
                     continue;
@@ -753,19 +726,7 @@ impl Engine {
                     Phase::EscUp | Phase::SecondUp | Phase::TrailingUp => {
                         events.push(OutEvent::KeyUp(Key::ESC))
                     }
-                    Phase::Gap => {
-                        if now.0
-                            > a.last_esc_up
-                                .after(a.timing.gap_max)
-                                .after(a.timing.stage_lateness[4].unwrap_or(0))
-                                .0
-                        {
-                            self.report(Report::LateCancelled);
-                            self.finish(i);
-                            continue;
-                        }
-                        events.push(OutEvent::KeyDown(Key::ESC));
-                    }
+                    Phase::Gap => events.push(OutEvent::KeyDown(Key::ESC)),
                     Phase::ClickDown => events.push(OutEvent::LeftDown),
                     Phase::ClickUp => events.push(OutEvent::LeftUp),
                     Phase::Maintain => {
@@ -897,10 +858,9 @@ impl Engine {
                 return;
             }
             Phase::EscUp => {
-                a.last_esc_up = end;
                 if let ActionSpec::DoubleEsc { slow } = a.spec {
                     a.phase = Phase::Gap;
-                    a.due = end.after(if slow { t.gap_max } else { t.gap_min });
+                    a.due = end.after(if slow { t.esc_gap_slow } else { t.esc_gap_fast });
                 } else {
                     a.card_started = true;
                     a.phase = Phase::WaitCycle;

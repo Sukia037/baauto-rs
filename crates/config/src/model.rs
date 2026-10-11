@@ -222,29 +222,12 @@ pub enum ProfileSource {
     Manual,
     Calibrated,
 }
-/// Lateness is stage-specific. None allows late execution; release stages are never dropped.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct LatenessTable {
-    pub tap_start: Option<f64>,
-    pub repeat_click: Option<f64>,
-    pub card_start: Option<f64>,
-    pub card_click: Option<f64>,
-    pub double_esc_second: f64,
-    pub hold_start: Option<f64>,
-    pub card_key_start: Option<f64>,
-}
-impl Default for LatenessTable {
-    fn default() -> Self {
-        Self {
-            tap_start: None,
-            repeat_click: None,
-            card_start: None,
-            card_click: None,
-            double_esc_second: 0.0,
-            hold_start: None,
-            card_key_start: None,
-        }
+/// Older keys files carry the removed `allowed_lateness_ms` table; it loads but is never written back.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct RemovedField;
+impl<'de> Deserialize<'de> for RemovedField {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        serde::de::IgnoredAny::deserialize(d).map(|_| Self)
     }
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -257,10 +240,12 @@ pub struct TimingProfile {
     pub mouse_hold_ms: f64,
     pub key_to_click_ms: f64,
     pub repeat_period_ms: f64,
+    /// Fixed waits between the two Escs: [frame_fast, frame_slow]. The second Esc is always sent.
     pub escape_gap_ms: [f64; 2],
     pub card_pre_esc_ms: f64,
     pub hold_maintain_period_ms: f64,
-    pub allowed_lateness_ms: LatenessTable,
+    #[serde(default, skip_serializing, rename = "allowed_lateness_ms")]
+    removed_lateness: RemovedField,
     pub card_trailing_esc: TrailingEscPolicy,
     pub auto_repeat: AutoRepeatPolicy,
 }
