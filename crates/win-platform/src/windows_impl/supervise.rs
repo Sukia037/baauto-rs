@@ -509,9 +509,7 @@ pub fn run_supervisor(
             }
             let target = target_for_foreground(&options.target)?;
             window.set_target(target.map_or(0, |t| t.hwnd));
-            if let Some(c) = &child
-                && matches!(fsm.state(), State::Armed(_))
-            {
+            if let Some(c) = &child {
                 let p = &c.mapping.data().progress;
                 let effects = fsm.on(FsmEvent::Health {
                     now,

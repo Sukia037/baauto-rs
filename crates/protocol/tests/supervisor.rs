@@ -295,3 +295,56 @@ fn fsm_raw_input_without_hook_observation_stops_after_timeout() {
     assert!(effects.contains(&Effect::SetStop(SessionId(1))));
     assert!(f.requires_confirmation());
 }
+
+#[test]
+fn fsm_disarmed_raw_input_is_not_charged_to_next_session() {
+    let mut f = ready();
+    f.on(Event::Health {
+        now: Ticks(1),
+        scheduler: 100,
+        hook_loop: 100,
+        hook_physical: 0,
+        raw_bound: 900,
+        foreground: true,
+    });
+    f.on(Event::RequestArm {
+        session: SessionId(1),
+        cmd_seq: 1,
+    });
+    f.on(Event::Armed {
+        session: SessionId(1),
+        cmd_seq: 1,
+        now: Ticks(2),
+    });
+    for now in [50, 150, 250] {
+        assert!(
+            f.on(Event::Health {
+                now: Ticks(now),
+                scheduler: now,
+                hook_loop: now,
+                hook_physical: 0,
+                raw_bound: 900,
+                foreground: true
+            })
+            .is_empty()
+        );
+    }
+    assert_eq!(f.state(), State::Armed(SessionId(1)));
+}
+
+#[test]
+fn fsm_expired_hook_credit_cannot_hide_removal() {
+    let mut f = armed();
+    for (now, hook, raw) in [(10, 1, 0), (150, 1, 0), (160, 1, 1), (260, 1, 1)] {
+        f.on(Event::Health {
+            now: Ticks(now),
+            scheduler: now,
+            hook_loop: now,
+            hook_physical: hook,
+            raw_bound: raw,
+            foreground: true,
+        });
+    }
+    assert!(matches!(f.state(), State::Stopping { fault: true, .. }));
+    assert!(f.requires_confirmation());
+}

@@ -12,6 +12,27 @@ use std::{
     thread,
     time::Duration,
 };
+struct DesktopGuard {
+    receiver: Process,
+    quit: Option<mpsc::Sender<SupervisorCommand>>,
+    supervisor: Option<thread::JoinHandle<windows::core::Result<()>>>,
+}
+impl Drop for DesktopGuard {
+    fn drop(&mut self) {
+        let _ = inject_test_key(Key(90), false);
+        let _ = inject_test_key(Key(50), false);
+        if let Some(tx) = self.quit.take() {
+            let _ = tx.send(SupervisorCommand::Quit);
+        }
+        if let Some(join) = self.supervisor.take() {
+            let _ = join.join();
+        }
+        if !self.receiver.exited() {
+            let _ = self.receiver.terminate();
+            let _ = self.receiver.wait_exit();
+        }
+    }
+}
 fn case(rule: &str) {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -32,6 +53,11 @@ fn case(rule: &str) {
         ],
     )
     .unwrap();
+    let mut guard = DesktopGuard {
+        receiver,
+        quit: None,
+        supervisor: None,
+    };
     let clock = Clock::new().unwrap();
     let deadline = clock.now().after(clock.rate.0 * 10);
     let target = loop {
@@ -58,6 +84,8 @@ fn case(rule: &str) {
     let (tx, rx) = mpsc::channel();
     let (status_tx, status_rx) = mpsc::channel();
     let supervisor = thread::spawn(move || run_supervisor(options, rx, status_tx));
+    guard.quit = Some(tx.clone());
+    guard.supervisor = Some(supervisor);
     tx.send(SupervisorCommand::Enable).unwrap();
     let until = clock.now().after(clock.rate.0 * 15);
     let mut injected = false;
@@ -88,9 +116,10 @@ fn case(rule: &str) {
         );
     }
     tx.send(SupervisorCommand::Quit).unwrap();
-    supervisor.join().unwrap().unwrap();
+    guard.supervisor.take().unwrap().join().unwrap().unwrap();
+    guard.quit = None;
     close_target_window(target).unwrap();
-    receiver.wait_exit().unwrap();
+    guard.receiver.wait_exit().unwrap();
     assert!(
         std::fs::read_dir(&logs).unwrap().flatten().any(|p| p
             .file_name()
@@ -99,12 +128,45 @@ fn case(rule: &str) {
             && p.path().extension() == Some(OsStr::new("csv")))
     );
     let csv = std::fs::read_to_string(logs.join("receiver.csv")).unwrap();
+    let evidence = std::fs::read_dir(&logs)
+        .unwrap()
+        .flatten()
+        .find(|e| e.path().extension() == Some(OsStr::new("json")))
+        .unwrap();
+    let meta: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(evidence.path()).unwrap()).unwrap();
+    assert!(meta["release_success"].as_bool().unwrap());
+    assert!(
+        meta["exit_confirm"].as_u64().unwrap() <= meta["release"]["begin"].as_u64().unwrap(),
+        "release requires confirmed process exit"
+    );
+    let mut keyboard = [false; 256];
     let mut held = false;
     let mut downs = 0;
     for line in csv.lines().skip(1) {
         let msg = line.split(',').nth(1).unwrap().parse::<u32>().unwrap();
+        let vk = line.split(',').nth(2).unwrap().parse::<usize>().unwrap();
+        if [0x100, 0x104].contains(&msg) && vk < 256 {
+            keyboard[vk] = true;
+        }
+        if [0x101, 0x105].contains(&msg) && vk < 256 {
+            keyboard[vk] = false;
+        }
+        if rule.starts_with("hang:")
+            && line.split(',').next().unwrap().parse::<u64>().unwrap()
+                > meta["release"]["end"].as_u64().unwrap()
+        {
+            assert!(
+                ![0x200, 0x201].contains(&msg),
+                "engine must not move or press after recovery release"
+            );
+        }
         match msg {
             0x201 => {
+                assert!(
+                    !keyboard.into_iter().any(|down| down),
+                    "all receiver keyboard Down events need an Up"
+                );
                 assert!(!held, "duplicate mouse Down");
                 held = true;
                 downs += 1;
@@ -113,6 +175,10 @@ fn case(rule: &str) {
             _ => {}
         }
     }
+    assert!(
+        !keyboard.into_iter().any(|down| down),
+        "all receiver keyboard Down events need an Up"
+    );
     assert!(!held, "receiver must finish without LeftButton held");
     assert!(downs > 0, "test must exercise a held mouse transaction");
     eprintln!("{rule}: evidence {}", logs.display());

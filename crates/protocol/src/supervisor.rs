@@ -119,6 +119,7 @@ pub struct SupervisorFsm {
     physical: u64,
     unmatched: Option<Ticks>,
     hook_credit: u64,
+    credit_since: Option<Ticks>,
     raw_pending: u64,
 }
 impl SupervisorFsm {
@@ -143,6 +144,7 @@ impl SupervisorFsm {
             physical: 0,
             unmatched: None,
             hook_credit: 0,
+            credit_since: None,
             raw_pending: 0,
         }
     }
@@ -310,6 +312,13 @@ impl SupervisorFsm {
                     self.raw_pending = 0;
                     self.unmatched = None;
                 } else {
+                    if self
+                        .credit_since
+                        .is_some_and(|at| now.0.saturating_sub(at.0) >= self.timeouts.health)
+                    {
+                        self.hook_credit = 0;
+                        self.credit_since = None;
+                    }
                     self.hook_credit = self
                         .hook_credit
                         .saturating_add(hook_physical - self.physical);
@@ -322,6 +331,11 @@ impl SupervisorFsm {
                     } else if self.unmatched.is_none() {
                         self.unmatched = Some(now);
                     }
+                }
+                if self.hook_credit == 0 {
+                    self.credit_since = None;
+                } else if self.credit_since.is_none() {
+                    self.credit_since = Some(now);
                 }
                 self.physical = hook_physical;
                 self.raw = raw_bound;
@@ -338,6 +352,22 @@ impl SupervisorFsm {
                         self.hook_confirmed = false;
                     }
                 }
+            }
+            Event::Health {
+                scheduler,
+                hook_loop,
+                hook_physical,
+                raw_bound,
+                ..
+            } => {
+                self.scheduler = scheduler;
+                self.hook_loop = hook_loop;
+                self.physical = hook_physical;
+                self.raw = raw_bound;
+                self.hook_credit = 0;
+                self.credit_since = None;
+                self.raw_pending = 0;
+                self.unmatched = None;
             }
             Event::RequestRehook if self.state == State::Disarmed => {
                 self.hook_confirmed = false;

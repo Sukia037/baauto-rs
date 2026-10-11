@@ -290,7 +290,11 @@ pub fn run_managed(shm: &str, pipe: &str, parent_pid: u32, target_exe: &OsStr) -
                         })?;
                     }
                     AppToEngine::Rehook { .. } => {
-                        if engine.is_some() {
+                        if engine.is_some()
+                            || hook
+                                .as_ref()
+                                .is_some_and(|h| !h.keys_released().unwrap_or(false))
+                        {
                             io.send(EngineToApp::Rejected {
                                 session,
                                 cmd_seq: seq,
@@ -313,9 +317,25 @@ pub fn run_managed(shm: &str, pipe: &str, parent_pid: u32, target_exe: &OsStr) -
                 }
             }
             if engine.is_none()
+                && !pending.as_ref().is_some_and(|(new_cfg, _)| {
+                    cfg.as_ref().is_some_and(|old| {
+                        old.params.queue_capacity != new_cfg.params.queue_capacity
+                    }) && hook
+                        .as_ref()
+                        .is_some_and(|h| !h.keys_released().unwrap_or(false))
+                })
                 && let Some((new_cfg, seq)) = pending.take()
             {
                 let target = target_for_foreground(target_exe)?.unwrap_or_else(placeholder);
+                if cfg
+                    .as_ref()
+                    .is_some_and(|old| old.params.queue_capacity != new_cfg.params.queue_capacity)
+                {
+                    if let Some(h) = hook.take() {
+                        h.shutdown()?;
+                    }
+                    consumer = None;
+                }
                 if let Some(h) = &hook {
                     h.install(new_cfg.clone(), target)?;
                 } else {

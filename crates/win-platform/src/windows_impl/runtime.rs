@@ -230,6 +230,7 @@ fn callback_failed() {
             // SAFETY: This helper is called on the owning Hook thread while its TLS pointer is registered.
             unsafe {
                 (*ptr).state.invalidate();
+                (*ptr).mapping.data().progress.stop_reason.store(10, SeqCst);
                 let _ = (*ptr).stop.set();
             }
         }
