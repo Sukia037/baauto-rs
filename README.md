@@ -4,7 +4,7 @@ Blue Archive（蔚藍檔案）PC 版的按鍵輔助工具。按一個鍵就能�
 
 ![BAauto 介面](docs/screenshots/windows-20261011-current-dpi/light-points-card-100pct.png)
 
-> **目前狀態**：功能都做好了，自動測試全部通過。慢卡幀這次修正後還沒在實機重測，也還沒在真實遊戲裡長時間使用過。遇到問題請回報，說明見文末。
+> **目前狀態**：預覽版 `v0.1.0-preview.1`。功能都做好了，自動測試全部通過，慢卡幀和其他預設功能已在 Windows 接收器實測。牌鍵剛改成按住循環，還沒在 Windows 實機重測，也還沒在真實遊戲裡長時間使用過。遇到問題請回報，說明見文末。
 
 ## 需要什麼
 
@@ -13,7 +13,20 @@ Blue Archive（蔚藍檔案）PC 版的按鍵輔助工具。按一個鍵就能�
 
 ## 安裝
 
-目前沒有現成的下載檔，要自己建置一次。
+1. 到 [Releases 頁面](https://github.com/Sukia037/baauto-rs/releases) 下載最新的 `BAauto-<版本>-windows-x64.zip`。
+2. 解壓縮到你想放的資料夾，裡面有 `baauto-app.exe`、`baauto-engine.exe` 和這份說明。
+3. 執行 `baauto-app.exe`。
+
+兩個 exe 一定要放在同一個資料夾，更新時也要一起換，不能只換其中一個。設定檔會存在同一個資料夾裡，所以更新時只要覆蓋這兩個 exe，原本的設定都會保留。
+
+執行檔沒有數位簽章，第一次開啟時 Windows 可能跳出「Windows 已保護您的電腦」。確認檔案是從上面的 Releases 頁面下載的，就按「其他資訊」→「仍要執行」。想核對檔案沒被動過，可以比對同一頁的 `.sha256` 檔：
+
+```powershell
+Get-FileHash .\BAauto-<版本>-windows-x64.zip -Algorithm SHA256
+```
+
+<details>
+<summary>自己從原始碼建置</summary>
 
 1. **安裝 Rust**：在 PowerShell 執行 `winget install Rustlang.Rustup`，或到 <https://rustup.rs> 下載安裝程式。安裝過程如果問要不要裝 Visual Studio，選自動安裝。裝完關掉 PowerShell 再重開一個。
 2. **下載這個專案**，在專案資料夾（有 `Cargo.toml` 的那一層）開 PowerShell，執行：
@@ -21,7 +34,9 @@ Blue Archive（蔚藍檔案）PC 版的按鍵輔助工具。按一個鍵就能�
    cargo build --release --workspace
    ```
    第一次要幾分鐘。
-3. 到 `target\release\`，把 **`baauto-app.exe` 和 `baauto-engine.exe`** 一起複製到你想放的資料夾。兩個檔案一定要放在同一個資料夾，而且要一起更新，不能只換其中一個。
+3. 到 `target\release\`，把 `baauto-app.exe` 和 `baauto-engine.exe` 一起複製到你想放的資料夾。
+
+</details>
 
 ## 快速開始
 
@@ -106,6 +121,9 @@ BAauto 只在遊戲是前景視窗時才會動作。切到別的視窗會自動�
 
 **首頁頂部出現紅色警告「緊急停止鍵 … 被其他程式佔用」**
 有別的程式先註冊了這組鍵。點警告裡的「前往「預設按鍵」改鍵」，換一組沒被佔用的鍵盤組合並儲存，警告消失後就能啟用，不用重開程式。錄點鍵被佔用的話只會警告，不影響使用。
+
+**開啟時跳出「Windows 已保護您的電腦」**
+執行檔沒有數位簽章才會這樣。確認是從 Releases 頁面下載的，就按「其他資訊」→「仍要執行」。防毒軟體如果把它當成可疑程式，原因通常是 BAauto 會攔截按鍵並模擬輸入，請把程式資料夾加入例外。
 
 **按了沒反應**
 - 確認右上角狀態是「運作中」，而不是「已停止」。
