@@ -1,4 +1,6 @@
 #![forbid(unsafe_code)]
+// Double-clicking the app must not open a console window; --headless and --help attach to the terminal.
+#![cfg_attr(windows, windows_subsystem = "windows")]
 #[cfg(not(windows))]
 fn main() {
     if let Err(e) = run_gui() {
@@ -8,6 +10,9 @@ fn main() {
 }
 #[cfg(windows)]
 fn main() {
+    if std::env::args_os().any(|a| a == "--headless" || a == "--help") {
+        baauto_win_platform::attach_parent_console();
+    }
     if let Err(e) = if std::env::args_os().any(|a| a == "--headless") {
         run()
     } else {

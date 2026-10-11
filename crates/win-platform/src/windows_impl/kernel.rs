@@ -265,6 +265,12 @@ pub fn virtual_desktop() -> Rect {
         }
     }
 }
+/// The GUI build has no console of its own; console modes reuse the terminal that started them.
+pub fn attach_parent_console() -> bool {
+    use windows::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
+    // SAFETY: Value-only call; failure just means there is no parent console to attach to.
+    unsafe { AttachConsole(ATTACH_PARENT_PROCESS) }.is_ok()
+}
 pub fn set_dpi_awareness() -> Result<()> {
     use windows::Win32::UI::HiDpi::*;
     // SAFETY: Called before creating a window or hook; no pointers are involved.

@@ -56,7 +56,8 @@ impl Process {
                 None,
                 None,
                 false,
-                PROCESS_CREATION_FLAGS(0),
+                // Engine and receiver children never get a console window of their own.
+                CREATE_NO_WINDOW,
                 None,
                 PCWSTR::null(),
                 &startup,
