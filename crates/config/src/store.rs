@@ -72,7 +72,7 @@ pub struct UiPreferences {
     pub theme: Option<bool>,
 }
 fn default_window_size() -> [f32; 2] {
-    [960., 620.]
+    [1000., 660.]
 }
 impl Default for UiPreferences {
     fn default() -> Self {

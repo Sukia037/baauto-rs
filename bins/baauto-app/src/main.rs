@@ -285,14 +285,14 @@ fn run_gui() -> Result<(), Box<dyn std::error::Error>> {
             }
             Some("--help") => {
                 println!(
-                    "baauto-app [--preview] [--data-dir PATH] [--target-exe EXE]\nUse --headless for console supervision.\nQA: --qa-dir PATH [--qa-dark] [--qa-scale 1|1.5|2] [--qa-tab 0..3]"
+                    "baauto-app [--preview] [--data-dir PATH] [--target-exe EXE]\nUse --headless for console supervision.\nQA: --qa-dir PATH [--qa-dark] [--qa-scale 1|1.5|2] [--qa-tab 0..4]"
                 );
                 return Ok(());
             }
             _ => return Err("unknown GUI option; use --headless for console options".into()),
         }
     }
-    if qa_tab > 3 || ![1.0, 1.5, 2.0].contains(&qa_scale) {
+    if qa_tab > 4 || ![1.0, 1.5, 2.0].contains(&qa_scale) {
         return Err("invalid QA tab/scale".into());
     }
     let qa = qa_dir.map(|p| (p, qa_dark, qa_scale, qa_tab));
@@ -305,7 +305,7 @@ fn run_gui() -> Result<(), Box<dyn std::error::Error>> {
             .map(|_| std::env::temp_dir().join(format!("baauto-qa-window-{}", std::process::id()))),
         viewport: egui::ViewportBuilder::default()
             .with_title("BAauto")
-            .with_inner_size([960. * qa_scale, 620. * qa_scale])
+            .with_inner_size([1000. * qa_scale, 660. * qa_scale])
             .with_min_inner_size([900., 560.]),
         renderer: eframe::Renderer::Glow,
         ..Default::default()

@@ -15,7 +15,7 @@ powershell -ExecutionPolicy Bypass -File tests/windows/M6.ps1 -Screenshots
 - [ ] Windows `fmt`、`clippy --all-targets --all-features`、`cargo test`、正式 release build 通過。
 - [ ] 互動 IPC 測試通過：Armed 拒絕，Point capture逾時，Hotkey capture取消，Space Down／Up都沒有到接收器，舊恢復代號不能重新 Arm。
 - [ ] 正式版重新建置，不用 test-hooks／fault-injection 執行遊戲。
-- [ ] 實際 Windows 100%、150%、200% DPI，各四分頁淺／深色、960×620與900×560：無方框字、文字不互相覆蓋、可捲動至每個項目。另在100%＋200%混合DPI、負座標螢幕測試覆蓋層；將各組截圖放到不同資料夾，記錄OS DPI，不能把 `--qa-scale` 當成OS DPI。
+- [ ] 實際 Windows 100%、150%、200% DPI，各四分頁淺／深色、1000×660與900×560：無方框字、文字不互相覆蓋、可捲動至每個項目。另在100%＋200%混合DPI、負座標螢幕測試覆蓋層；將各組截圖放到不同資料夾，記錄OS DPI，不能把 `--qa-scale` 當成OS DPI。
 
 ## 檔案與編輯
 

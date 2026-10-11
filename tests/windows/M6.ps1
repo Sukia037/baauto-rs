@@ -12,13 +12,13 @@ if ($Screenshots) {
     $data=Join-Path $env:TEMP ('baauto-m6-ui-'+[guid]::NewGuid())
     $out='docs/screenshots/windows-current-dpi'
     foreach ($dark in @($false,$true)) {
-        foreach ($tab in 0..3) {
+        foreach ($tab in 0..4) {
             $a=@('--preview','--data-dir',$data,'--qa-dir',$out,'--qa-tab',"$tab")
             if ($dark) { $a+=@('--qa-dark') }
             Checked './target/release/baauto-app.exe' $a
         }
     }
-    Write-Host "Native Windows screenshots: $out. Record actual Windows monitor DPI separately; repeat at 100/150/200% and on mixed-DPI monitors."
+    Write-Host "Native Windows screenshots (10 images): $out. Record actual Windows monitor DPI separately; repeat at 100/150/200% and on mixed-DPI monitors."
 }
 if ($Interactive) {
     try {
