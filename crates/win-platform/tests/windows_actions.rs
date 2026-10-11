@@ -16,6 +16,7 @@ use std::{
 };
 struct Guard {
     receiver: Process,
+    preview: Option<Process>,
     quit: Option<mpsc::Sender<SupervisorCommand>>,
     join: Option<thread::JoinHandle<windows::core::Result<()>>>,
     extra_keys: Vec<Key>,
@@ -34,6 +35,12 @@ impl Drop for Guard {
         }
         if let Some(join) = self.join.take() {
             let _ = join.join();
+        }
+        if let Some(preview) = &self.preview
+            && !preview.exited()
+        {
+            let _ = preview.terminate();
+            let _ = preview.wait_exit();
         }
         if !self.receiver.exited() {
             let _ = self.receiver.terminate();
@@ -147,6 +154,7 @@ fn run_profile(mode: Mode, side: CardUiSide, order: SlotOrder, all_presets: bool
     .unwrap();
     let mut guard = Guard {
         receiver,
+        preview: None,
         quit: None,
         join: None,
         extra_keys: [
@@ -422,6 +430,43 @@ fn run_profile(mode: Mode, side: CardUiSide, order: SlotOrder, all_presets: bool
             "global_stop".into(),
             !key_is_down(Key::LEFT) && !key_is_down(Key(49)),
         ));
+    }
+    if all_presets {
+        guard.preview = Some(
+            Process::spawn(
+                bin.join("baauto-app.exe").as_os_str(),
+                &[
+                    "--preview".into(),
+                    "--data-dir".into(),
+                    folder.join("preview").into_os_string(),
+                ],
+            )
+            .unwrap(),
+        );
+        let due = clock.now().after(clock.rate.0 * 15);
+        let preview_target = loop {
+            if let Some(t) = target_for_foreground(OsStr::new("baauto-app.exe")).unwrap() {
+                break t;
+            }
+            assert!(clock.now() < due, "preview must receive foreground focus");
+            wait_control_period(clock, clock.rate.0 / 20).unwrap();
+        };
+        let (reply, rx) = mpsc::channel();
+        tx.send(SupervisorCommand::ViewTarget { reply }).unwrap();
+        let result = rx.recv_timeout(Duration::from_secs(3)).unwrap();
+        println!("calibration foreground result: {result:?}");
+        captures.push((
+            "calibration_foreground_handoff".into(),
+            result
+                == Ok([
+                    target.monitor.left,
+                    target.monitor.top,
+                    target.monitor.width,
+                    target.monitor.height,
+                ]),
+        ));
+        close_target_window(preview_target).unwrap();
+        guard.preview.take().unwrap().wait_exit().unwrap();
     }
     tx.send(SupervisorCommand::Quit).unwrap();
     guard.join.take().unwrap().join().unwrap().unwrap();
