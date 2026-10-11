@@ -1,0 +1,89 @@
+[
+  {
+    "name": "card_key_slot_0",
+    "begin": 13732693427979,
+    "end": 13732697439784,
+    "expected": [
+      [
+        256,
+        49
+      ],
+      [
+        257,
+        49
+      ]
+    ],
+    "repeating": false
+  },
+  {
+    "name": "card_key_slot_1",
+    "begin": 13732698461694,
+    "end": 13732702473203,
+    "expected": [
+      [
+        256,
+        50
+      ],
+      [
+        257,
+        50
+      ]
+    ],
+    "repeating": false
+  },
+  {
+    "name": "card_key_slot_2",
+    "begin": 13732703494585,
+    "end": 13732707502516,
+    "expected": [
+      [
+        256,
+        51
+      ],
+      [
+        257,
+        51
+      ]
+    ],
+    "repeating": false
+  },
+  {
+    "name": "card_key_slot_3",
+    "begin": 13732708519893,
+    "end": 13732712527932,
+    "expected": [
+      [
+        256,
+        52
+      ],
+      [
+        257,
+        52
+      ]
+    ],
+    "repeating": false
+  },
+  {
+    "name": "card_key_slot_4",
+    "begin": 13732713546417,
+    "end": 13732717554910,
+    "expected": [
+      [
+        256,
+        53
+      ],
+      [
+        257,
+        53
+      ]
+    ],
+    "repeating": false
+  },
+  {
+    "name": "card_key_outside",
+    "begin": 13732718574686,
+    "end": 13732722581264,
+    "expected": [],
+    "repeating": false
+  }
+]

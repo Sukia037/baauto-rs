@@ -1,0 +1,28 @@
+   Compiling baauto-win-platform v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\crates\win-platform)
+   Compiling baauto-bench v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\tools\bench)
+   Compiling baauto-app v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\bins\baauto-app)
+   Compiling baauto-engine v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\bins\baauto-engine)
+    Finished `release` profile [optimized] target(s) in 14.47s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.10s
+     Running tests\windows_actions.rs (target\debug\deps\windows_actions-44464a1031a6ca96.exe)
+
+running 1 test
+
+thread 'all_presets_card_slots_and_capture_reach_windows_receiver' (66408) panicked at crates\win-platform\tests\windows_actions.rs:336:72:
+called `Result::unwrap()` on an `Err` value: Timeout
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test all_presets_card_slots_and_capture_reach_windows_receiver ... FAILED
+
+failures:
+
+failures:
+    all_presets_card_slots_and_capture_reach_windows_receiver
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.85s
+
+error: test failed, to rerun pass `-p baauto-win-platform --test windows_actions`
+   Compiling baauto-win-platform v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\crates\win-platform)
+   Compiling baauto-bench v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\tools\bench)
+   Compiling baauto-app v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\bins\baauto-app)
+   Compiling baauto-engine v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\bins\baauto-engine)
+    Finished `release` profile [optimized] target(s) in 9.68s

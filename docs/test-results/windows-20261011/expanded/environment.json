@@ -1,0 +1,296 @@
+{
+  "date": "2026-10-11",
+  "baseline_environment": "../environment.json",
+  "source_commits": [
+    "ac23526",
+    "31e6e5f",
+    "afce9ba",
+    "734ec6f"
+  ],
+  "test_input": "Windows SendInput with test-hooks; not physical hardware or real game",
+  "stop_hotkey": "=Ctrl+Alt+F24",
+  "record_hotkey": "=Ctrl+Alt+F23",
+  "default_double_esc_lateness_ms": 0,
+  "controlled_double_esc_lateness_ms": 5,
+  "production_profile_unchanged": true,
+  "automatic_passed": 160,
+  "automatic_ignored": 3,
+  "default_preset_passed": 22,
+  "default_preset_failed": [
+    "frame_slow"
+  ],
+  "controlled_preset_passed": 23,
+  "ui_recorded_point_pixels": [
+    906,
+    500
+  ],
+  "ui_receiver_left_events": 0,
+  "ui_hand_unchanged_after_timeout": true,
+  "calibration_drag": "not verified: transparent overlay target rejected by desktop automation after recovery retry",
+  "evidence_sha256": [
+    {
+      "path": "automatic.log",
+      "sha256": "0e5b8622ac365fcf9eeeb586b23e209c181c38cbb6355febbd5db3ca8b1694d4"
+    },
+    {
+      "path": "calibration-before-fix.log",
+      "sha256": "9f42f671b6e144fd1ec061d12b3b8892a0be838dc09b095bc32c2cfec9a5e23d"
+    },
+    {
+      "path": "capture-regression.log",
+      "sha256": "ce8bbef8b349dec868853f3a20576e537c58c7e1f45c289673a395c36730b306"
+    },
+    {
+      "path": "controlled-actions.log",
+      "sha256": "08407df59744b5a4c7a0bddc8010581c6c3c86d457474c1fa097b8d4d2fe61c2"
+    },
+    {
+      "path": "controlled/Six-Left-LeftToRight/captures.json",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "path": "controlled/Six-Left-LeftToRight/cases.json",
+      "sha256": "e0faabec8bb5493927d88bd9a918297c9b48b2700c3c0d03fd2067d31fe9a483"
+    },
+    {
+      "path": "controlled/Six-Left-LeftToRight/hand.json",
+      "sha256": "541851606a9119f9b6d7aacbe04d146fefa831a55a6611ea42cd745b567ae240"
+    },
+    {
+      "path": "controlled/Six-Left-LeftToRight/keys.json",
+      "sha256": "cea4b060172ac3eafc5fe2d4c6d94859d910bf77f252ec64fb453fc466849baa"
+    },
+    {
+      "path": "controlled/Six-Left-LeftToRight/points.json",
+      "sha256": "e1cfc716be615893d2fec61780d1310a99859e80fd36486629ade922d42a4b45"
+    },
+    {
+      "path": "controlled/Six-Left-LeftToRight/receiver.csv",
+      "sha256": "b904986eacc3ecda33db05688f9901e6a1648b3665468df430b50851fc539b00"
+    },
+    {
+      "path": "controlled/Six-Left-LeftToRight/receiver.json",
+      "sha256": "1192060d0117eb937ee592b6402f46d83cab56466de63ae39a69496d89f1ec36"
+    },
+    {
+      "path": "controlled/Six-Right-LeftToRight/captures.json",
+      "sha256": "5ba40ac0d9485cb11ac050ae68daa5e5981c7a61c0ae06c6109e3bf527eac7a6"
+    },
+    {
+      "path": "controlled/Six-Right-LeftToRight/cases.json",
+      "sha256": "46b06bcd5a48ba898f9af5dbae764f9ae7fafc005a13171762431f41a3d404f0"
+    },
+    {
+      "path": "controlled/Six-Right-LeftToRight/hand.json",
+      "sha256": "0ce312b97667ace0c9d71a1201317ac2b027b37633bdd7aefb7fcc5628d11f18"
+    },
+    {
+      "path": "controlled/Six-Right-LeftToRight/keys.json",
+      "sha256": "cea4b060172ac3eafc5fe2d4c6d94859d910bf77f252ec64fb453fc466849baa"
+    },
+    {
+      "path": "controlled/Six-Right-LeftToRight/points.json",
+      "sha256": "e1cfc716be615893d2fec61780d1310a99859e80fd36486629ade922d42a4b45"
+    },
+    {
+      "path": "controlled/Six-Right-LeftToRight/receiver.csv",
+      "sha256": "f8e64762443df3955d0b052621cc5dad986ce92d2f3cdb97124b0535fb82ebfd"
+    },
+    {
+      "path": "controlled/Six-Right-LeftToRight/receiver.json",
+      "sha256": "bbffccd123979a2e860a57e0fed0cd9da1fe7b489dfba70b6324f38516d17ba1"
+    },
+    {
+      "path": "controlled/Ten-Left-LeftToRight/captures.json",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "path": "controlled/Ten-Left-LeftToRight/cases.json",
+      "sha256": "563ffc879dbed58ae2a8fba0092d0b4890abab52c60de068aa86abdc149c6bb5"
+    },
+    {
+      "path": "controlled/Ten-Left-LeftToRight/hand.json",
+      "sha256": "541851606a9119f9b6d7aacbe04d146fefa831a55a6611ea42cd745b567ae240"
+    },
+    {
+      "path": "controlled/Ten-Left-LeftToRight/keys.json",
+      "sha256": "cea4b060172ac3eafc5fe2d4c6d94859d910bf77f252ec64fb453fc466849baa"
+    },
+    {
+      "path": "controlled/Ten-Left-LeftToRight/points.json",
+      "sha256": "016928f48ca1bf45ccf120bd826b9948cea6518142f337185891034d2914a4ea"
+    },
+    {
+      "path": "controlled/Ten-Left-LeftToRight/receiver.csv",
+      "sha256": "1efa7bf43e8d7cb086d8eed0209d6a27eff3cce36a0f261ae4f661fa60da3b9c"
+    },
+    {
+      "path": "controlled/Ten-Left-LeftToRight/receiver.json",
+      "sha256": "9cb48918d8c9e174c9bab34963255ab126b4fcbca7295345303223f63836855e"
+    },
+    {
+      "path": "controlled/Ten-Right-RightToLeft/captures.json",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "path": "controlled/Ten-Right-RightToLeft/cases.json",
+      "sha256": "245a5cf9447a562cdab91c018da3b3c679bf6e8b205a7dca40ca2e778c266349"
+    },
+    {
+      "path": "controlled/Ten-Right-RightToLeft/hand.json",
+      "sha256": "1e1efff0057f16057d5cd02268688de762c27c46f0cbdf50a238502ba496ba3d"
+    },
+    {
+      "path": "controlled/Ten-Right-RightToLeft/keys.json",
+      "sha256": "cea4b060172ac3eafc5fe2d4c6d94859d910bf77f252ec64fb453fc466849baa"
+    },
+    {
+      "path": "controlled/Ten-Right-RightToLeft/points.json",
+      "sha256": "016928f48ca1bf45ccf120bd826b9948cea6518142f337185891034d2914a4ea"
+    },
+    {
+      "path": "controlled/Ten-Right-RightToLeft/receiver.csv",
+      "sha256": "efa5b735f5b057fac51bb206de9c21dd435310ccf1e1f5c3f36158dcaa44992a"
+    },
+    {
+      "path": "controlled/Ten-Right-RightToLeft/receiver.json",
+      "sha256": "9cb48918d8c9e174c9bab34963255ab126b4fcbca7295345303223f63836855e"
+    },
+    {
+      "path": "default-actions.log",
+      "sha256": "f3141ae35a1269624e13bbb5dca358a1df62c07eea46f3b00b28d56911398813"
+    },
+    {
+      "path": "default/Six-Left-LeftToRight/captures.json",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "path": "default/Six-Left-LeftToRight/cases.json",
+      "sha256": "d08270790088079316734c378317a5b17d938e9584431d9f635fbe765871bd2a"
+    },
+    {
+      "path": "default/Six-Left-LeftToRight/hand.json",
+      "sha256": "541851606a9119f9b6d7aacbe04d146fefa831a55a6611ea42cd745b567ae240"
+    },
+    {
+      "path": "default/Six-Left-LeftToRight/keys.json",
+      "sha256": "47c0f389ceb919a3b448a1028254c5a566e8775e22bdd2d6837c4b9f3948763e"
+    },
+    {
+      "path": "default/Six-Left-LeftToRight/points.json",
+      "sha256": "e1cfc716be615893d2fec61780d1310a99859e80fd36486629ade922d42a4b45"
+    },
+    {
+      "path": "default/Six-Left-LeftToRight/receiver.csv",
+      "sha256": "1d63496a3b564c88c3134ca9fd26b0a653fd9c1f94f6092cb7f464676075dd6b"
+    },
+    {
+      "path": "default/Six-Left-LeftToRight/receiver.json",
+      "sha256": "2b84d388eb195ad259e837e989e52618baa733459dd7888bd2c900c9407ab9d0"
+    },
+    {
+      "path": "default/Six-Right-LeftToRight/captures.json",
+      "sha256": "ebd003c92efed543e86b00237106a70c039ca36a05e51c9b8f5e3934ca99a752"
+    },
+    {
+      "path": "default/Six-Right-LeftToRight/cases.json",
+      "sha256": "51576c37689c43de45fde89ab4ce69ebd5e3fe4fcea5f41d7947c82e3448c3be"
+    },
+    {
+      "path": "default/Six-Right-LeftToRight/hand.json",
+      "sha256": "0ce312b97667ace0c9d71a1201317ac2b027b37633bdd7aefb7fcc5628d11f18"
+    },
+    {
+      "path": "default/Six-Right-LeftToRight/keys.json",
+      "sha256": "47c0f389ceb919a3b448a1028254c5a566e8775e22bdd2d6837c4b9f3948763e"
+    },
+    {
+      "path": "default/Six-Right-LeftToRight/points.json",
+      "sha256": "e1cfc716be615893d2fec61780d1310a99859e80fd36486629ade922d42a4b45"
+    },
+    {
+      "path": "default/Six-Right-LeftToRight/receiver.csv",
+      "sha256": "bd18c1680691856ecaca7901208649cbd7fbe8eba8b8d88d5871388c1c71c7d3"
+    },
+    {
+      "path": "default/Six-Right-LeftToRight/receiver.json",
+      "sha256": "0884f7e4aaee95154ce0a75e7bddec3f339026143ac4a4d0a9e6e76b6f9de7dd"
+    },
+    {
+      "path": "default/Ten-Left-LeftToRight/captures.json",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "path": "default/Ten-Left-LeftToRight/cases.json",
+      "sha256": "e4fbead79b9e1a7494ee8c3da86ceb0f8c739b2c388de218b889992de535d462"
+    },
+    {
+      "path": "default/Ten-Left-LeftToRight/hand.json",
+      "sha256": "541851606a9119f9b6d7aacbe04d146fefa831a55a6611ea42cd745b567ae240"
+    },
+    {
+      "path": "default/Ten-Left-LeftToRight/keys.json",
+      "sha256": "47c0f389ceb919a3b448a1028254c5a566e8775e22bdd2d6837c4b9f3948763e"
+    },
+    {
+      "path": "default/Ten-Left-LeftToRight/points.json",
+      "sha256": "016928f48ca1bf45ccf120bd826b9948cea6518142f337185891034d2914a4ea"
+    },
+    {
+      "path": "default/Ten-Left-LeftToRight/receiver.csv",
+      "sha256": "4463d24db55357bf19d3c36371d2adaccb02d75a1469006413bc1d5f551484ae"
+    },
+    {
+      "path": "default/Ten-Left-LeftToRight/receiver.json",
+      "sha256": "97d516be3ebd693f179b2b2a17d7654ce315d69fdef46953ecb2a1ee7cd2eb26"
+    },
+    {
+      "path": "default/Ten-Right-RightToLeft/captures.json",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "path": "default/Ten-Right-RightToLeft/cases.json",
+      "sha256": "a0e9b3c9d4c3134eab088f616fa01e779567dbf7052780d91b9100af9637b387"
+    },
+    {
+      "path": "default/Ten-Right-RightToLeft/hand.json",
+      "sha256": "1e1efff0057f16057d5cd02268688de762c27c46f0cbdf50a238502ba496ba3d"
+    },
+    {
+      "path": "default/Ten-Right-RightToLeft/keys.json",
+      "sha256": "47c0f389ceb919a3b448a1028254c5a566e8775e22bdd2d6837c4b9f3948763e"
+    },
+    {
+      "path": "default/Ten-Right-RightToLeft/points.json",
+      "sha256": "016928f48ca1bf45ccf120bd826b9948cea6518142f337185891034d2914a4ea"
+    },
+    {
+      "path": "default/Ten-Right-RightToLeft/receiver.csv",
+      "sha256": "5498e55afd3d01c67377ccd350391eeb72c0df0edd382bd7b127b1fcd71cf60e"
+    },
+    {
+      "path": "default/Ten-Right-RightToLeft/receiver.json",
+      "sha256": "08f07defcb354f3f554ae708250c3face6d9872ab191d7b8e99307c4c36dcea5"
+    },
+    {
+      "path": "record-before-fix.log",
+      "sha256": "e01f67a6487ba7b0a763021aff30e04a265e16cf69567409aff071aa9d9c99ca"
+    },
+    {
+      "path": "ui/settings-before.json",
+      "sha256": "6ef3363eae87dee4cc42792e566d52d5107b059289d5b466e04fca9417024e95"
+    },
+    {
+      "path": "ui/settings.json",
+      "sha256": "6efabac92fac7653abd1147db35f439cb5423ffd172b343cbf11d7201d976459"
+    },
+    {
+      "path": "ui/ui-receiver-after.csv",
+      "sha256": "3d68577d860eda1ed2a0653c3ebc6681a6e25a6579e16f02c4e16f2163063bdb"
+    },
+    {
+      "path": "ui/ui-receiver-after.json",
+      "sha256": "4c3f2602c8f5492b64df120b371562a0dab68c790c682216464aa0e3e92775dd"
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+   Compiling baauto-engine v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\bins\baauto-engine)
+   Compiling baauto-bench v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\tools\bench)
+   Compiling baauto-app v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\bins\baauto-app)
+    Finished `release` profile [optimized] target(s) in 3.10s
+   Compiling baauto-win-platform v0.1.0 (C:\Users\anric\Documents\Github\baauto-rs\crates\win-platform)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.09s
+     Running tests\windows_actions.rs (target\debug\deps\windows_actions-44464a1031a6ca96.exe)
+
+running 1 test
+test all_presets_card_slots_and_capture_reach_windows_receiver ... receiver lost events: 0
+Six/Right/LeftToRight skill_1: PASS [(256, 49), (257, 49)]
+Six/Right/LeftToRight skill_2: PASS [(256, 50), (257, 50)]
+Six/Right/LeftToRight skill_3: PASS [(256, 51), (257, 51)]
+Six/Right/LeftToRight skill_4: PASS [(256, 52), (257, 52)]
+Six/Right/LeftToRight skill_5: PASS [(256, 53), (257, 53)]
+Six/Right/LeftToRight spam_1: PASS [(256, 49), (257, 49), (513, 0), (514, 0), (256, 49), (257, 49), (513, 0), (514, 0), (256, 49), (257, 49), (513, 0), (514, 0), (256, 49), (257, 49), (513, 0), (514, 0), (256, 49), (257, 49), (513, 0), (514, 0), (256, 49), (257, 49), (513, 0), (514, 0), (256, 49), (257, 49)]
+Six/Right/LeftToRight spam_2: PASS [(256, 50), (257, 50), (513, 0), (514, 0), (256, 50), (257, 50), (513, 0), (514, 0), (256, 50), (257, 50), (513, 0), (514, 0), (256, 50), (257, 50), (513, 0), (514, 0), (256, 50), (257, 50), (513, 0), (514, 0), (256, 50), (257, 50), (513, 0), (514, 0), (256, 50), (257, 50)]
+Six/Right/LeftToRight spam_3: PASS [(256, 51), (257, 51), (513, 0), (514, 0), (256, 51), (257, 51), (513, 0), (514, 0), (256, 51), (257, 51), (513, 0), (514, 0), (256, 51), (257, 51), (513, 0), (514, 0), (256, 51), (257, 51), (513, 0), (514, 0), (256, 51), (257, 51), (513, 0), (514, 0), (256, 51), (257, 51)]
+Six/Right/LeftToRight spam_4: PASS [(256, 52), (257, 52), (513, 0), (514, 0), (256, 52), (257, 52), (513, 0), (514, 0), (256, 52), (257, 52), (513, 0), (514, 0), (256, 52), (257, 52), (513, 0), (514, 0), (256, 52), (257, 52), (513, 0), (514, 0), (256, 52), (257, 52), (513, 0), (514, 0), (256, 52), (257, 52)]
+Six/Right/LeftToRight spam_5: PASS [(256, 53), (257, 53), (513, 0), (514, 0), (256, 53), (257, 53), (513, 0), (514, 0), (256, 53), (257, 53), (513, 0), (514, 0), (256, 53), (257, 53), (513, 0), (514, 0), (256, 53), (257, 53), (513, 0), (514, 0), (256, 53), (257, 53), (513, 0), (514, 0)]
+Six/Right/LeftToRight pause: PASS [(256, 27), (257, 27)]
+Six/Right/LeftToRight auto: PASS [(256, 65), (257, 65)]
+Six/Right/LeftToRight speed: PASS [(256, 83), (257, 83)]
+Six/Right/LeftToRight frame_fast: PASS [(256, 27), (257, 27), (256, 27), (257, 27)]
+Six/Right/LeftToRight frame_slow: FAIL [(256, 27), (257, 27)]
+Six/Right/LeftToRight click_spam: PASS [(513, 0), (514, 0), (513, 0), (514, 0), (513, 0), (514, 0), (513, 0), (514, 0), (513, 0), (514, 0), (513, 0), (514, 0), (513, 0), (514, 0)]
+Six/Right/LeftToRight card_1: PASS [(256, 27), (257, 27), (256, 49), (257, 49), (513, 0), (514, 0), (256, 49), (257, 49), (513, 0), (514, 0), (256, 49), (257, 49), (513, 0), (514, 0), (256, 49), (257, 49), (513, 0), (514, 0), (256, 49), (257, 49), (513, 0), (514, 0), (256, 49), (257, 49), (513, 0), (514, 0), (256, 27), (257, 27)]
+Six/Right/LeftToRight card_2: PASS [(256, 27), (257, 27), (256, 50), (257, 50), (513, 0), (514, 0), (256, 50), (257, 50), (513, 0), (514, 0), (256, 50), (257, 50), (513, 0), (514, 0), (256, 50), (257, 50), (513, 0), (514, 0), (256, 50), (257, 50), (513, 0), (514, 0), (256, 50), (257, 50), (513, 0), (514, 0), (256, 27), (257, 27)]
+Six/Right/LeftToRight card_3: PASS [(256, 27), (257, 27), (256, 51), (257, 51), (513, 0), (514, 0), (256, 51), (257, 51), (513, 0), (514, 0), (256, 51), (257, 51), (513, 0), (514, 0), (256, 51), (257, 51), (513, 0), (514, 0), (256, 51), (257, 51), (513, 0), (514, 0), (256, 51), (257, 51), (513, 0), (514, 0), (256, 27), (257, 27)]
+Six/Right/LeftToRight card_4: PASS [(256, 27), (257, 27), (256, 52), (257, 52), (513, 0), (514, 0), (256, 52), (257, 52), (513, 0), (514, 0), (256, 52), (257, 52), (513, 0), (514, 0), (256, 52), (257, 52), (513, 0), (514, 0), (256, 52), (257, 52), (513, 0), (514, 0), (256, 52), (257, 52), (513, 0), (514, 0), (256, 52), (257, 52), (256, 27), (257, 27)]
+Six/Right/LeftToRight card_5: PASS [(256, 27), (257, 27), (256, 53), (257, 53), (513, 0), (514, 0), (256, 53), (257, 53), (513, 0), (514, 0), (256, 53), (257, 53), (513, 0), (514, 0), (256, 53), (257, 53), (513, 0), (514, 0), (256, 53), (257, 53), (513, 0), (514, 0), (256, 53), (257, 53), (513, 0), (514, 0), (256, 27), (257, 27)]
+Six/Right/LeftToRight hold_point: PASS [(513, 0), (514, 0)]
+Six/Right/LeftToRight card_key_slot_0: PASS [(256, 49), (257, 49)]
+Six/Right/LeftToRight card_key_slot_1: PASS [(256, 50), (257, 50)]
+Six/Right/LeftToRight card_key_slot_2: PASS [(256, 51), (257, 51)]
+Six/Right/LeftToRight card_key_outside: PASS []
+global_record: PASS
+record_point: PASS
+capture_RButton: PASS
+capture_XButton1: PASS
+capture_XButton2: PASS
+capture_Space: PASS
+capture_Tab: PASS
+global_stop: PASS
+captures_swallow_down_and_up: PASS
+evidence: C:\Users\anric\AppData\Local\Temp\baauto-actions-62232-Six-Right-LeftToRight
+receiver lost events: 0
+Six/Left/LeftToRight card_key_slot_0: PASS [(256, 49), (257, 49)]
+Six/Left/LeftToRight card_key_slot_1: PASS [(256, 50), (257, 50)]
+Six/Left/LeftToRight card_key_slot_2: PASS [(256, 51), (257, 51)]
+Six/Left/LeftToRight card_key_outside: PASS []
+evidence: C:\Users\anric\AppData\Local\Temp\baauto-actions-62232-Six-Left-LeftToRight
+receiver lost events: 0
+Ten/Left/LeftToRight card_key_slot_0: PASS [(256, 49), (257, 49)]
+Ten/Left/LeftToRight card_key_slot_1: PASS [(256, 50), (257, 50)]
+Ten/Left/LeftToRight card_key_slot_2: PASS [(256, 51), (257, 51)]
+Ten/Left/LeftToRight card_key_slot_3: PASS [(256, 52), (257, 52)]
+Ten/Left/LeftToRight card_key_slot_4: PASS [(256, 53), (257, 53)]
+Ten/Left/LeftToRight card_key_outside: PASS []
+evidence: C:\Users\anric\AppData\Local\Temp\baauto-actions-62232-Ten-Left-LeftToRight
+receiver lost events: 0
+Ten/Right/RightToLeft card_key_slot_0: PASS [(256, 53), (257, 53)]
+Ten/Right/RightToLeft card_key_slot_1: PASS [(256, 52), (257, 52)]
+Ten/Right/RightToLeft card_key_slot_2: PASS [(256, 51), (257, 51)]
+Ten/Right/RightToLeft card_key_slot_3: PASS [(256, 50), (257, 50)]
+Ten/Right/RightToLeft card_key_slot_4: PASS [(256, 49), (257, 49)]
+Ten/Right/RightToLeft card_key_outside: PASS []
+evidence: C:\Users\anric\AppData\Local\Temp\baauto-actions-62232-Ten-Right-RightToLeft
+
+thread 'all_presets_card_slots_and_capture_reach_windows_receiver' (46784) panicked at crates\win-platform\tests\windows_actions.rs:539:5:
+Six/Right/LeftToRight frame_slow expected [(256, 27), (257, 27), (256, 27), (257, 27)], got [(256, 27), (257, 27)]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    all_presets_card_slots_and_capture_reach_windows_receiver
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.18s
+
+error: test failed, to rerun pass `-p baauto-win-platform --test windows_actions`

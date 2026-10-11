@@ -25,9 +25,11 @@ if ($Interactive) {
         Checked 'cargo' @('build','--release','--workspace','--features','test-hooks')
         Write-Host 'Receiver will open: keep it foreground. This test checks IPC timeout/cancel/Space capture and Armed rejection.'
         Checked 'cargo' @('test','-p','baauto-win-platform','--features','test-hooks','--test','windows_capture','--','--ignored','--nocapture','--test-threads=1')
+        Write-Host 'Now testing every preset, six/ten card slots, mouse buttons and actual point capture. Default slow DoubleEsc may fail its zero-lateness deadline; preserve that result.'
+        Checked 'cargo' @('test','-p','baauto-win-platform','--features','test-hooks','--test','windows_actions','--','--ignored','--nocapture','--test-threads=1')
     } finally {
         # Restore the production binaries before any actual game use.
         Checked 'cargo' @('build','--release','--workspace')
     }
 }
-Write-Host 'Complete docs/acceptance-m6.md for mouse recording, all 23 actions, the 8-hour receiver run and both 1-hour game runs. These are not implied by compilation.'
+Write-Host 'Interactive receiver results are separate from real-game, calibration drag/DPI and long-run acceptance. Complete docs/acceptance-m6.md; compilation does not imply those passed.'

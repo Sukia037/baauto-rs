@@ -2,6 +2,8 @@
 
 這輪是原生 Windows 的短程驗證，**不是 M6 全面驗收通過**。基準提交為 `1968d10efec974ef4bf3ee313c41189db813c441`；本輪另外修正合成輸入標記與接收器。環境和測試設定 SHA-256 見 [environment.json](environment.json)。
 
+後續已補齊23項接收器對照：替代全域熱鍵下22項通過，原始時序的慢卡幀失敗；獨立5ms晚到容許值控制組23項通過。六人／十人各格、左右／反向順序、框外、真正錄點、側鍵／右鍵／Space／Tab擷取也完成；並修正停止時錄點通知、校準前景切換。詳見[補測報告與原始證據](expanded/README.md)。這些補測仍不代表真實遊戲或長時間驗收。
+
 ## 結果
 
 | 項目 | 結果 | 證據 |
@@ -34,7 +36,7 @@
 
 ## 未執行
 
-- 23個預設功能的完整逐項原生對照（本輪只抽測技能1、技能連點1與全域停止）、六人/十人每一格及框外牌鍵、滑鼠側鍵/右鍵/Tab實體擷取、真正錄點点击、手牌覆蓋層拖拉校準。
+- 實體鍵盤／滑鼠與真實遊戲的功能對照；23項、各格牌鍵、擷取與錄點的測試注入結果已補上，見expanded報告。手牌覆蓋層拖拉、中心點、鏡像確認儲存仍未驗收；顯示、前景切換與逾時已測。
 - 最小900×560版面：嘗試原生縮放未成功改變視窗尺寸，不能算通過；100/150/200% OS DPI、混合DPI、負座標螢幕也未驗收。PNG的100pct是QA zoom=1，並非OS DPI證明。
 - UNC（需BAAUTO_TEST_UNC_ROOT）、OneDrive、其他磁碟、真實舊檔、故障unhook的實體Raw Input驗證。
 - 8小時接收器、多鍵隨機切焦/切檔、PresentMon/P99.9量測；六人與十人遊戲各1小時、M5遊戲時序校準。
@@ -70,3 +72,6 @@ try {
 | crates/win-platform/tests/windows_capture.rs | 157–176、235–289、298–372 | 真正送键/持有/停止與完整標記比對；故障/退出時測試鍵清理 |
 | crates/win-platform/tests/windows_faults.rs | 173–181 | 仍失敗的原始掛起断言；需要依規格釐清判據 |
 | docs/decisions.md | 原生Windows實測補充 | 標記位寬與掛起驗收的待決定事項 |
+| crates/win-platform/tests/windows_actions.rs | 127–564、574–585 | 23項／各格／擷取／校準前景回歸，QPC區間與有序成對輸出 |
+| crates/win-platform/src/windows_impl/supervise.rs | 77–81、355–384、787–820、970–995 | 校準等待不阻塞健康／停止；records變動即通知 |
+| crates/win-platform/src/windows_impl/driver.rs | 285–333 | 僅test-hooks存在的滑鼠／游標測試API |

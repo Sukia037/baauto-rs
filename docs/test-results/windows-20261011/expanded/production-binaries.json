@@ -1,0 +1,14 @@
+[
+  {
+    "name": "baauto-app.exe",
+    "sha256": "9b5f378b3bb007fe2c7be57e79881939c22d8c553d4b6e2ed00e2b3473ae5f21"
+  },
+  {
+    "name": "baauto-engine.exe",
+    "sha256": "4abe3115a9b59d97027263a8a9411665559b174a5d3f53b4b2f1dadb8c1d2f01"
+  },
+  {
+    "name": "baauto-receiver.exe",
+    "sha256": "2c235da99787c5b9c6a8e90354267b1873f7230e299b420495c1e90719a5421f"
+  }
+]

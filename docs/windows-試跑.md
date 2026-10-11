@@ -44,6 +44,8 @@ powershell -ExecutionPolicy Bypass -File tests/windows/M6.ps1
 
 ## 4. 要看的地方
 
+2026-10-11逐項接收器補測發現：預設慢卡幀（Up）只送第一組Esc；原始`double_esc_second`晚到容許值0ms，晚到即取消第二組。獨立5ms測試profile可完成，但尚非遊戲校準，正式範本未改。不要把這項當已通過；[補測結果與原始紀錄](test-results/windows-20261011/expanded/README.md)也列出已測的其餘動作、各格牌鍵和錄點。
+
 **介面**
 - [ ] 中文字沒有方框，四個分頁、淺色／深色都正常。
 - [ ] 視窗拉到最小，文字不會疊在一起，清單可以捲到底。

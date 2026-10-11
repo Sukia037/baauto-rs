@@ -1,0 +1,29 @@
+{
+  "schema": "baauto-rs-points-v1",
+  "name": "範例",
+  "mode": "ten",
+  "items": [
+    {
+      "id": 1,
+      "name": "Boss 中央",
+      "hotkey": "z",
+      "function": "point",
+      "x": 0.5,
+      "y": 0.389
+    },
+    {
+      "id": 2,
+      "name": "左側集火",
+      "hotkey": "x",
+      "function": "point",
+      "x": 0.297,
+      "y": 0.569
+    },
+    {
+      "id": 3,
+      "name": "出牌",
+      "hotkey": "q",
+      "function": "card"
+    }
+  ]
+}

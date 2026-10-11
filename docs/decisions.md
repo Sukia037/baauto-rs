@@ -73,3 +73,10 @@
 - M3/M6｜掛起驗收禁止復原釋放後收到任何WM_MOUSEMOVE，但規格§7只保證停止正常API呼叫，不保證OS已消費在途事件；本機在已確認退出及成功LeftUp後產生同座標、extra_info=0的WM_MOUSEMOVE｜保留現行訊息判據／加入來源與API提交證據，區分Win32生成或延後派送的訊息｜暫時保留原斷言並回報失敗，不删測試、不降低停止保證；待決定如何建立正確來源判據。原始紀錄與Microsoft依據見 [Windows報告](test-results/windows-20261011/README.md)｜待決定。
 - 接收器只對自己的HWND解除IME context，修正中文輸入法把數字Down記為VK_PROCESSKEY的問題；CSV追加extra_info，前四欄保留，故障JSON追加stop_reason。新增的Win32_UI_Input_Ime只是現有windows官方依賴的feature，沒有新增第三方crate。
 - 本機Ctrl+F9註冊失敗，占用來源未確認。原生測試在隔離profile以BAAUTO_TEST_STOP_HOTKEY／BAAUTO_TEST_RECORD_HOTKEY指定替代組合，正式預設JSON與使用者測試資料夾不改；未把替代組合的通過算作原本Ctrl+F9可用。
+
+## M6 逐項原生補測（2026-10-11）
+
+- 慢卡幀最晚期限｜原始範本gap_max=50ms且double_esc_second=0ms；第二組排在gap_max，原生接收器只收到第一組Esc，獨立5ms控制組完成兩組｜保持0並提示先校準／採可用的未驗證容許值／以M5遊戲校準定義可用上限｜暫保留正式範本與兩組Esc的失敗斷言；5ms只存在測試profile，未標verified。規格要求晚到取消，不能為了通過測試停用取消政策或猜遊戲容許上限｜待決定。原始CSV、profile與指令見[補測報告](test-results/windows-20261011/expanded/README.md)。
+- 校準前景切換原本在SetForegroundWindow後立刻讀GetForegroundWindow，跨輸入佇列啟用尚未完成時會誤判失敗。改在監督迴圈確認前景，保持健康／停止處理；沿用health timeout作控制期限，不新增遊戲時序。代號失效、離開Disarmed、退出或逾時均拒絕；沒有阻塞Sleep、重試注入或附加輸入佇列。原生回歸先失敗後通過，[Microsoft非同步啟用說明](https://devblogs.microsoft.com/oldnewthing/20161118-00/?p=94745)。
+- 全域錄點records變動即發SupervisorStatus，不能只依state／wanted／恢復代號發送。停止時不改狀態仍需通知GUI開始錄點；原生回歸先逾時，修正後通過。
+- 校準覆蓋層的拖拉與儲存仍待原生驗收。桌面工具啟用／重新觀察後仍把拖拉位置判為接收器，不能區分透明視窗工具定位限制或實作問題；已確認顯示與60秒逾時，沒有把整個校準功能勾通過。
