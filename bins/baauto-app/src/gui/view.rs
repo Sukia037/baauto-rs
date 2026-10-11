@@ -247,8 +247,11 @@ impl App {
                 } else {
                     "啟用"
                 };
-                let enabled =
-                    self.wanted || (!self.busy && self.capture.is_none() && self.overlay.is_none());
+                let enabled = self.wanted
+                    || (!self.busy
+                        && self.capture.is_none()
+                        && self.overlay.is_none()
+                        && self.observation.can_arm);
                 if k::button(ui, label, false, enabled)
                     .on_hover_text(format!("緊急停止：{}", self.stop_key()))
                     .clicked()
@@ -284,6 +287,9 @@ impl App {
                 }
             });
         });
+        if let Some(warning) = self.observation.hotkey_warning.clone() {
+            self.hotkey_banner(ui, &warning);
+        }
         ui.add_space(2.);
         for kind in [FileKind::Points, FileKind::Keys] {
             ui.add_enabled_ui(!self.busy && self.overlay.is_none(), |ui| {
@@ -292,6 +298,36 @@ impl App {
         }
         ui.add_space(6.);
         self.tabs(ui);
+    }
+    fn hotkey_banner(&mut self, ui: &mut egui::Ui, warning: &str) {
+        let p = Pal::of(ui);
+        ui.add_space(4.);
+        egui::Frame::new()
+            .fill(p.bad_bg)
+            .corner_radius(CornerRadius::same(6))
+            .inner_margin(margin(12, 6, 6))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                for line in warning.lines() {
+                    ui.label(k::text(line, p.bad, k::BODY));
+                }
+                if k::link(ui, "前往「預設按鍵」改鍵").clicked() {
+                    let role = if self.observation.can_arm {
+                        "record"
+                    } else {
+                        "global_stop"
+                    };
+                    self.tab = 1;
+                    self.selection = Selection::Preset(role.into());
+                    if let Some(settings) = &mut self.settings {
+                        settings.ui.selected_tab = self.tab;
+                        let _ = self
+                            .backend
+                            .jobs
+                            .send(Job::Preferences(settings.ui.clone()));
+                    }
+                }
+            });
     }
     pub(super) fn emergency_stop(&mut self) {
         self.wanted = false;

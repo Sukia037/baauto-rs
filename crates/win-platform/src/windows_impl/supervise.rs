@@ -73,6 +73,9 @@ pub struct SupervisorStatus {
     pub session: SessionId,
     pub detail: String,
     pub records: u64,
+    /// Set while a global hotkey could not be registered; shown as a warning on the home page.
+    pub hotkey_warning: Option<String>,
+    pub stop_hotkey_registered: bool,
 }
 struct PendingTargetView {
     deadline: baauto_config::Ticks,
@@ -227,7 +230,7 @@ pub fn run_supervisor(
         health: ticks(options.health_timeout_ms),
         recovery: ticks(options.recovery_timeout_ms),
     });
-    fsm.on(FsmEvent::HotkeysRegistered(true));
+    fsm.on(FsmEvent::HotkeysRegistered(window.stop_registered()));
     let mut session = SessionId(0);
     let mut seq = 0;
     let mut child = Some(Child::launch(&options, session, clock)?);
@@ -240,6 +243,7 @@ pub fn run_supervisor(
         .now()
         .after(ticks(options.health_timeout_ms.saturating_mul(2)));
     let mut last_status = None;
+    let mut last_warning: Option<String> = None;
     let mut last_target = None;
     let mut target_view: Option<PendingTargetView> = None;
     let mut dump_workers = Vec::new();
@@ -708,6 +712,8 @@ pub fn run_supervisor(
                             session,
                             detail: format!("command {cmd_seq} rejected: {why}"),
                             records: window.record_count(),
+                            hotkey_warning: window.hotkey_warning().map(str::to_owned),
+                            stop_hotkey_registered: window.stop_registered(),
                             resume_generation: resume_guard.token(),
                             wanted,
                         });
@@ -903,7 +909,8 @@ pub fn run_supervisor(
             if matches!(fsm.state(), State::Disarmed | State::Faulted)
                 && let Some((cfg, stop_hotkey, record_hotkey)) = pending_cfg.take()
             {
-                window.rebind(stop_hotkey, record_hotkey)?;
+                window.rebind(stop_hotkey, record_hotkey);
+                fsm.on(FsmEvent::HotkeysRegistered(window.stop_registered()));
                 options.stop_hotkey = stop_hotkey;
                 options.record_hotkey = record_hotkey;
                 options.cfg = cfg;
@@ -919,6 +926,10 @@ pub fn run_supervisor(
                         compiled: Box::new(CompiledWire::from(&*options.cfg)),
                     })?;
                 }
+            }
+            // Without a registered stop hotkey Arm is impossible; drop the request so fixing the key never auto-arms.
+            if wanted && !window.stop_registered() {
+                wanted = false;
             }
             if wanted
                 && capture_replies.is_empty()
@@ -969,8 +980,11 @@ pub fn run_supervisor(
             }
             let state = fsm.state();
             let records = window.record_count();
-            if last_status != Some((state, wanted, resume_guard.token(), records)) {
+            if last_status != Some((state, wanted, resume_guard.token(), records))
+                || last_warning.as_deref() != window.hotkey_warning()
+            {
                 last_status = Some((state, wanted, resume_guard.token(), records));
+                last_warning = window.hotkey_warning().map(str::to_owned);
                 let detail = if target.is_none() {
                     "等待遊戲前景與按鍵放開"
                 } else if target.is_some_and(|t| t.warning()) {
@@ -983,6 +997,8 @@ pub fn run_supervisor(
                     session,
                     detail: detail.into(),
                     records,
+                    hotkey_warning: last_warning.clone(),
+                    stop_hotkey_registered: window.stop_registered(),
                     resume_generation: resume_guard.token(),
                     wanted,
                 });

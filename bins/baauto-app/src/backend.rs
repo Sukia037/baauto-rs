@@ -26,6 +26,9 @@ pub struct Observation {
     pub cursor: Option<NormPoint>,
     pub warning: bool,
     pub records: u64,
+    pub hotkey_warning: Option<String>,
+    /// False while the emergency stop hotkey is unregistered; Enable is refused until it is fixed.
+    pub can_arm: bool,
 }
 pub enum UiEvent {
     Loaded(Box<Snapshot>, u8),
@@ -354,6 +357,8 @@ impl Backend {
                 thread::spawn(move || {
                     let mut state = "啟動中".to_owned();
                     let mut records = 0;
+                    let mut hotkey_warning = None;
+                    let mut can_arm = true;
                     let mut cached = None;
                     let mut generation = 0;
                     let mut alive = true;
@@ -379,6 +384,8 @@ impl Backend {
                             .into();
                             let _ = observe.send(UiEvent::Wanted(s.wanted, s.resume_generation));
                             records = s.records;
+                            hotkey_warning = s.hotkey_warning;
+                            can_arm = s.stop_hotkey_registered;
                             if !s.detail.is_empty() {
                                 let _ = observe.send(UiEvent::Message(s.detail));
                             }
@@ -402,6 +409,8 @@ impl Backend {
                             cursor: cached.and_then(|t| cursor.map(|p| t.monitor.norm(p[0], p[1]))),
                             warning: target.is_some_and(|t| t.warning()),
                             records,
+                            hotkey_warning: hotkey_warning.clone(),
+                            can_arm,
                         };
                         if observe.send(UiEvent::Observe(obs)).is_err() {
                             break;

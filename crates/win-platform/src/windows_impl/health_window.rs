@@ -124,8 +124,8 @@ pub struct HealthWindow {
     hwnd: HWND,
     state: Box<HealthState>,
     _owner: PhantomData<Rc<()>>,
-    stop_hotkey: Chord,
-    record_hotkey: Option<Chord>,
+    stop_registered: bool,
+    hotkey_warning: Option<String>,
 }
 fn modifiers(chord: Chord) -> HOT_KEY_MODIFIERS {
     let mask = match chord.mods {
@@ -188,17 +188,14 @@ impl HealthWindow {
                 Some(HINSTANCE(module.0)),
                 Some((&mut *state as *mut HealthState).cast()),
             )?;
-            let window = Self {
+            let mut window = Self {
                 hwnd,
                 state,
                 _owner: PhantomData,
-                stop_hotkey: stop,
-                record_hotkey: record,
+                stop_registered: false,
+                hotkey_warning: None,
             };
-            register_group(hwnd, 1, stop)?;
-            if let Some(record) = record {
-                register_group(hwnd, 17, record)?;
-            }
+            window.rebind(stop, record);
             RegisterRawInputDevices(
                 &[
                     RAWINPUTDEVICE {
@@ -219,21 +216,31 @@ impl HealthWindow {
             Ok(window)
         }
     }
-    pub fn rebind(&mut self, stop: Chord, record: Option<Chord>) -> Result<()> {
+    /// A failed registration keeps the window alive; Arm stays blocked until the stop hotkey registers.
+    pub fn rebind(&mut self, stop: Chord, record: Option<Chord>) {
         unregister_groups(self.hwnd);
-        let result = register_group(self.hwnd, 1, stop)
-            .and_then(|_| record.map_or(Ok(()), |r| register_group(self.hwnd, 17, r)));
-        if let Err(error) = result {
-            unregister_groups(self.hwnd);
-            let _ = register_group(self.hwnd, 1, self.stop_hotkey);
-            if let Some(record) = self.record_hotkey {
-                let _ = register_group(self.hwnd, 17, record);
-            }
-            return Err(error);
+        let stop_error = register_group(self.hwnd, 1, stop).err();
+        let record_error =
+            record.and_then(|r| register_group(self.hwnd, 17, r).err().map(|e| (r, e)));
+        self.stop_registered = stop_error.is_none();
+        let mut warnings = Vec::new();
+        if let Some(why) = stop_error {
+            warnings.push(format!(
+                "緊急停止鍵 {stop} {why}，現在不能啟用。請到「預設按鍵」改成別的組合鍵並儲存。"
+            ));
         }
-        self.stop_hotkey = stop;
-        self.record_hotkey = record;
-        Ok(())
+        if let Some((record, why)) = record_error {
+            warnings.push(format!(
+                "錄點鍵 {record} {why}，熱鍵錄點暫時不能用；可以到「預設按鍵」改鍵。"
+            ));
+        }
+        self.hotkey_warning = (!warnings.is_empty()).then(|| warnings.join("\n"));
+    }
+    pub fn stop_registered(&self) -> bool {
+        self.stop_registered
+    }
+    pub fn hotkey_warning(&self) -> Option<&str> {
+        self.hotkey_warning.as_deref()
     }
     pub fn set_target(&mut self, hwnd: usize) {
         self.state.target = hwnd;
@@ -285,13 +292,13 @@ impl Drop for HealthWindow {
     }
 }
 
-fn register_group(hwnd: HWND, base: i32, chord: Chord) -> Result<()> {
+fn register_group(hwnd: HWND, base: i32, chord: Chord) -> std::result::Result<(), &'static str> {
     if chord.key.is_mouse() {
-        return Err(failure("全域停止／錄點需要鍵盤熱鍵"));
+        return Err("只能用鍵盤組合鍵");
     }
     let masks = crate::hotkeys::global_hotkey_masks(chord);
     if masks.is_empty() {
-        return Err(failure("全域熱鍵修飾符無效"));
+        return Err("的修飾鍵無效");
     }
     for mask in masks {
         let exact = Chord {
@@ -299,24 +306,33 @@ fn register_group(hwnd: HWND, base: i32, chord: Chord) -> Result<()> {
             ..chord
         };
         // SAFETY: Live window owned by this thread, unique reserved IDs, value-only key and modifier arguments.
-        unsafe {
+        let result = unsafe {
             RegisterHotKey(
                 Some(hwnd),
                 base + i32::from(mask),
                 modifiers(exact),
                 u32::from(chord.key.0),
             )
-            .map_err(|_| {
-                failure(&format!(
-                    "全域熱鍵 {exact} 註冊失敗；請改鍵或關閉佔用該組合的程式"
-                ))
-            })?;
+        };
+        if let Err(e) = result {
+            unregister_range(hwnd, base);
+            return Err(
+                if e.code() == ERROR_HOTKEY_ALREADY_REGISTERED.to_hresult() {
+                    "被其他程式佔用"
+                } else {
+                    "註冊失敗"
+                },
+            );
         }
     }
     Ok(())
 }
 fn unregister_groups(hwnd: HWND) {
-    for id in 1..=32 {
+    unregister_range(hwnd, 1);
+    unregister_range(hwnd, 17);
+}
+fn unregister_range(hwnd: HWND, base: i32) {
+    for id in base..base + 16 {
         // SAFETY: Only this HealthWindow owns these IDs. Unregistered IDs are harmless failures.
         unsafe {
             let _ = UnregisterHotKey(Some(hwnd), id);

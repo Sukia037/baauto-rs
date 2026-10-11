@@ -146,6 +146,8 @@ impl App {
                 cursor: None,
                 warning: false,
                 records: 0,
+                hotkey_warning: None,
+                can_arm: true,
             },
             monitor: None,
             records: 0,
@@ -172,6 +174,14 @@ impl App {
             }),
             frames: 0,
         }
+    }
+    /// Offline preview only: show the occupied-hotkey banner without a supervisor.
+    pub fn demo_hotkey_warning(&mut self) {
+        self.observation.hotkey_warning = Some(
+            "緊急停止鍵 Ctrl+F9 被其他程式佔用，現在不能啟用。請到「預設按鍵」改成別的組合鍵並儲存。"
+                .into(),
+        );
+        self.observation.can_arm = false;
     }
     fn select_tab(&mut self) {
         let qa_card = self.qa.as_ref().is_some_and(|q| q.tab == 4);

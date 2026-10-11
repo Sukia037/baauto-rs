@@ -135,6 +135,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         while let Ok(s) = status_rx.recv() {
             let s: SupervisorStatus = s;
             eprintln!("{:?} session={} {}", s.state, s.session.0, s.detail);
+            if let Some(warning) = &s.hotkey_warning {
+                eprintln!("警告：{warning}");
+            }
         }
     });
     if enable {
@@ -255,6 +258,7 @@ fn run_gui() -> Result<(), Box<dyn std::error::Error>> {
     let mut qa_dark = false;
     let mut qa_scale = 1.0f32;
     let mut qa_tab = 0u8;
+    let mut qa_hotkey_warning = false;
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_str() {
@@ -267,6 +271,7 @@ fn run_gui() -> Result<(), Box<dyn std::error::Error>> {
                 ))
             }
             Some("--qa-dark") => qa_dark = true,
+            Some("--qa-hotkey-warning") => qa_hotkey_warning = true,
             Some("--qa-scale") => {
                 qa_scale = args
                     .next()
@@ -285,7 +290,7 @@ fn run_gui() -> Result<(), Box<dyn std::error::Error>> {
             }
             Some("--help") => {
                 println!(
-                    "baauto-app [--preview] [--data-dir PATH] [--target-exe EXE]\nUse --headless for console supervision.\nQA: --qa-dir PATH [--qa-dark] [--qa-scale 1|1.5|2] [--qa-tab 0..4]"
+                    "baauto-app [--preview] [--data-dir PATH] [--target-exe EXE]\nUse --headless for console supervision.\nQA: --qa-dir PATH [--qa-dark] [--qa-scale 1|1.5|2] [--qa-tab 0..4] [--qa-hotkey-warning]"
                 );
                 return Ok(());
             }
@@ -314,9 +319,11 @@ fn run_gui() -> Result<(), Box<dyn std::error::Error>> {
         "BAauto",
         options,
         Box::new(move |cc| {
-            Ok(Box::new(baauto_app::gui::App::new(
-                cc, backend, preview, qa,
-            )))
+            let mut app = baauto_app::gui::App::new(cc, backend, preview, qa);
+            if preview && qa_hotkey_warning {
+                app.demo_hotkey_warning();
+            }
+            Ok(Box::new(app))
         }),
     )?;
     Ok(())
