@@ -1,0 +1,226 @@
+{
+  "source": "macOS eframe OpenGL framebuffer screenshot event; portable preview",
+  "reviewed_source_commit": "4e3fe5003575da6d5129b93cada9ffee766ecb22",
+  "generated_at_utc": "2026-10-11T02:21:00.768287+00:00",
+  "windows_dpi_verified": false,
+  "os_dpi_recorded": false,
+  "notes": "Native macOS window size is constrained by the desktop; application zoom is not Windows OS DPI. QA uses isolated persistence. points/logs were captured before the final text-only details update.",
+  "images": [
+    {
+      "file": "dark-keys-100pct.png",
+      "theme": "dark",
+      "tab": "keys",
+      "application_zoom_percent": 100,
+      "width": 1920,
+      "height": 1240,
+      "sha256": "55e59fc636537c3aae08ff017117323ca3c544b5dd760bb732d059233cfa7db7"
+    },
+    {
+      "file": "dark-keys-150pct.png",
+      "theme": "dark",
+      "tab": "keys",
+      "application_zoom_percent": 150,
+      "width": 2880,
+      "height": 1860,
+      "sha256": "c7fb87c49cc9f5e659200c174b6b15a11b88bd5b4c44efbedd0b04369064f498"
+    },
+    {
+      "file": "dark-keys-200pct.png",
+      "theme": "dark",
+      "tab": "keys",
+      "application_zoom_percent": 200,
+      "width": 3600,
+      "height": 2194,
+      "sha256": "45b94fc884924795375b23f6ea0c0c45d4cd3a2bae82918b413bc6968b2a594a"
+    },
+    {
+      "file": "dark-logs-100pct.png",
+      "theme": "dark",
+      "tab": "logs",
+      "application_zoom_percent": 100,
+      "width": 1920,
+      "height": 1240,
+      "sha256": "cd0d217addc48bc573e2fceb526d0667ff85e2a201c03631d4cf52891c4616d2"
+    },
+    {
+      "file": "dark-logs-150pct.png",
+      "theme": "dark",
+      "tab": "logs",
+      "application_zoom_percent": 150,
+      "width": 2880,
+      "height": 1860,
+      "sha256": "6a60c2e0310b2b283e9519383627b8c4cbbe2f51f9485cca41bcd10b60637469"
+    },
+    {
+      "file": "dark-logs-200pct.png",
+      "theme": "dark",
+      "tab": "logs",
+      "application_zoom_percent": 200,
+      "width": 3600,
+      "height": 2194,
+      "sha256": "d0a00e7df21e3063435d7b37cc6a2df59fdc8e0f500cb9e1b81f3d05442161a9"
+    },
+    {
+      "file": "dark-points-100pct.png",
+      "theme": "dark",
+      "tab": "points",
+      "application_zoom_percent": 100,
+      "width": 1920,
+      "height": 1240,
+      "sha256": "d4939349a87714b9e5e13148cfd389568d81312c36d97239a1d44e3e8757a883"
+    },
+    {
+      "file": "dark-points-150pct.png",
+      "theme": "dark",
+      "tab": "points",
+      "application_zoom_percent": 150,
+      "width": 2880,
+      "height": 1860,
+      "sha256": "a5566d120681865099648c39b730dddc50b3ce1abd42f16eef64e86180ec5e3c"
+    },
+    {
+      "file": "dark-points-200pct.png",
+      "theme": "dark",
+      "tab": "points",
+      "application_zoom_percent": 200,
+      "width": 3600,
+      "height": 2194,
+      "sha256": "be7fb2a733775be2f43405930fa3ac0e157091bd69498a99140a552edc270fab"
+    },
+    {
+      "file": "dark-timing-100pct.png",
+      "theme": "dark",
+      "tab": "timing",
+      "application_zoom_percent": 100,
+      "width": 1920,
+      "height": 1240,
+      "sha256": "3782a3316e9ba6f75e9e270614d0b63deede524a338b0a0a2052b80c60414459"
+    },
+    {
+      "file": "dark-timing-150pct.png",
+      "theme": "dark",
+      "tab": "timing",
+      "application_zoom_percent": 150,
+      "width": 2880,
+      "height": 1860,
+      "sha256": "bdcba47cb13c9430259789a70108bed30c9f83868b6f3701510175f9a232e367"
+    },
+    {
+      "file": "dark-timing-200pct.png",
+      "theme": "dark",
+      "tab": "timing",
+      "application_zoom_percent": 200,
+      "width": 3600,
+      "height": 2194,
+      "sha256": "636761b004b7975531be552b843714af1c7a5f07cc26781ce3baeb39836bb667"
+    },
+    {
+      "file": "light-keys-100pct.png",
+      "theme": "light",
+      "tab": "keys",
+      "application_zoom_percent": 100,
+      "width": 1920,
+      "height": 1240,
+      "sha256": "b04e37fb4ff19b46fd2ddab39b6ca06c8d006caf7a8538f1ec53efc1762f1b39"
+    },
+    {
+      "file": "light-keys-150pct.png",
+      "theme": "light",
+      "tab": "keys",
+      "application_zoom_percent": 150,
+      "width": 2880,
+      "height": 1860,
+      "sha256": "3d201fcc16e7b24174de8f541fa002a060f6a8ad2eb548513cf52ae5fda6c79c"
+    },
+    {
+      "file": "light-keys-200pct.png",
+      "theme": "light",
+      "tab": "keys",
+      "application_zoom_percent": 200,
+      "width": 3600,
+      "height": 2194,
+      "sha256": "1d6fa7babb515fa53fd97471e9eb67d5ffaefa0651d93e666cddc9612113ed33"
+    },
+    {
+      "file": "light-logs-100pct.png",
+      "theme": "light",
+      "tab": "logs",
+      "application_zoom_percent": 100,
+      "width": 1920,
+      "height": 1240,
+      "sha256": "615047f0ba259d52fb1d21bed7fc9432adfcbcc542d1353e56441dc1e3f0ce40"
+    },
+    {
+      "file": "light-logs-150pct.png",
+      "theme": "light",
+      "tab": "logs",
+      "application_zoom_percent": 150,
+      "width": 2880,
+      "height": 1860,
+      "sha256": "47e06823d4afc3e3e220c306e4b49763b792bd6ed188280bb162d87b53418a75"
+    },
+    {
+      "file": "light-logs-200pct.png",
+      "theme": "light",
+      "tab": "logs",
+      "application_zoom_percent": 200,
+      "width": 3600,
+      "height": 2194,
+      "sha256": "bc3c7cef1bb87a05ab47c18f81806b3930d66f02f1d914cf46bfba024cf8c743"
+    },
+    {
+      "file": "light-points-100pct.png",
+      "theme": "light",
+      "tab": "points",
+      "application_zoom_percent": 100,
+      "width": 1920,
+      "height": 1240,
+      "sha256": "b388fe63d945ddde4eba376dcdad99e558f97dca861afaf0236e0faaf3437a6a"
+    },
+    {
+      "file": "light-points-150pct.png",
+      "theme": "light",
+      "tab": "points",
+      "application_zoom_percent": 150,
+      "width": 2880,
+      "height": 1860,
+      "sha256": "a913bcc1b4b77b62ec5ab742a0efa2c800ddd877c1444a82c3cc3aee06affb51"
+    },
+    {
+      "file": "light-points-200pct.png",
+      "theme": "light",
+      "tab": "points",
+      "application_zoom_percent": 200,
+      "width": 3600,
+      "height": 2194,
+      "sha256": "cb5f20769e6b3f7eafb660b692d687a76b827879c0ea4b5a9a3cbc7680878c79"
+    },
+    {
+      "file": "light-timing-100pct.png",
+      "theme": "light",
+      "tab": "timing",
+      "application_zoom_percent": 100,
+      "width": 1920,
+      "height": 1240,
+      "sha256": "de4b8506fcf5c6e5376b87cdbf2229ac51652b956c46b6819ece732cbc172470"
+    },
+    {
+      "file": "light-timing-150pct.png",
+      "theme": "light",
+      "tab": "timing",
+      "application_zoom_percent": 150,
+      "width": 2880,
+      "height": 1860,
+      "sha256": "8e557956e92f61d82d9389b8d4e085355188e96c4b313145e33117bedef0f555"
+    },
+    {
+      "file": "light-timing-200pct.png",
+      "theme": "light",
+      "tab": "timing",
+      "application_zoom_percent": 200,
+      "width": 3600,
+      "height": 2194,
+      "sha256": "536fbf731dfb064d69a497cedd1fbd1bff407455c9e650b053f43ea9224eabf3"
+    }
+  ]
+}

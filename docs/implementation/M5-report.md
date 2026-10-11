@@ -20,4 +20,4 @@ tools/bench/src/analysis.rs（CSV與統計）、calibration.rs（verified門檻�
 
 ## 提交
 
-f6d2473：測試契約；b925812：量測與校準實作；第三筆：統計／停止／人工分類收尾、操作文件與Windows驗收（見git log）。
+f6d2473：測試契約；b925812：量測與校準實作；e6cda57：統計／停止／人工分類收尾、操作文件與Windows驗收。

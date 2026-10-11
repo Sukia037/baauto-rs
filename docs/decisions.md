@@ -40,3 +40,18 @@
 - 任務要求視窗模式而規格 §10 限定整個16:9螢幕，依規格；DXGI 擷取完整遊戲所在螢幕，ROI 仍是0–1。擷取失聯、受保護、旋轉不猜替代畫面，停止並保留部分trial CSV。
 - 尾段自旋最大5000µs為實驗工具的安全輸入上限，不是遊戲時序值；只在 bench-experiments feature 接受非預設優先權／自旋。100ms trial 命令提前量是控制管線預算，phase另外以0–1幀均勻抽樣記錄。待決定：實測跨IPC命令延遲後是否由計畫指定提前量。
 - 尚無原生A/B數據，M6維持 Hook TIME_CRITICAL、Engine NORMAL、spin=0。A/B 工具比較八組，預設附1000次idle停止；滿載停止／Hook失聯分類仍需原生驗收，不據此提前保留任何實驗。
+
+## M6：介面與擷取（2026-10-11）
+
+- 引擎優先權／自旋：缺少原生M5 A/B證據，維持EngineParams的Hook TIME_CRITICAL、Engine NORMAL、spin=0；不根據交叉編譯或Mac截圖決定提高優先權。非預設只在bench-experiments接受。待原生滿載結果再定案。
+- 擷取／錄點固定15秒、校準60秒，是GUI操作逾時，不是遊戲時序；Windows deadline用原始QPC整數。Hook idle用100ms WM_TIMER檢查，實體輸入到達也先檢查deadline。待決定：是否將GUI操作逾時放入機器設定。
+- IPC版面版本3加入擷取；CaptureReady明確表示模式已安裝，再顯示可點擊。結果帶session／cmd_seq／request_id，取消以through_id封鎖較舊請求；攔下Down的Up不因取消／失焦而放行。擷取完成保持Disarmed，需要明確啟用；校準與一般檔案流程才保留原啟用意願。
+- 異步恢復代號跟著整串操作，不能在下一個停止barrier取得新代號來恢復；緊急停止、手動停止或明確Enable會使舊代號失效。GUI狀態回覆尚未到達時採保守拒絕恢復，不以延遲回覆推翻停止。
+- 待決定：任務通用熱鍵欄含滑鼠，但規格的全域停止／錄點走RegisterHotKey，Raw Input只作健康證據。目前這兩個控制鍵限定鍵盤（會顯示欄位錯誤）；其他21個動作及點位可收右／中／側鍵。不新增另一套全域滑鼠Hook或拿Raw Input當替代觸發。
+- RegisterHotKey本身按修飾符組合註冊，AtLeast展開最多16種有限超集，Exact只註冊一種；任一組合衝突即阻止就緒，不默默降低AtLeast語意。
+- 新增rfd 0.17.2供原生檔案對話框、image 0.25.10（僅PNG）保存實際GUI framebuffer，eframe 0.36.2／egui為任務預期依賴。原生依賴樹沒有tokio runtime；Cargo.lock中的tokio是UI依賴宣告的WASM平台傳遞項，不在Windows／Mac執行圖。
+- 內嵌Noto Sans TC靜態子集及OFL；Windows優先讀Microsoft JhengHei UI TTC並按name table找正確collection index，不猜index。Mac離線截圖使用內嵌字型；Windows系統字型、混合DPI與透明覆蓋層仍需原生驗收。
+- 24張截圖來自Mac eframe原生OpenGL截圖事件。100／150／200是應用程式zoom，Mac可用視窗區域會限制較大的畫面；不標成Windows OS DPI已驗收。長路徑欄保留完整字串，可水平捲動及hover；不以省略字串改掉路徑。
+- 長時間紀錄在獨立觀測執行緒讀共享ring、寫原始QPC CSV，GUI事件通道256筆、顯示紀錄1000笔；寫入失敗／觀測遺失需報告並使該輪證據不能完整驗收，不能從缺資料推論零遺失。
+- 關閉請求立刻停止，即使尚在詢問草稿；取消關閉保持停止，需明確啟用。真正退出的Quit立即送監督，不排在慢檔案／原生對話框後面；GUI仍等背景工作安全收尾後才關視窗。待決定：取消關閉是否保留原啟用意願。目前不自動恢復。
+- 接收器改成8192筆SPSC＋背景CSV寫入、固定20筆顯示歷史；正常關閉才寫complete=true／遺失計數／QPC頻率的metadata。不再以一百萬筆記憶體上限截斷8小時證據；磁碟失敗或強制終止保留partial CSV，不能算完整驗收。
