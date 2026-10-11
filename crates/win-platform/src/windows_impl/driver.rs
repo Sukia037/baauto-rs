@@ -282,6 +282,50 @@ pub fn inject_test_key(key: Key, down: bool) -> bool {
     // SAFETY: Initialized single INPUT, correct ABI size. This API is absent from production builds.
     unsafe { SendInput(&[input], size_of::<INPUT>() as i32) == 1 }
 }
+/// Foreign mouse or keyboard input used by native receiver acceptance tests only.
+#[cfg(feature = "test-hooks")]
+pub fn inject_test_button_or_key(key: Key, down: bool) -> bool {
+    let (pressed, released, data) = match key.0 {
+        1 => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, 0),
+        2 => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, 0),
+        4 => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, 0),
+        5 => (MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, 1),
+        6 => (MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, 2),
+        _ => return inject_test_key(key, down),
+    };
+    let input = INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT {
+                mouseData: data,
+                dwFlags: if down { pressed } else { released },
+                ..Default::default()
+            },
+        },
+    };
+    // SAFETY: One initialized mouse INPUT with valid button flags/data and exact ABI size; absent in production.
+    unsafe { SendInput(&[input], size_of::<INPUT>() as i32) == 1 }
+}
+/// Move the acceptance-test cursor without changing the production output path.
+#[cfg(feature = "test-hooks")]
+pub fn move_test_cursor(x: i32, y: i32) -> bool {
+    let Some((x, y)) = absolute_for_pixel(virtual_desktop(), x, y) else {
+        return false;
+    };
+    let input = INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT {
+                dx: x,
+                dy: y,
+                dwFlags: MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
+                ..Default::default()
+            },
+        },
+    };
+    // SAFETY: Initialized absolute mouse INPUT, bounded virtual-desktop coordinates, exact ABI size; test-only API.
+    unsafe { SendInput(&[input], size_of::<INPUT>() as i32) == 1 }
+}
 pub fn key_is_down(key: Key) -> bool {
     // SAFETY: Value-only VK lookup, no pointer or ownership transfer.
     unsafe { GetAsyncKeyState(i32::from(key.0)) < 0 }
