@@ -26,7 +26,7 @@ windows = { workspace = true, features = [
  "Win32_System_Console", "Win32_System_SystemInformation", "Win32_Security",
  "Win32_Storage_FileSystem", "Win32_System_Pipes", "Win32_System_IO",
  "Win32_System_Com", "Win32_System_Diagnostics_ToolHelp", "Win32_Graphics_Gdi",
- "Win32_Security_Cryptography", "Win32_UI_Input", "Win32_System_Diagnostics_Debug"
+ "Win32_Security_Cryptography", "Win32_UI_Input", "Win32_UI_Input_Ime", "Win32_System_Diagnostics_Debug"
 ] }
 
 [dev-dependencies]

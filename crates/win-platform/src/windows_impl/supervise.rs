@@ -1050,7 +1050,7 @@ fn execute_effects(
                 let map = c.mapping.clone();
                 let folder = options.logs.clone();
                 let id = c.session.0;
-                let metadata = serde_json::json!({"session":id,"qpc_frequency":c.clock.rate.0,"stop_request":c.stop_request,"exit_confirm":c.exit_confirm,"release":c.receipt,"release_success":c.release_success,"ledger_keys":c.snapshot().unwrap_or(c.candidates).keys,"ledger_mouse":c.snapshot().unwrap_or(c.candidates).mouse});
+                let metadata = serde_json::json!({"session":id,"qpc_frequency":c.clock.rate.0,"stop_request":c.stop_request,"stop_reason":c.mapping.data().progress.stop_reason.load(SeqCst),"exit_confirm":c.exit_confirm,"release":c.receipt,"release_success":c.release_success,"ledger_keys":c.snapshot().unwrap_or(c.candidates).keys,"ledger_mouse":c.snapshot().unwrap_or(c.candidates).mouse});
                 dumps.push(thread::spawn(move || {
                     if std::fs::create_dir_all(&folder).is_ok() {
                         let stamp = Clock::new().map_or(0, |clock| clock.now().0);

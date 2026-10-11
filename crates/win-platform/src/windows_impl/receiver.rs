@@ -16,7 +16,10 @@ use windows::{
         Foundation::*,
         Graphics::Gdi::*,
         System::{LibraryLoader::*, Threading::*},
-        UI::WindowsAndMessaging::*,
+        UI::{
+            Input::Ime::{HIMC, ImmAssociateContext},
+            WindowsAndMessaging::*,
+        },
     },
     core::{PCWSTR, Result, w},
 };
@@ -26,6 +29,7 @@ struct Received {
     message: u32,
     wparam: usize,
     lparam: isize,
+    extra_info: usize,
 }
 struct ReceiverState {
     clock: Clock,
@@ -73,6 +77,8 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: L
                 message: msg,
                 wparam: wparam.0,
                 lparam: lparam.0,
+                // SAFETY: Value-only lookup of extra information for this receiver thread's current message.
+                extra_info: unsafe { GetMessageExtraInfo().0 as usize },
             };
             state.recent[(state.received % 20) as usize] = Some(record);
             state.received = state.received.saturating_add(1);
@@ -234,6 +240,10 @@ pub fn run_receiver(mode: Mode, side: CardUiSide, output: &Path) -> Result<()> {
             Some((&mut *state as *mut ReceiverState).cast()),
         )?;
         let _window = ReceiverWindow(hwnd);
+        // SAFETY: This thread owns the live receiver HWND. Disassociate only its
+        // default IME context; the context remains OS-owned and is not destroyed.
+        // The receiver records virtual keys, rather than composing text.
+        let _ = ImmAssociateContext(hwnd, HIMC::default());
         let _ = SetForegroundWindow(hwnd);
         let mut msg = MSG::default();
         loop {
@@ -285,7 +295,7 @@ impl ReceiverWriter {
         wake: Arc<Event>,
     ) -> std::io::Result<Self> {
         let mut file = std::io::BufWriter::new(std::fs::File::create(path)?);
-        writeln!(file, "qpc,message,wparam,lparam")?;
+        writeln!(file, "qpc,message,wparam,lparam,extra_info")?;
         file.flush()?;
         let done = Arc::new(AtomicBool::new(false));
         let stop = done.clone();
@@ -296,7 +306,11 @@ impl ReceiverWriter {
             let mut flushed = clock.now();
             loop {
                 while let Ok(r) = consumer.pop() {
-                    writeln!(file, "{},{},{},{}", r.qpc, r.message, r.wparam, r.lparam)?;
+                    writeln!(
+                        file,
+                        "{},{},{},{},{}",
+                        r.qpc, r.message, r.wparam, r.lparam, r.extra_info
+                    )?;
                     count = count.saturating_add(1);
                 }
                 if stop.load(SeqCst) && consumer.is_empty() {

@@ -137,13 +137,15 @@ pub fn random_name(prefix: &str) -> Result<String> {
     Ok(format!("Local\\{prefix}-{suffix}"))
 }
 pub fn random_marker() -> Result<usize> {
-    let mut random = [0; 8];
+    // Native x64 mouse input can retain only the low 32 bits of extra info.
+    // Use the same nonzero marker width for keyboard and mouse round trips.
+    let mut random = [0; 4];
     // SAFETY: Valid output slice, system RNG without retained pointers.
     let status = unsafe { BCryptGenRandom(None, &mut random, BCRYPT_USE_SYSTEM_PREFERRED_RNG) };
     if status.0 < 0 {
         return Err(failure("system RNG failed"));
     }
-    Ok((u64::from_le_bytes(random) | 1) as usize)
+    Ok((u32::from_le_bytes(random) | 1) as usize)
 }
 pub struct Mapping {
     handle: OwnedHandle,
