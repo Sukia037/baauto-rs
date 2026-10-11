@@ -4,3 +4,11 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+baauto-core = { path = "../../crates/core" }
+baauto-config = { path = "../../crates/config" }
+baauto-protocol = { path = "../../crates/protocol" }
+baauto-win-platform = { path = "../../crates/win-platform" }
+
+[features]
+fault-injection = ["baauto-win-platform/fault-injection"]
+test-hooks = ["baauto-win-platform/test-hooks"]

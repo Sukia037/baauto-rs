@@ -5,3 +5,5 @@ pub mod hook;
 mod windows_impl;
 #[cfg(windows)]
 pub use windows_impl::*;
+
+pub mod fault;

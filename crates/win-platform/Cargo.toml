@@ -10,6 +10,8 @@ baauto-protocol = { path = "../protocol" }
 arrayvec.workspace = true
 rtrb.workspace = true
 thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [features]
 test-hooks = []

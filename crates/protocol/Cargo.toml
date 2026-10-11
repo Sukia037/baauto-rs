@@ -9,6 +9,7 @@ baauto-config = { path = "../config" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+arrayvec.workspace = true
 
 [dev-dependencies]
 loom.workspace = true

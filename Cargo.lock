@@ -35,6 +35,12 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 [[package]]
 name = "baauto-app"
 version = "0.1.0"
+dependencies = [
+ "baauto-config",
+ "baauto-core",
+ "baauto-protocol",
+ "baauto-win-platform",
+]
 
 [[package]]
 name = "baauto-bench"
@@ -84,6 +90,7 @@ dependencies = [
 name = "baauto-protocol"
 version = "0.1.0"
 dependencies = [
+ "arrayvec",
  "baauto-config",
  "baauto-core",
  "loom",
@@ -102,6 +109,8 @@ dependencies = [
  "baauto-core",
  "baauto-protocol",
  "rtrb",
+ "serde",
+ "serde_json",
  "thiserror",
  "windows",
 ]

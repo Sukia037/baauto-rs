@@ -27,6 +27,8 @@ use windows::{
 
 const WM_CONTROL: u32 = WM_APP + 1;
 const WM_PROBE: u32 = WM_APP + 2;
+#[cfg(feature = "fault-injection")]
+const WM_UNHOOK: u32 = WM_APP + 3;
 thread_local! {static HOOK_RUNTIME:Cell<*mut HookRuntime>=const{Cell::new(std::ptr::null_mut())};}
 #[derive(Clone, Copy)]
 pub struct Target {
@@ -124,6 +126,7 @@ struct HookRuntime {
     mapping: Arc<Mapping>,
     target: Target,
     clock: Clock,
+    related: [bool; 256],
 }
 impl HookRuntime {
     fn deliver(&mut self, d: Decision) {
@@ -134,7 +137,12 @@ impl HookRuntime {
                 .hook_physical_events
                 .fetch_add(1, SeqCst);
         }
-        if let Some(_reason) = d.stop {
+        if let Some(reason) = d.stop {
+            self.mapping
+                .data()
+                .progress
+                .stop_reason
+                .store(stop_code(reason), SeqCst);
             let _ = self.stop.set();
         }
         for event in d.events {
@@ -154,6 +162,7 @@ impl HookRuntime {
                     .progress
                     .overflow_count
                     .fetch_add(1, SeqCst);
+                self.mapping.data().progress.stop_reason.store(5, SeqCst);
                 let _ = self.stop.set();
                 break;
             }
@@ -193,6 +202,16 @@ impl HookRuntime {
         });
         if d.physical {
             self.publish_physical();
+            if let RawKind::Key { key, .. } = kind
+                && self.related[key.0 as usize]
+                && foreground_is(self.target.hwnd)
+            {
+                self.mapping
+                    .data()
+                    .progress
+                    .hook_bound_events
+                    .fetch_add(1, SeqCst);
+            }
         }
         let swallow = d.swallow;
         self.deliver(d);
@@ -238,6 +257,7 @@ unsafe extern "system" fn keyboard(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
                 let mut cursor = POINT::default();
                 if down && GetCursorPos(&mut cursor).is_err() {
                     (*ptr).state.invalidate();
+                    (*ptr).mapping.data().progress.stop_reason.store(10, SeqCst);
                     let _ = (*ptr).stop.set();
                 }
                 (*ptr).raw(
@@ -361,6 +381,7 @@ unsafe extern "system" fn focus_event(
                     if geometry_changed {
                         rt.state.geometry.0 = rt.state.geometry.0.saturating_add(1);
                         rt.state.invalidate();
+                        rt.mapping.data().progress.stop_reason.store(4, SeqCst);
                         let _ = rt.stop.set();
                     }
                 } else if event == EVENT_SYSTEM_FOREGROUND {
@@ -374,7 +395,14 @@ unsafe extern "system" fn focus_event(
         callback_failed();
     }
 }
+type RetiredConfig = (Arc<CompiledConfig>, Box<[[u16; 16]; 256]>);
 enum HookCommand {
+    Install {
+        cfg: Arc<CompiledConfig>,
+        triggers: Box<[[u16; 16]; 256]>,
+        target: Target,
+        reply: mpsc::Sender<Result<RetiredConfig>>,
+    },
     Arm {
         session: SessionId,
         stop: Arc<Event>,
@@ -406,6 +434,7 @@ impl HookThread {
         let join = thread::spawn(move || {
             let mut rt = Box::new(HookRuntime {
                 state: HookState::new(&cfg, marker),
+                related: cfg.related_keys(),
                 cfg,
                 producer,
                 stop,
@@ -432,7 +461,7 @@ impl HookThread {
             }
             HOOK_RUNTIME.with(|s| s.set(&mut *rt));
             // SAFETY: Current module stays loaded throughout process lifetime; static callbacks meet extern system ABI and catch panics.
-            let (kh, mh, fh, gh) = unsafe {
+            let (kh, mh, fh, mut gh) = unsafe {
                 let module = GetModuleHandleW(PCWSTR::null())?;
                 let kh = SetWindowsHookExW(
                     WH_KEYBOARD_LL,
@@ -489,6 +518,8 @@ impl HookThread {
             rt.publish_physical();
             // SAFETY: GetCurrentThreadId is a value lookup with no pointer arguments.
             let id = unsafe { GetCurrentThreadId() };
+            #[cfg(feature = "fault-injection")]
+            crate::fault::HOOK_THREAD.store(id, SeqCst);
             let _ = ready_tx.send(id);
             let result = (|| {
                 let mut msg = MSG::default();
@@ -502,18 +533,79 @@ impl HookThread {
                         break;
                     }
                     if msg.message == WM_PROBE {
-                        rt.mapping.data().progress.hook_loop.fetch_add(1, SeqCst);
+                        #[cfg(feature = "fault-injection")]
+                        let stalled = crate::fault::RULE
+                            .get()
+                            .is_some_and(|r| r.action == crate::fault::FaultAction::HookStall);
+                        #[cfg(not(feature = "fault-injection"))]
+                        let stalled = false;
+                        if !stalled {
+                            rt.mapping.data().progress.hook_loop.fetch_add(1, SeqCst);
+                        }
+                    }
+                    #[cfg(feature = "fault-injection")]
+                    if msg.message == WM_UNHOOK {
+                        // SAFETY: Fault test deliberately unregisters this thread's owned low-level hooks outside callback execution.
+                        unsafe {
+                            let _ = UnhookWindowsHookEx(kh);
+                            let _ = UnhookWindowsHookEx(mh);
+                        }
                     }
                     if msg.message == WM_CONTROL {
                         while let Ok(cmd) = rx.try_recv() {
                             match cmd {
+                                HookCommand::Install {
+                                    cfg,
+                                    triggers,
+                                    target,
+                                    reply,
+                                } => {
+                                    if rt.state.armed {
+                                        let _ =
+                                            reply.send(Err(failure("cannot install while armed")));
+                                    } else {
+                                        if target.pid != rt.target.pid {
+                                            // SAFETY: Disarmed message loop owns the geometry hook; install replacement before unregistering the old PID filter.
+                                            let replacement = unsafe {
+                                                SetWinEventHook(
+                                                    EVENT_OBJECT_LOCATIONCHANGE,
+                                                    EVENT_OBJECT_LOCATIONCHANGE,
+                                                    None,
+                                                    Some(focus_event),
+                                                    target.pid,
+                                                    0,
+                                                    WINEVENT_OUTOFCONTEXT,
+                                                )
+                                            };
+                                            if replacement.0.is_null() {
+                                                let _ = reply
+                                                    .send(Err(windows::core::Error::from_thread()));
+                                                continue;
+                                            }
+                                            // SAFETY: Old hook handle is owned by this loop and no callback can outlive this serial message operation.
+                                            unsafe {
+                                                let _ = UnhookWinEvent(gh);
+                                            }
+                                            gh = replacement;
+                                        }
+                                        rt.related = cfg.related_keys();
+                                        let old_cfg = std::mem::replace(&mut rt.cfg, cfg);
+                                        let old_table =
+                                            std::mem::replace(&mut rt.state.triggers, triggers);
+                                        rt.state.version = rt.cfg.version;
+                                        rt.target = target;
+                                        rt.state.geometry = target.geometry;
+                                        rt.state.focused = foreground_is(target.hwnd);
+                                        let _ = reply.send(Ok((old_cfg, old_table)));
+                                    }
+                                }
                                 HookCommand::Arm {
                                     session,
                                     stop,
                                     reply,
                                 } => {
                                     rt.stop = stop;
-                                    rt.state.focused = foreground_is(target.hwnd);
+                                    rt.state.focused = foreground_is(rt.target.hwnd);
                                     rt.observe_async_held();
                                     let accepted = rt.state.arm(session, &rt.cfg);
                                     let _ = reply.send(accepted);
@@ -559,6 +651,21 @@ impl HookThread {
             .map_err(|_| failure("hook thread ended"))?;
         // SAFETY: Published thread ID has an initialized message queue; message has no borrowed pointer payload.
         unsafe { PostThreadMessageW(self.thread_id, WM_CONTROL, WPARAM(0), LPARAM(0)) }
+    }
+    pub fn install(&self, cfg: Arc<CompiledConfig>, target: Target) -> Result<()> {
+        let triggers = cfg.triggers.clone();
+        let (tx, rx) = mpsc::channel();
+        self.command(HookCommand::Install {
+            cfg,
+            triggers,
+            target,
+            reply: tx,
+        })?;
+        let retired = rx
+            .recv()
+            .map_err(|_| failure("Hook install reply lost"))??;
+        drop(retired); // Control thread, never callback or Engine steady state.
+        Ok(())
     }
     pub fn arm(&self, session: SessionId, stop: Arc<Event>) -> Result<bool> {
         let (tx, rx) = mpsc::channel();
@@ -636,6 +743,8 @@ impl EngineThread {
             );
             let mut traces = [Trace::default(); 256];
             let mut stop_logged = false;
+            #[cfg(feature = "fault-injection")]
+            let mut batch_number = 0u64;
             let timer = Timer::new()?;
             if timer.degraded {
                 mapping.data().progress.degraded_flags.fetch_or(1, SeqCst);
@@ -656,11 +765,17 @@ impl EngineThread {
                                 mapping.data().ring.push(LogData(fields));
                                 stop_logged = true;
                             }
-                            engine.request_stop(StopReason::User, now);
+                            engine.request_stop(
+                                stop_reason(mapping.data().progress.stop_reason.load(SeqCst)),
+                                now,
+                            );
                         }
                         for _ in 0..cfg.params.max_events_per_round {
                             if stop.signaled() {
-                                engine.request_stop(StopReason::User, clock.now());
+                                engine.request_stop(
+                                    stop_reason(mapping.data().progress.stop_reason.load(SeqCst)),
+                                    clock.now(),
+                                );
                                 break;
                             }
                             let Ok(q) = input.pop() else {
@@ -699,11 +814,34 @@ impl EngineThread {
                         }
                         for _ in 0..cfg.params.max_batches_per_round {
                             if stop.signaled() {
-                                engine.request_stop(StopReason::User, clock.now());
+                                engine.request_stop(
+                                    stop_reason(mapping.data().progress.stop_reason.load(SeqCst)),
+                                    clock.now(),
+                                );
                             }
                             let Some(b) = engine.next_batch(clock.now()) else {
                                 break;
                             };
+                            #[cfg(feature = "fault-injection")]
+                            {
+                                batch_number += 1;
+                                if let Some(rule) =
+                                    crate::fault::RULE.get().filter(|r| r.batch == batch_number)
+                                {
+                                    match rule.action {
+                                        crate::fault::FaultAction::Panic => {
+                                            panic!("injected engine panic")
+                                        }
+                                        crate::fault::FaultAction::Abort => std::process::abort(),
+                                        crate::fault::FaultAction::Hang(ms) => {
+                                            let blocked = Event::new(true)?;
+                                            wait(&[blocked.raw()], ms)?;
+                                        }
+                                        crate::fault::FaultAction::Short => driver.inject_short(),
+                                        _ => {}
+                                    }
+                                }
+                            }
                             let result = driver.submit(&b);
                             let t = b
                                 .action
@@ -741,6 +879,28 @@ impl EngineThread {
                             fields[11] = b.events.len() as u64;
                             mapping.data().ring.push(LogData(fields));
                             engine.commit(b.id, result, clock.now());
+                            #[cfg(feature = "fault-injection")]
+                            if let Some(rule) =
+                                crate::fault::RULE.get().filter(|r| r.batch == batch_number)
+                            {
+                                match rule.action {
+                                    crate::fault::FaultAction::PipeDrop => {
+                                        crate::fault::PIPE_DROP.store(true, SeqCst)
+                                    }
+                                    crate::fault::FaultAction::Unhook => {
+                                        // SAFETY: Published Hook thread ID is live; test message carries no borrowed pointers.
+                                        unsafe {
+                                            let _ = PostThreadMessageW(
+                                                crate::fault::HOOK_THREAD.load(SeqCst),
+                                                WM_UNHOOK,
+                                                WPARAM(0),
+                                                LPARAM(0),
+                                            );
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
                         }
                         let progress = engine.progress();
                         mapping
@@ -967,4 +1127,50 @@ pub fn run_standalone(
         );
     }
     control_result.and(outcome.map(|_| ()))
+}
+
+pub fn stop_code(reason: StopReason) -> u32 {
+    match reason {
+        StopReason::User => 1,
+        StopReason::Emergency => 2,
+        StopReason::FocusLost => 3,
+        StopReason::GeometryChanged => 4,
+        StopReason::Overflow => 5,
+        StopReason::SeqGap => 6,
+        StopReason::ConfigChange => 7,
+        StopReason::PhysicalConflict => 8,
+        StopReason::SupervisorLost => 9,
+        StopReason::Fault(_) => 10,
+    }
+}
+pub fn stop_reason(code: u32) -> StopReason {
+    match code {
+        2 => StopReason::Emergency,
+        3 => StopReason::FocusLost,
+        4 => StopReason::GeometryChanged,
+        5 => StopReason::Overflow,
+        6 => StopReason::SeqGap,
+        7 => StopReason::ConfigChange,
+        8 => StopReason::PhysicalConflict,
+        9 => StopReason::SupervisorLost,
+        10 => StopReason::Fault(FaultKind::ShortSend),
+        _ => StopReason::User,
+    }
+}
+
+pub fn close_target_window(target: Target) -> Result<()> {
+    // SAFETY: Asynchronously requests closure of the identified live target; no borrowed pointer is sent across threads/processes.
+    unsafe {
+        PostMessageW(
+            Some(HWND(target.hwnd as *mut _)),
+            WM_CLOSE,
+            WPARAM(0),
+            LPARAM(0),
+        )
+    }
+}
+pub fn wait_control_period(clock: Clock, ticks: u64) -> Result<()> {
+    let timer = Timer::new()?;
+    timer.set_deadline(clock.now().after(ticks), clock)?;
+    wait(&[timer.raw()], INFINITE).map(|_| ())
 }
