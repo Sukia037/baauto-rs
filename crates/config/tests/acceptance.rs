@@ -100,10 +100,10 @@ fn config_templates_load_and_compile() {
     assert!(!k.timing.verified);
 }
 #[test]
-fn points_card_item_needs_no_coord() {
+fn points_card_item_carries_target_coord() {
     let p = points();
     assert_eq!(p.items[2].function, PointFunction::Card);
-    assert_eq!(p.items[2].x, None);
+    assert!(p.items[2].x.is_some() && p.items[2].y.is_some());
     assert!(check(&p, &keys(), &HandSettings::default()).is_ok());
 }
 #[test]
@@ -202,4 +202,63 @@ fn escape_gaps_are_independent_waits() {
     let mut k = keys();
     k.timing.escape_gap_ms = [50., 16.];
     assert!(check(&points(), &k, &HandSettings::default()).is_ok());
+}
+#[test]
+fn card_key_compiles_with_its_target_point() {
+    let p = points();
+    let card = p
+        .items
+        .iter()
+        .find(|i| i.function == PointFunction::Card)
+        .unwrap();
+    let target = NormPoint {
+        x: card.x.unwrap(),
+        y: card.y.unwrap(),
+    };
+    let c = check(&p, &keys(), &HandSettings::default()).unwrap();
+    assert!(c.actions.contains(&ActionSpec::CardKey(target)));
+}
+#[test]
+fn card_key_without_position_is_disabled_until_recorded() {
+    let mut p = points();
+    let card = p
+        .items
+        .iter_mut()
+        .find(|i| i.function == PointFunction::Card)
+        .unwrap();
+    let id = card.id;
+    card.x = None;
+    card.y = None;
+    let a = analyze_conflicts(&p, &keys());
+    assert!(a.disabled_points.contains(&id));
+    assert!(
+        a.reports
+            .iter()
+            .any(|e| e.path == format!("$.items[id={id}].position"))
+    );
+    let c = check(&p, &keys(), &HandSettings::default()).unwrap();
+    assert!(
+        !c.actions
+            .iter()
+            .any(|a| matches!(a, ActionSpec::CardKey(_)))
+    );
+}
+#[test]
+fn removed_card_auto_repeat_still_loads_and_is_dropped_on_save() {
+    let mut legacy = serde_json::to_value(HandSettings::default()).unwrap();
+    legacy["card_auto_repeat"] = serde_json::json!("follow_typematic");
+    let h: HandSettings = from_json(&legacy.to_string()).unwrap();
+    assert_eq!(h, HandSettings::default());
+    assert!(!to_json(&h).unwrap().contains("card_auto_repeat"));
+}
+#[test]
+fn keys_without_card_return_wait_default_to_sixteen_ms() {
+    let mut old: serde_json::Value =
+        serde_json::from_str(include_str!("../../../keys/預設按鍵.json")).unwrap();
+    old["timing"]
+        .as_object_mut()
+        .unwrap()
+        .remove("card_return_wait_ms");
+    let k: KeysProfile = from_json(&old.to_string()).unwrap();
+    assert_eq!(k.timing.card_return_wait_ms, 16.);
 }

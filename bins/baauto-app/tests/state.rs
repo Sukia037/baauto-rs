@@ -49,16 +49,16 @@ fn conflict_sort_selection_and_button_conditions_use_item_ids() {
             name: "same".into(),
             hotkey: Some("F12".parse().unwrap()),
             function: PointFunction::Card,
-            x: None,
-            y: None,
+            x: Some(0.5),
+            y: Some(0.45),
         },
         PointItem {
             id: 9,
             name: "same".into(),
             hotkey: Some("W".parse().unwrap()),
             function: PointFunction::Card,
-            x: None,
-            y: None,
+            x: Some(0.5),
+            y: Some(0.45),
         },
     ];
     assert_eq!(sorted_item_ids(&p, &k)[0], 9);

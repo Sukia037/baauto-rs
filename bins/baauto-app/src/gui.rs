@@ -1031,7 +1031,7 @@ fn role_description(role: &str) -> String {
         _ => String::new(),
     }
 }
-fn timing_fields(t: &TimingProfile) -> [(&'static str, f64); 8] {
+fn timing_fields(t: &TimingProfile) -> [(&'static str, f64); 9] {
     [
         ("key_hold_ms", t.key_hold_ms),
         ("mouse_hold_ms", t.mouse_hold_ms),
@@ -1041,6 +1041,7 @@ fn timing_fields(t: &TimingProfile) -> [(&'static str, f64); 8] {
         ("escape_gap_ms[1]", t.escape_gap_ms[1]),
         ("card_pre_esc_ms", t.card_pre_esc_ms),
         ("hold_maintain_period_ms", t.hold_maintain_period_ms),
+        ("card_return_wait_ms", t.card_return_wait_ms),
     ]
 }
 fn set_timing_field(t: &mut TimingProfile, index: usize, value: f64) {
@@ -1053,6 +1054,7 @@ fn set_timing_field(t: &mut TimingProfile, index: usize, value: f64) {
         5 => t.escape_gap_ms[1] = value,
         6 => t.card_pre_esc_ms = value,
         7 => t.hold_maintain_period_ms = value,
+        8 => t.card_return_wait_ms = value,
         _ => {}
     }
 }

@@ -97,13 +97,12 @@ impl PointSetEditor {
             item.x = Some(p.x);
             item.y = Some(p.y);
         }
-        if item.function == PointFunction::Card {
-            item.x = None;
-            item.y = None;
-        } else if !item
-            .x
-            .zip(item.y)
-            .is_some_and(|(x, y)| NormPoint { x, y }.valid())
+        // A card may wait for its position; an ordinary point always needs one.
+        if item.function == PointFunction::Point
+            && !item
+                .x
+                .zip(item.y)
+                .is_some_and(|(x, y)| NormPoint { x, y }.valid())
         {
             return Err(ConfigError::new(
                 "$.items.position",
@@ -255,11 +254,6 @@ impl HandEditor {
         let changed = self.document.slot_keys != keys;
         self.document.slot_keys = keys;
         Ok(changed)
-    }
-    pub fn set_card_auto_repeat(&mut self, p: AutoRepeatPolicy) -> bool {
-        let changed = self.document.card_auto_repeat != p;
-        self.document.card_auto_repeat = p;
-        changed
     }
     pub fn set_card_ui_side(&mut self, s: CardUiSide) -> bool {
         let changed = self.document.card_ui_side != s;

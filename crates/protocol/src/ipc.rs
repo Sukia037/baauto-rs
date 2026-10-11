@@ -5,7 +5,7 @@ use baauto_config::*;
 pub use baauto_core::{RunMode, TrialError};
 use baauto_core::{SessionId, StopReason};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-pub const PROTOCOL_VERSION: u32 = 4;
+pub const PROTOCOL_VERSION: u32 = 5;
 pub const MAX_FRAME: usize = 1024 * 1024;
 #[derive(Debug, thiserror::Error)]
 pub enum IpcError {
@@ -210,7 +210,6 @@ pub struct CompiledWire {
     pub slots: u8,
     pub slot_keys: [Key; 5],
     pub order: SlotOrder,
-    pub card_auto_repeat: AutoRepeatPolicy,
     pub candidates: Vec<bool>,
 }
 impl From<&CompiledConfig> for CompiledWire {
@@ -225,7 +224,6 @@ impl From<&CompiledConfig> for CompiledWire {
             slots: c.slots,
             slot_keys: c.slot_keys,
             order: c.order,
-            card_auto_repeat: c.card_auto_repeat,
             candidates: c.candidates.to_vec(),
         }
     }
@@ -247,9 +245,9 @@ impl TryFrom<CompiledWire> for CompiledConfig {
         }
         if !matches!(c.slots, 3 | 5)
             || !c.hand.valid()
-            || c.actions
-                .iter()
-                .any(|a| matches!(a,ActionSpec::HoldPoint(p) if !p.valid()))
+            || c.actions.iter().any(
+                |a| matches!(a,ActionSpec::HoldPoint(p) | ActionSpec::CardKey(p) if !p.valid()),
+            )
             || c.triggers
                 .iter()
                 .flatten()
@@ -277,7 +275,8 @@ impl TryFrom<CompiledWire> for CompiledConfig {
                 }
                 ActionSpec::DoubleEsc { .. } => required[27] = true,
                 ActionSpec::HoldPoint(_) => required[1] = true,
-                ActionSpec::CardKey => {
+                ActionSpec::CardKey(_) => {
+                    required[1] = true;
                     for key in c.slot_keys.iter().take(c.slots as usize) {
                         required[key.0 as usize] = true;
                     }
@@ -315,7 +314,6 @@ impl TryFrom<CompiledWire> for CompiledConfig {
             slots: c.slots,
             slot_keys: c.slot_keys,
             order: c.order,
-            card_auto_repeat: c.card_auto_repeat,
             reports: Vec::new(),
             candidates,
         })
@@ -340,7 +338,11 @@ impl TrialSpec {
             ActionSpec::Repeat { key } => key.into_iter().chain([Key::LEFT]).collect(),
             ActionSpec::DoubleEsc { .. } => vec![Key::ESC],
             ActionSpec::HoldPoint(_) => vec![Key::LEFT],
-            ActionSpec::CardKey => cfg.slot_keys[..cfg.slots as usize].to_vec(),
+            ActionSpec::CardKey(_) => cfg.slot_keys[..cfg.slots as usize]
+                .iter()
+                .copied()
+                .chain([Key::LEFT])
+                .collect(),
         };
         needed.iter().all(|k| cfg.candidates[k.0 as usize])
     }

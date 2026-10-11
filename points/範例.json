@@ -23,7 +23,9 @@
       "id": 3,
       "name": "出牌",
       "hotkey": "q",
-      "function": "card"
+      "function": "card",
+      "x": 0.5,
+      "y": 0.45
     }
   ]
 }

@@ -3,7 +3,7 @@ use crate::{
     geometry::Rect,
     hook::{Decision, HookState, RawEvent, RawKind},
 };
-use baauto_config::{CompiledConfig, Key};
+use baauto_config::{ActionSpec, CompiledConfig, Key};
 use baauto_core::*;
 use baauto_protocol::capture::*;
 use baauto_protocol::{
@@ -16,7 +16,11 @@ use std::{
     ffi::OsStr,
     mem::size_of,
     path::Path,
-    sync::{Arc, OnceLock, atomic::Ordering::SeqCst, mpsc},
+    sync::{
+        Arc, OnceLock,
+        atomic::{AtomicBool, AtomicU64, Ordering::SeqCst},
+        mpsc,
+    },
     thread,
 };
 use windows::{
@@ -121,6 +125,26 @@ pub struct QueuedInput {
     pub enqueue: Ticks,
     pub depth: u32,
 }
+/// The user's own cursor while a card key holds the real cursor on its target.
+/// Written only by the Hook thread, read by the Engine thread of the same process.
+static USER_POINTER: AtomicU64 = AtomicU64::new(0);
+static USER_POINTER_VALID: AtomicBool = AtomicBool::new(false);
+/// Set by the Engine thread before it submits a batch that moves the cursor to a card key target.
+static POINTER_DISPLACED: AtomicBool = AtomicBool::new(false);
+fn pack_point(p: POINT) -> u64 {
+    (u64::from(p.x as u32) << 32) | u64::from(p.y as u32)
+}
+fn unpack_point(v: u64) -> POINT {
+    POINT {
+        x: (v >> 32) as u32 as i32,
+        y: v as u32 as i32,
+    }
+}
+struct PointerTracker {
+    user: POINT,
+    last: Option<POINT>,
+    tracking: bool,
+}
 struct HookRuntime {
     state: HookState,
     cfg: Arc<CompiledConfig>,
@@ -132,8 +156,39 @@ struct HookRuntime {
     clock: Clock,
     related: [bool; 256],
     captures: Producer<(CaptureResult, Target)>,
+    pointer: PointerTracker,
 }
 impl HookRuntime {
+    /// Keeps the user's cursor while a card key has moved the real one: physical deltas are added
+    /// to the position the user had when the target move began. Fixed state only, no allocation.
+    fn pointer_moved(&mut self, pt: POINT, own: bool) {
+        let t = &mut self.pointer;
+        if !POINTER_DISPLACED.load(SeqCst) {
+            t.tracking = false;
+            USER_POINTER_VALID.store(false, SeqCst);
+            if !own {
+                t.user = pt;
+            }
+        } else {
+            if !t.tracking {
+                t.tracking = true;
+                let mut before = POINT::default();
+                // SAFETY: Value-only, non-waiting query on the Hook thread. A low-level hook runs before
+                // the move is applied, so this is the user's position just before the target move.
+                if own && unsafe { GetCursorPos(&mut before) }.is_ok() {
+                    t.user = before;
+                } else if !own {
+                    t.user = pt;
+                }
+            } else if !own && let Some(last) = t.last {
+                t.user.x = t.user.x.saturating_add(pt.x - last.x);
+                t.user.y = t.user.y.saturating_add(pt.y - last.y);
+            }
+            USER_POINTER.store(pack_point(t.user), SeqCst);
+            USER_POINTER_VALID.store(true, SeqCst);
+        }
+        t.last = Some(pt);
+    }
     fn capture_result(&mut self, result: CaptureResult) {
         if self.captures.push((result, self.target)).is_err() {
             self.state.invalidate();
@@ -318,6 +373,10 @@ unsafe extern "system" fn mouse(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
             unsafe {
                 let event = &*(l.0 as *const MSLLHOOKSTRUCT);
                 let msg = w.0 as u32;
+                if msg == WM_MOUSEMOVE {
+                    (*ptr).pointer_moved(event.pt, event.dwExtraInfo == (*ptr).state.marker);
+                    return false;
+                }
                 let (key, down) = match msg {
                     WM_LBUTTONDOWN => (1, true),
                     WM_LBUTTONUP => (1, false),
@@ -465,9 +524,17 @@ impl HookThread {
         let (commands, rx) = mpsc::channel();
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let join = thread::spawn(move || {
+            let mut start = POINT::default();
+            // SAFETY: Value-only cursor query before any hook is installed.
+            let _ = unsafe { GetCursorPos(&mut start) };
             let mut rt = Box::new(HookRuntime {
                 state: HookState::new(&cfg, marker),
                 captures: captures_tx,
+                pointer: PointerTracker {
+                    user: start,
+                    last: None,
+                    tracking: false,
+                },
                 related: cfg.related_keys(),
                 cfg,
                 producer,
@@ -861,6 +928,10 @@ impl EngineThread {
                 Engine::new(cfg.clone(), clock.rate)
             };
             let mut current_trial: Option<TrialResult> = None;
+            let card_keys = cfg
+                .actions
+                .iter()
+                .any(|a| matches!(a, ActionSpec::CardKey(_)));
             let mut driver = Driver::new(
                 marker,
                 stop.clone(),
@@ -980,9 +1051,25 @@ impl EngineThread {
                                     clock.now(),
                                 );
                             }
+                            if card_keys {
+                                let user = if engine.pointer_displaced() {
+                                    USER_POINTER_VALID
+                                        .load(SeqCst)
+                                        .then(|| unpack_point(USER_POINTER.load(SeqCst)))
+                                } else {
+                                    let mut p = POINT::default();
+                                    // SAFETY: Value-only, non-waiting cursor query on the Engine thread.
+                                    unsafe { GetCursorPos(&mut p) }.ok().map(|_| p)
+                                };
+                                if let Some(p) = user {
+                                    engine.set_user_cursor(Some(target.monitor.norm(p.x, p.y)));
+                                }
+                            }
                             let Some(b) = engine.next_batch(clock.now()) else {
                                 break;
                             };
+                            // Publish before submitting, so the Hook classifies this batch's own moves.
+                            POINTER_DISPLACED.store(engine.pointer_displaced(), SeqCst);
                             #[cfg(feature = "fault-injection")]
                             {
                                 batch_number += 1;

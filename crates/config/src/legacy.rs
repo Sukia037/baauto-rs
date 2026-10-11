@@ -20,16 +20,10 @@ pub struct IdMapping {
     pub old: String,
     pub new: u32,
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct DiscardedEndpoint {
-    pub name: String,
-    pub coordinate: Option<NormPoint>,
-}
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ImportReport {
     pub issues: Vec<Issue>,
     pub id_map: Vec<IdMapping>,
-    pub discarded_endpoints: Vec<DiscardedEndpoint>,
     pub pending_resolution: Vec<Value>,
     pub source_timing: Option<Value>,
 }
@@ -304,14 +298,14 @@ pub fn import(
             let function = match b["function"].as_str().unwrap_or("normal") {
                 "normal" | "normal_point" => PointFunction::Point,
                 "alternating" => {
-                    r.discarded_endpoints.push(DiscardedEndpoint {
-                        name: name.clone(),
-                        coordinate: position,
-                    });
                     r.note(
                         &path,
                         "alternating_to_card",
-                        "drag endpoint discarded; cursor-under-card chooses output",
+                        if position.is_some() {
+                            "drag endpoint becomes the card key target; cursor-under-card chooses the key"
+                        } else {
+                            "drag endpoint missing; card key disabled until its position is recorded"
+                        },
                     );
                     PointFunction::Card
                 }
@@ -335,16 +329,8 @@ pub fn import(
                 name,
                 hotkey: h,
                 function,
-                x: if function == PointFunction::Point {
-                    position.map(|p| p.x)
-                } else {
-                    None
-                },
-                y: if function == PointFunction::Point {
-                    position.map(|p| p.y)
-                } else {
-                    None
-                },
+                x: position.map(|p| p.x),
+                y: position.map(|p| p.y),
             });
         }
         for (old, _) in points {

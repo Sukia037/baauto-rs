@@ -106,8 +106,10 @@ pub struct HandSettings {
     pub card_ui_side: CardUiSide,
     pub slot_order: SlotOrder,
     pub slot_keys: [Key; 5],
-    pub card_auto_repeat: AutoRepeatPolicy,
     pub rects: HandRects,
+    /// Card keys now repeat while held, so the old typematic choice is ignored.
+    #[serde(default, skip_serializing, rename = "card_auto_repeat")]
+    pub removed_card_auto_repeat: RemovedField,
 }
 impl HandSettings {
     pub fn layout(&self, mode: Mode) -> HandRect {
@@ -141,11 +143,11 @@ impl Default for HandSettings {
             card_ui_side: CardUiSide::Right,
             slot_order: SlotOrder::LeftToRight,
             slot_keys: [Key(49), Key(50), Key(51), Key(52), Key(53)],
-            card_auto_repeat: AutoRepeatPolicy::Ignore,
             rects: HandRects {
                 six: sides([0.664, 0.910]),
                 ten: sides([0.500, 0.910]),
             },
+            removed_card_auto_repeat: RemovedField,
         }
     }
 }
@@ -222,9 +224,9 @@ pub enum ProfileSource {
     Manual,
     Calibrated,
 }
-/// Older keys files carry the removed `allowed_lateness_ms` table; it loads but is never written back.
+/// A field removed from an older file format: it still loads, is ignored, and is never written back.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-struct RemovedField;
+pub struct RemovedField;
 impl<'de> Deserialize<'de> for RemovedField {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         serde::de::IgnoredAny::deserialize(d).map(|_| Self)
@@ -244,10 +246,16 @@ pub struct TimingProfile {
     pub escape_gap_ms: [f64; 2],
     pub card_pre_esc_ms: f64,
     pub hold_maintain_period_ms: f64,
+    /// Card key: how long the cursor stays on the target after the click before returning.
+    #[serde(default = "default_card_return_wait_ms")]
+    pub card_return_wait_ms: f64,
     #[serde(default, skip_serializing, rename = "allowed_lateness_ms")]
     removed_lateness: RemovedField,
     pub card_trailing_esc: TrailingEscPolicy,
     pub auto_repeat: AutoRepeatPolicy,
+}
+fn default_card_return_wait_ms() -> f64 {
+    16.0
 }
 impl TimingProfile {
     pub fn set_identity(&mut self, identity: ProfileIdentity) {

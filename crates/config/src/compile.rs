@@ -30,11 +30,16 @@ pub const PRESET_ROLES: [&str; 23] = [
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ActionSpec {
     Tap(Key),
-    Repeat { key: Option<Key> },
+    Repeat {
+        key: Option<Key>,
+    },
     Card(Key),
-    DoubleEsc { slow: bool },
+    DoubleEsc {
+        slow: bool,
+    },
     HoldPoint(NormPoint),
-    CardKey,
+    /// While held: send the key of the hand slot under the user's cursor, click the target, return.
+    CardKey(NormPoint),
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TickTiming {
@@ -46,6 +51,7 @@ pub struct TickTiming {
     pub esc_gap_slow: u64,
     pub card_pre_esc: u64,
     pub maintain: u64,
+    pub card_return: u64,
     pub trailing: TrailingEscPolicy,
     pub auto_repeat: AutoRepeatPolicy,
 }
@@ -60,7 +66,6 @@ pub struct CompiledConfig {
     pub slots: u8,
     pub slot_keys: [Key; 5],
     pub order: SlotOrder,
-    pub card_auto_repeat: AutoRepeatPolicy,
     pub reports: Vec<ConfigError>,
     pub candidates: [bool; 256],
 }
@@ -131,6 +136,14 @@ pub fn analyze_conflicts(points: &PointSet, keys: &KeysProfile) -> ConflictAnaly
         }
     }
     for item in &points.items {
+        if item.function == PointFunction::Card && (item.x.is_none() || item.y.is_none()) {
+            a.disabled_points.push(item.id);
+            a.reports.push(ConfigError::new(
+                format!("$.items[id={}].position", item.id),
+                "card key needs a recorded position",
+            ));
+            continue;
+        }
         if let Some(c) = item.hotkey {
             let other = presets
                 .iter()
@@ -227,12 +240,17 @@ pub fn compile_with_params(
                 .x
                 .zip(item.y)
                 .is_some_and(|(x, y)| NormPoint { x, y }.valid()),
-            PointFunction::Card => item.x.is_none() && item.y.is_none(),
+            // A card without a position loads but stays disabled until recorded.
+            PointFunction::Card => match (item.x, item.y) {
+                (None, None) => true,
+                (Some(x), Some(y)) => NormPoint { x, y }.valid(),
+                _ => false,
+            },
         };
         if !valid {
             errors.push(ConfigError::new(
                 format!("$.items[{i}]"),
-                "point needs valid x/y; card must omit coordinates",
+                "point needs valid x/y; card needs valid x/y or none",
             ));
         }
     }
@@ -308,8 +326,9 @@ pub fn compile_with_params(
         t.escape_gap_ms[1],
         t.card_pre_esc_ms,
         t.hold_maintain_period_ms,
+        t.card_return_wait_ms,
     ];
-    let mut ticks = [0; 8];
+    let mut ticks = [0; 9];
     for (i, v) in vals.into_iter().enumerate() {
         match ticks_ms(v, rate) {
             Ok(n) => ticks[i] = n,
@@ -330,6 +349,7 @@ pub fn compile_with_params(
         esc_gap_slow: ticks[5],
         card_pre_esc: ticks[6],
         maintain: ticks[7],
+        card_return: ticks[8],
         trailing: t.card_trailing_esc,
         auto_repeat: t.auto_repeat,
     };
@@ -343,7 +363,6 @@ pub fn compile_with_params(
         slots: p.mode.slots(),
         slot_keys: h.slot_keys,
         order: h.slot_order,
-        card_auto_repeat: h.card_auto_repeat,
         reports: a.reports,
         candidates: [false; 256],
     };
@@ -393,7 +412,10 @@ pub fn compile_with_params(
                 &mut cfg,
                 chord,
                 match item.function {
-                    PointFunction::Card => ActionSpec::CardKey,
+                    PointFunction::Card => ActionSpec::CardKey(NormPoint {
+                        x: item.x.unwrap(),
+                        y: item.y.unwrap(),
+                    }),
                     PointFunction::Point => ActionSpec::HoldPoint(NormPoint {
                         x: item.x.unwrap(),
                         y: item.y.unwrap(),
@@ -416,7 +438,11 @@ pub fn compile_with_params(
             _ => {}
         }
     }
-    if cfg.actions.iter().any(|a| matches!(a, ActionSpec::CardKey)) {
+    if cfg
+        .actions
+        .iter()
+        .any(|a| matches!(a, ActionSpec::CardKey(_)))
+    {
         for key in h.slot_keys {
             cfg.candidates[key.0 as usize] = true;
         }
@@ -427,7 +453,10 @@ pub fn compile_with_params(
     if cfg.actions.iter().any(|a| {
         matches!(
             a,
-            ActionSpec::HoldPoint(_) | ActionSpec::Card(_) | ActionSpec::Repeat { .. }
+            ActionSpec::HoldPoint(_)
+                | ActionSpec::Card(_)
+                | ActionSpec::Repeat { .. }
+                | ActionSpec::CardKey(_)
         )
     }) {
         cfg.candidates[1] = true;

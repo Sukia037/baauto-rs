@@ -310,6 +310,19 @@ fn run_profile(mode: Mode, side: CardUiSide, order: SlotOrder, all_presets: bool
         ));
     }
     let rect = hand.layout(mode);
+    let card_target = points
+        .items
+        .iter()
+        .find(|i| i.function == PointFunction::Card)
+        .and_then(|i| i.x.zip(i.y))
+        .map(|(x, y)| target.monitor.pixel(NormPoint { x, y }).unwrap())
+        .expect("template card key has a target point");
+    // Receiver client coordinates of every card-key click and of each slot the cursor returns to.
+    let client = |(x, y): (i32, i32)| -> u64 {
+        ((u64::from((y - target.monitor.top) as u16)) << 16)
+            | u64::from((x - target.monitor.left) as u16)
+    };
+    let mut card_slots = Vec::new();
     for slot in 0..mode.slots() {
         let point = NormPoint {
             x: rect.x[0]
@@ -324,13 +337,11 @@ fn run_profile(mode: Mode, side: CardUiSide, order: SlotOrder, all_presets: bool
         } else {
             mode.slots() - 1 - slot
         };
-        cases.push(action(
-            clock,
-            Key(81),
-            &format!("card_key_slot_{slot}"),
-            key_pair(u32::from(hand.slot_keys[index as usize].0)),
-            false,
-        ));
+        let mut cycle = key_pair(u32::from(hand.slot_keys[index as usize].0));
+        cycle.extend([(513, 0), (514, 0)]);
+        let name = format!("card_key_slot_{slot}");
+        card_slots.push((name.clone(), client((x, y))));
+        cases.push(action(clock, Key(81), &name, cycle, true));
     }
     let (x, y) = target
         .monitor
@@ -526,6 +537,20 @@ fn run_profile(mode: Mode, side: CardUiSide, order: SlotOrder, all_presets: bool
                 "{:?}/{:?}/{:?} {} expected {:?}, got {:?}",
                 mode, side, order, case.name, case.expected, actual
             ));
+        }
+        if let Some((_, slot)) = card_slots.iter().find(|(n, _)| *n == case.name) {
+            let own = |r: &&Vec<u64>| r[0] >= case.begin && r[0] < case.end && r[4] != 0;
+            let clicks_on_target = rows
+                .iter()
+                .filter(own)
+                .filter(|r| r[1] == 513)
+                .all(|r| r[3] == client(card_target));
+            let returned = rows
+                .iter()
+                .filter(own)
+                .any(|r| r[1] == 512 && r[3] == *slot);
+            captures.push((format!("{}_clicks_target", case.name), clicks_on_target));
+            captures.push((format!("{}_returns_cursor", case.name), returned));
         }
     }
     if all_presets {

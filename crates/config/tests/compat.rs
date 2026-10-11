@@ -22,8 +22,8 @@ fn import_alternating_becomes_card_items() {
         ))
         .unwrap()
     );
-    assert_eq!(imported.report.discarded_endpoints.len(), 2);
     for code in [
+        "alternating_to_card",
         "boolean_number",
         "side_modifier_normalized",
         "duplicate_id",
@@ -314,4 +314,50 @@ fn deleted_ids_not_reused_and_invalid_edit_keeps_document() {
         )
         .is_err()
     );
+}
+#[test]
+fn switching_point_and_card_keeps_target_coordinates() {
+    let mut e = PointSetEditor::new(template_points());
+    let point = e
+        .document
+        .items
+        .iter()
+        .find(|i| i.function == PointFunction::Point)
+        .unwrap()
+        .clone();
+    e.update_item(
+        point.id,
+        ItemPatch {
+            function: Some(PointFunction::Card),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let card = e.document.items.iter().find(|i| i.id == point.id).unwrap();
+    assert_eq!(
+        (card.function, card.x, card.y),
+        (PointFunction::Card, point.x, point.y)
+    );
+    let id = e.add_card_item("new".into()).unwrap();
+    assert!(e.document.items.iter().any(|i| i.id == id && i.x.is_none()));
+    assert!(
+        e.update_item(
+            id,
+            ItemPatch {
+                function: Some(PointFunction::Point),
+                ..Default::default()
+            },
+        )
+        .is_err()
+    );
+    e.update_item(
+        id,
+        ItemPatch {
+            position: Some(NormPoint { x: 0.4, y: 0.6 }),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let card = e.document.items.iter().find(|i| i.id == id).unwrap();
+    assert_eq!((card.x, card.y), (Some(0.4), Some(0.6)));
 }

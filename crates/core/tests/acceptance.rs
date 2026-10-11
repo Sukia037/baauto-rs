@@ -13,6 +13,7 @@ fn config(mode: Mode, side: CardUiSide, follow: bool) -> CompiledConfig {
     k.timing.escape_gap_ms = [3., 6.];
     k.timing.card_pre_esc_ms = 2.;
     k.timing.hold_maintain_period_ms = 4.;
+    k.timing.card_return_wait_ms = 4.;
     k.timing.auto_repeat = if follow {
         AutoRepeatPolicy::FollowTypematic
     } else {
@@ -20,7 +21,6 @@ fn config(mode: Mode, side: CardUiSide, follow: bool) -> CompiledConfig {
     };
     let h = HandSettings {
         card_ui_side: side,
-        card_auto_repeat: k.timing.auto_repeat,
         ..Default::default()
     };
     compile(&p, &k, &h, TickRate(1000)).unwrap()
@@ -85,6 +85,16 @@ impl Rig {
             Ticks(now),
         );
         b
+    }
+    fn card_point(&self) -> NormPoint {
+        self.c
+            .actions
+            .iter()
+            .find_map(|a| match a {
+                ActionSpec::CardKey(p) => Some(*p),
+                _ => None,
+            })
+            .expect("template has a card key with a target point")
     }
     fn center(&self, i: u8) -> NormPoint {
         NormPoint {
@@ -266,35 +276,124 @@ fn geometry_change_cancels_hold_point_and_releases_left() {
     assert_eq!(r.send(1).events.as_slice(), &[OutEvent::LeftUp]);
 }
 #[test]
-fn card_key_sends_key_of_slot_under_cursor() {
+fn card_key_repeats_slot_key_and_clicks_point_while_held() {
+    let mut r = Rig::new();
+    let card = r.card_point();
+    r.e.set_user_cursor(Some(r.center(0)));
+    r.down(81, 1, p());
+    assert_eq!(r.send(0).events.as_slice(), &[OutEvent::KeyDown(Key(49))]);
+    assert_eq!(r.send(2).events.as_slice(), &[OutEvent::KeyUp(Key(49))]);
+    assert_eq!(
+        r.send(5).events.as_slice(),
+        &[OutEvent::MoveTo(card), OutEvent::LeftDown]
+    );
+    assert_eq!(r.send(7).events.as_slice(), &[OutEvent::LeftUp]);
+    assert!(r.e.next_batch(Ticks(9)).is_none());
+    // The next cycle starts on the repeat period; the return overlaps its key stage.
+    assert_eq!(r.send(10).events.as_slice(), &[OutEvent::KeyDown(Key(49))]);
+    assert_eq!(
+        r.send(11).events.as_slice(),
+        &[OutEvent::MoveTo(r.center(0))]
+    );
+    assert_eq!(r.send(12).events.as_slice(), &[OutEvent::KeyUp(Key(49))]);
+    // Moving onto another card switches the key on the next cycle.
+    r.e.set_user_cursor(Some(r.center(1)));
+    assert_eq!(
+        r.send(15).events.as_slice(),
+        &[OutEvent::MoveTo(card), OutEvent::LeftDown]
+    );
+    assert_eq!(r.send(17).events.as_slice(), &[OutEvent::LeftUp]);
+    assert_eq!(r.send(20).events.as_slice(), &[OutEvent::KeyDown(Key(50))]);
+    r.up(1);
+    assert_eq!(r.send(20).events.as_slice(), &[OutEvent::KeyUp(Key(50))]);
+    assert!(r.e.next_batch(Ticks(20)).is_none());
+    assert_eq!(
+        r.send(21).events.as_slice(),
+        &[OutEvent::MoveTo(r.center(1))]
+    );
+    assert!(r.e.next_batch(Ticks(30)).is_none());
+    assert_eq!(r.e.active_actions(), 0);
+    assert!(r.e.held().is_empty());
+}
+#[test]
+fn card_key_sends_key_of_slot_under_user_cursor() {
     for mode in [Mode::Six, Mode::Ten] {
-        let mut r = Rig::with(mode, CardUiSide::Right, false);
-        for i in 0..r.c.slots {
-            r.down(81, u32::from(i) + 1, r.center(i));
-            assert_eq!(
-                r.send(u64::from(i) * 3).events[0],
-                OutEvent::KeyDown(r.c.slot_keys[i as usize])
-            );
-            r.send(u64::from(i) * 3 + 2);
+        for side in [CardUiSide::Right, CardUiSide::Left] {
+            let mut r = Rig::with(mode, side, false);
+            for i in 0..r.c.slots {
+                let start = u64::from(i) * 100;
+                r.e.set_user_cursor(Some(r.center(i)));
+                r.down(81, u32::from(i) + 1, p());
+                assert_eq!(
+                    r.send(start).events[0],
+                    OutEvent::KeyDown(r.c.slot_keys[i as usize])
+                );
+                r.up(u32::from(i) + 1);
+                r.send(start);
+                assert!(r.e.next_batch(Ticks(start + 50)).is_none());
+                assert_eq!(r.e.active_actions(), 0);
+            }
         }
     }
 }
 #[test]
-fn card_key_outside_hand_sends_nothing_and_reports() {
+fn card_key_off_hand_waits_and_resumes_on_a_card() {
     let mut r = Rig::new();
-    for (i, p) in [
-        NormPoint { x: 0., y: 0.85 },
-        NormPoint { x: 1., y: 0.85 },
-        NormPoint { x: 0.8, y: 0. },
-        NormPoint { x: 0.8, y: 1. },
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        r.down(81, i as u32 + 1, p);
-        assert!(r.e.next_batch(Ticks(0)).is_none());
-    }
+    r.e.set_user_cursor(Some(p()));
+    r.down(81, 1, p());
+    assert!(r.e.next_batch(Ticks(0)).is_none());
     assert!(r.e.reports().contains(&Report::OutsideHand));
+    assert!(r.e.next_batch(Ticks(9)).is_none());
+    r.e.set_user_cursor(Some(r.center(2)));
+    assert_eq!(r.send(10).events.as_slice(), &[OutEvent::KeyDown(Key(51))]);
+}
+#[test]
+fn card_key_release_mid_click_releases_left_then_returns() {
+    let mut r = Rig::new();
+    let card = r.card_point();
+    r.e.set_user_cursor(Some(r.center(0)));
+    r.down(81, 1, p());
+    r.send(0);
+    r.send(2);
+    assert_eq!(
+        r.send(5).events.as_slice(),
+        &[OutEvent::MoveTo(card), OutEvent::LeftDown]
+    );
+    r.up(1);
+    assert_eq!(r.send(5).events.as_slice(), &[OutEvent::LeftUp]);
+    assert!(r.e.next_batch(Ticks(8)).is_none());
+    assert_eq!(
+        r.send(9).events.as_slice(),
+        &[OutEvent::MoveTo(r.center(0))]
+    );
+    assert!(r.e.next_batch(Ticks(20)).is_none());
+    assert_eq!(r.e.active_actions(), 0);
+    assert!(r.e.held().is_empty());
+}
+#[test]
+fn card_key_stop_releases_without_moving_cursor() {
+    let mut r = Rig::new();
+    r.e.set_user_cursor(Some(r.center(0)));
+    r.down(81, 1, p());
+    r.send(0);
+    r.send(2);
+    r.send(5);
+    r.e.request_stop(StopReason::User, Ticks(6));
+    assert_eq!(r.send(6).events.as_slice(), &[OutEvent::LeftUp]);
+    assert!(matches!(r.e.state(), EngineState::Stopped(_)));
+}
+#[test]
+fn card_key_ignores_auto_repeat() {
+    let mut r = Rig::with(Mode::Six, CardUiSide::Right, true);
+    r.e.set_user_cursor(Some(r.center(0)));
+    r.down(81, 1, p());
+    r.send(0);
+    r.ev(InputKind::TriggerRepeat {
+        press: PressId(1),
+        cursor: p(),
+    });
+    assert_eq!(r.e.active_actions(), 1);
+    assert_eq!(r.send(2).events.as_slice(), &[OutEvent::KeyUp(Key(49))]);
 }
 #[test]
 fn card_key_seam_and_boundary() {
@@ -320,12 +419,6 @@ fn card_key_seam_and_boundary() {
     );
 }
 #[test]
-fn card_key_left_side_uses_left_layout() {
-    let mut r = Rig::with(Mode::Six, CardUiSide::Left, false);
-    r.down(81, 1, r.center(1));
-    assert_eq!(r.send(0).events[0], OutEvent::KeyDown(Key(50)));
-}
-#[test]
 fn card_key_slot_order_right_to_left() {
     let mut c = config(Mode::Ten, CardUiSide::Left, false);
     c.order = SlotOrder::RightToLeft;
@@ -335,6 +428,7 @@ fn card_key_slot_order_right_to_left() {
     };
     let mut e = Engine::new(Arc::new(c.clone()), TickRate(1000));
     e.arm(SessionId(1), Ticks(0)).unwrap();
+    e.set_user_cursor(Some(point));
     e.on_input(
         InputEvent {
             seq: 1,
@@ -355,55 +449,28 @@ fn card_key_slot_order_right_to_left() {
         OutEvent::KeyDown(Key(53))
     );
 }
-fn card_repeat(follow: bool) {
-    let mut r = Rig::with(Mode::Six, CardUiSide::Right, follow);
-    r.down(81, 1, r.center(0));
-    r.send(0);
-    r.send(2);
-    r.ev(InputKind::TriggerRepeat {
-        press: PressId(1),
-        cursor: r.center(1),
-    });
-    let b = r.e.next_batch(Ticks(3));
-    assert_eq!(b.is_some(), follow);
-    if let Some(b) = b {
-        assert_eq!(b.events[0], OutEvent::KeyDown(Key(50)));
-    }
-}
 #[test]
-fn card_key_ignores_auto_repeat_by_default() {
-    card_repeat(false);
-}
-#[test]
-fn card_key_follow_typematic_when_configured() {
-    card_repeat(true);
-}
-#[test]
-fn card_key_rejected_when_slot_key_held() {
+fn card_key_waits_while_slot_key_held_by_tap() {
     let mut r = Rig::new();
+    r.e.set_user_cursor(Some(r.center(0)));
     r.down(87, 1, p());
     r.send(0);
-    r.down(81, 2, r.center(0));
-    assert_eq!(r.e.active_actions(), 1);
-    assert!(r.e.reports().contains(&Report::ResourceBusy));
-}
-#[test]
-fn card_key_completes_pulse_after_release() {
-    let mut r = Rig::new();
-    r.down(81, 1, r.center(0));
-    r.send(0);
-    r.up(1);
+    r.down(81, 2, p());
     assert!(r.e.next_batch(Ticks(1)).is_none());
-    assert_eq!(r.send(2).events[0], OutEvent::KeyUp(Key(49)));
-    assert!(r.e.held().is_empty());
+    assert_eq!(r.send(2).events.as_slice(), &[OutEvent::KeyUp(Key(49))]);
+    assert_eq!(r.send(2).events.as_slice(), &[OutEvent::KeyDown(Key(49))]);
 }
 #[test]
-fn card_key_runs_alongside_hold_point() {
+fn card_key_waits_for_mouse_held_by_point() {
     let mut r = Rig::new();
+    r.e.set_user_cursor(Some(r.center(2)));
     r.down(90, 1, p());
     r.send(0);
-    r.down(81, 2, r.center(2));
-    assert_eq!(r.send(0).events[0], OutEvent::KeyDown(Key(51)));
+    r.down(81, 2, p());
+    assert!(r.e.next_batch(Ticks(1)).is_none());
+    r.up(1);
+    assert_eq!(r.send(1).events.as_slice(), &[OutEvent::LeftUp]);
+    assert_eq!(r.send(1).events.as_slice(), &[OutEvent::KeyDown(Key(51))]);
 }
 #[test]
 fn idle_engine_still_advances_health() {

@@ -47,7 +47,7 @@ pub(super) struct TimingMeta {
     pub purpose: &'static str,
     pub rule: &'static str,
 }
-pub(super) const TIMING: [TimingMeta; 8] = [
+pub(super) const TIMING: [TimingMeta; 9] = [
     TimingMeta {
         name: "按鍵按住",
         json: "key_hold_ms",
@@ -96,6 +96,12 @@ pub(super) const TIMING: [TimingMeta; 8] = [
         purpose: "普通點位按住時，多久把游標拉回點位一次。",
         rule: "要大於 0。",
     },
+    TimingMeta {
+        name: "牌鍵回位等待",
+        json: "card_return_wait_ms",
+        purpose: "牌鍵點完位置後，游標在那裡停多久才回到你的位置。太短的話遊戲可能讀不到點擊位置。",
+        rule: "不超過「連點週期－點擊按住」時，牌鍵和連點一樣快。",
+    },
 ];
 
 fn role_of(path: &str) -> Option<&str> {
@@ -135,6 +141,12 @@ impl App {
             return Status {
                 lvl: Lvl::Off,
                 msg: "沒有熱鍵，不會觸發".into(),
+            };
+        }
+        if item.x.is_none() || item.y.is_none() {
+            return Status {
+                lvl: Lvl::Bad,
+                msg: "需要錄點位，停用".into(),
             };
         }
         if a.disabled_points.contains(&item.id) {
@@ -204,10 +216,10 @@ impl App {
             },
         }
     }
-    fn timing_checks(&self) -> [Option<String>; 8] {
+    fn timing_checks(&self) -> [Option<String>; 9] {
         let t = &self.timing_draft;
         let values = timing_fields(t);
-        let mut out: [Option<String>; 8] = Default::default();
+        let mut out: [Option<String>; 9] = Default::default();
         for (i, (_, v)) in values.iter().enumerate() {
             if !v.is_finite() || *v < 0. {
                 out[i] = Some("要填 0 以上的數字".into());
@@ -911,10 +923,9 @@ impl App {
                 k::cell(
                     &mut cells[3],
                     k::text(
-                        if item.function == PointFunction::Card {
-                            "手牌".to_owned()
-                        } else {
-                            self.px(&ctx, item.x.unwrap_or(0.), item.y.unwrap_or(0.))
+                        match item.x.zip(item.y) {
+                            Some((x, y)) => self.px(&ctx, x, y),
+                            None => "未錄製".to_owned(),
                         },
                         p.muted,
                         k::SMALL,
@@ -1129,11 +1140,30 @@ impl App {
                     );
                 }
                 if to_point {
-                    // A point needs a position: record it on the game screen.
-                    self.capture(CaptureTarget::ConvertToPoint(id));
+                    if item.x.is_some() && item.y.is_some() {
+                        let _ = self.points.update_item(
+                            id,
+                            ItemPatch {
+                                function: Some(PointFunction::Point),
+                                ..Default::default()
+                            },
+                        );
+                    } else {
+                        // A point needs a position: record it on the game screen.
+                        self.capture(CaptureTarget::ConvertToPoint(id));
+                    }
                 }
-                if item.function == PointFunction::Point {
-                    self.position_fields(ui, &ctx, id, item.x.unwrap_or(0.), item.y.unwrap_or(0.));
+                match item.x.zip(item.y) {
+                    Some((x, y)) => self.position_fields(ui, &ctx, id, x, y),
+                    None => {
+                        let mut record = false;
+                        k::field(ui, "位置", |ui| {
+                            record = k::button(ui, "錄製點位", true, true).clicked();
+                        });
+                        if record {
+                            self.capture(CaptureTarget::ReRecord(id));
+                        }
+                    }
                 }
                 k::field(ui, "狀態", |ui| {
                     ui.label(k::text(&st.msg, st.color(&p), k::SMALL));
@@ -1170,12 +1200,16 @@ impl App {
                     });
                 } else {
                     ui.label(k::text(
-                        "按下熱鍵那一刻，游標在手牌第幾格，就送那一格的按鍵一次。不移動游標、不點擊。",
+                        "按住熱鍵：游標在手牌第幾張，就送那一格的按鍵，再點一下這個位置，游標接著回到原處；一直重複到放開。游標不在手牌上時暫停。速度跟連點共用「時間」分頁的設定。",
                         p.muted,
                         k::SMALL,
                     ));
                     self.hand_details(ui);
                     self.actions(ui, |this, ui| {
+                        if item.x.is_some() && k::link(ui, "重錄位置").clicked() {
+                            this.capture(CaptureTarget::ReRecord(id));
+                        }
+                        ui.add_space(6.);
                         let mode = this.points.document.mode;
                         let side = this.hand.document.card_ui_side;
                         if k::link(ui, "鏡像到另一邊").clicked()
@@ -1369,24 +1403,6 @@ impl App {
             if k::link(ui, "在遊戲上校準").clicked() {
                 self.overlay_resume = self.wanted;
                 self.job(Job::PrepareOverlay);
-            }
-        });
-        k::field(ui, "", |ui| {
-            let mut repeat =
-                self.hand.document.card_auto_repeat == AutoRepeatPolicy::FollowTypematic;
-            if ui
-                .checkbox(
-                    &mut repeat,
-                    k::text("按住時跟著自動重複再送", p.ink, k::SMALL),
-                )
-                .changed()
-            {
-                self.hand.set_card_auto_repeat(if repeat {
-                    AutoRepeatPolicy::FollowTypematic
-                } else {
-                    AutoRepeatPolicy::Ignore
-                });
-                self.store_hand();
             }
         });
     }
