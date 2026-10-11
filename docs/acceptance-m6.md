@@ -4,11 +4,19 @@
 
 2026-10-11 原生補測：Windows自動檢查160項通過，IPC與部分實際送鍵/連點/持有/全域停止通過；有10張目前zoom=1的淺/深色原生framebuffer。故障注入5通過、掛起案例1失敗，原本Ctrl+F9仍註冊衝突；測試使用隔離替代熱鍵。完整證據、修正和未測項目見 [Windows實測報告](test-results/windows-20261011/README.md)。以下仍未勾選的項目沒有因此視為通過。
 
-逐項補測：替代全域熱鍵下23項中22通過、預設慢卡幀1失敗；5ms晚到容許值的獨立控制組全通過。2026-10-12已移除晚到上限，慢卡幀需重跑確認。六人／十人每格、左右／反向與框外，真正錄點和右鍵／側鍵／Space／Tab捕捉已測；GUI候選點新增成功、接收器沒有收到該點擊。校準前景修正、覆蓋層顯示和逾時已測；拖拉及確認儲存仍未驗收。見[完整補測證據](test-results/windows-20261011/expanded/README.md)，整組功能／遊戲驗收勾選仍保留未完成。
+逐項補測：替代全域熱鍵下23項中22通過、預設慢卡幀1失敗；5ms晚到容許值的獨立控制組全通過。2026-10-12已移除晚到上限，同日互動重跑已確認慢卡幀送出兩組完整 Esc，見下方。六人／十人每格、左右／反向與框外，真正錄點和右鍵／側鍵／Space／Tab捕捉已測；GUI候選點新增成功、接收器沒有收到該點擊。校準前景修正、覆蓋層顯示和逾時已測；拖拉及確認儲存仍未驗收。見[完整補測證據](test-results/windows-20261011/expanded/README.md)，整組功能／遊戲驗收勾選仍保留未完成。
+
+## 2026-10-12 互動驗收補充
+
+- [x] 正式範本慢卡幀（50ms 等待）實際收到兩組 Esc Down／Up；快卡幀亦通過。
+- [x] 隔離替代全域熱鍵下，M6 互動腳本全部通過：IPC、預設動作、普通點位、六／十人各格與框外、錄點／擷取、校準前景交接。四組接收器零遺失，結束已重建正式版。
+- [x] 正式版首頁實際顯示 Ctrl+F9／Ctrl+F10 佔用的紅色警告，啟用停用，附前往預設按鍵改鍵的連結。
+
+預設熱鍵輪等待 Armed 逾時；改用 Ctrl+Alt+F24／F23 的隔離測試設定後通過，時序未改。改鍵儲存後警告解除的完整 GUI 操作、遊戲、DPI、校準拖拉／儲存尚未驗收，以下整組未完成項目仍保留。完整 log、CSV、profile 與限制見 [互動報告](test-results/windows-20261012/interactive/README.md)。
 
 ## 準備與自動檢查
 
-2026-10-12 自動回歸：在 `4272d3a`，`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test` 均通過（163 passed、0 failed、3 ignored）。本次未執行 all-features、release build 或互動驗收；下方既有勾選沿用先前證據，未將慢卡幀實際送鍵、首頁警告呈現或其他未完成項目改成通過。見 [本次完整結果與略過清單](test-results/windows-20261012/README.md)。
+2026-10-12 自動回歸：在 `4272d3a`，`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test` 均通過（163 passed、0 failed、3 ignored）。第一輪未執行 all-features、release build 或互動驗收；第一輪僅補自動回歸；後續互動完成項目列在上方補充，其餘未完成項目維持原狀。見 [本次完整結果與略過清單](test-results/windows-20261012/README.md)。
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tests/windows/M6.ps1

@@ -1,6 +1,6 @@
 # M6 實作回報
 
-2026-10-12 更新：Windows MSVC 自動檢查已在 `4272d3a` 通過，163 passed、0 failed、3 ignored；晚到動作／舊欄位相容／熱鍵佔用回歸通過。詳見 [本次測試報告](../test-results/windows-20261012/README.md)。下文為初次交付紀錄；後續原生驗收與使用者取消長測的最新狀態以 [驗收清單](../acceptance-m6.md) 為準，本次沒有重跑互動或遊戲項目。
+2026-10-12 更新：Windows MSVC 自動檢查已在 `4272d3a` 通過，163 passed、0 failed、3 ignored；晚到動作／舊欄位相容／熱鍵佔用回歸通過。詳見 [本次測試報告](../test-results/windows-20261012/README.md)。下文為初次交付紀錄；後續原生驗收與使用者取消長測的最新狀態以 [驗收清單](../acceptance-m6.md) 為準，該自動輪沒有重跑互動或遊戲項目。
 
 M6 的桌面介面、檔案流程、校準覆蓋層、錄點／熱鍵擷取與背景紀錄已實作。可攜式測試和 Windows GNU 交叉檢查通過；目前執行環境是 macOS，Windows 原生功能、真實 DPI、遊戲與長時間測試尚未驗收。不能把本回報解讀成遊戲內成功率或延遲保證。
 
@@ -70,3 +70,7 @@ Windows 上執行 `pwsh -File tests/windows/M6.ps1`；加 `-Interactive` 跑需�
 ## 提交
 
 `4e2b039`：純狀態／擷取測試契約；`dc88c21`：GUI、覆蓋層、擷取及恢復管理；`c2fee65`：停止／檔案／全域熱鍵／長測紀錄的實質修正；`bfead8a`：截圖模式隔離歷史視窗尺寸；`4e3fe50`：選取功能說明與時間用途，見[總表](status.md)。交付文件與實際截圖另外保留一筆提交，不 squash。
+
+## 同日互動驗收補充（2026-10-12）
+
+`tests/windows/M6.ps1 -Interactive` 在隔離替代全域熱鍵下全部通過，含 all-features Clippy、release build、IPC 與完整接收器功能／牌鍵／擷取。正式範本慢卡幀收到兩組完整 Esc，四組接收器零遺失；正式版首頁實際顯示 Ctrl+F9／Ctrl+F10 佔用警告並停用啟用，結束已重建正式版。預設熱鍵輪在等待 Armed 逾時，保留失敗 log；遊戲、DPI及校準拖拉／儲存仍未補。詳見 [互動報告與原始證據](../test-results/windows-20261012/interactive/README.md)。

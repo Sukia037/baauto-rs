@@ -15,7 +15,7 @@ M6 另保留 `bfead8a` 修正截圖模式繼承歷史視窗尺寸、`4e3fe50` �
 
 ## 本機驗證
 
-最新補測（2026-10-12）：Windows MSVC、Rust / Cargo 1.99.0，在 `4272d3a` 執行 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test` 均通過；163 passed、0 failed、3 ignored。含晚到動作、舊欄位相容與停止熱鍵佔用的自動回歸；未重跑互動送鍵、故障注入、GUI／DPI或遊戲驗收。詳細略過原因與指令見 [本次測試報告](../test-results/windows-20261012/README.md)。以下 macOS 結果為初次交付紀錄。
+最新補測（2026-10-12）：Windows MSVC、Rust / Cargo 1.99.0，在 `4272d3a` 執行 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test` 均通過；163 passed、0 failed、3 ignored。含晚到動作、舊欄位相容與停止熱鍵佔用的自動回歸；該自動輪未重跑互動送鍵、故障注入、GUI／DPI或遊戲驗收。詳細略過原因與指令見 [本次測試報告](../test-results/windows-20261012/README.md)。以下 macOS 結果為初次交付紀錄。
 
 環境：macOS、Rust stable 1.99.0、edition 2024。workspace 154 個測試全部通過，fmt、Clippy `-D warnings` 通過；Windows GNU 一般版與 all-features／all-targets Clippy 交叉檢查通過，含 test-hooks 與實驗功能的 Windows 分支。Linux 與 Windows CI 已設置；此表只報告實際本機結果，不宣稱遠端 CI 或 Windows 執行結果。
 
@@ -34,3 +34,7 @@ M6 四分頁 × 淺深色 × 三種應用程式 zoom 的 24 張原生 macOS GUI 
 目前正式預設維持 Hook TIME_CRITICAL、Engine NORMAL、spin=0。設定範本的時間是未驗證值；原生校準與性能結果沒有完成前，不能聲稱達到遊戲內成功率、延遲分位數或零卡鍵。
 
 待決定事項集中在 [decisions.md](../decisions.md)，包括全域停止／錄點的鍵盤限制、GUI 操作逾時、擷取／取消關閉後保持停止，以及先前里程碑的相容性語意。
+
+## 同日互動驗收補充（2026-10-12）
+
+`tests/windows/M6.ps1 -Interactive` 在隔離替代全域熱鍵下全部通過，含 all-features Clippy、release build、IPC 與完整接收器功能／牌鍵／擷取。正式範本慢卡幀收到兩組完整 Esc，四組接收器零遺失；正式版首頁實際顯示 Ctrl+F9／Ctrl+F10 佔用警告並停用啟用，結束已重建正式版。預設熱鍵輪在等待 Armed 逾時，保留失敗 log；遊戲、DPI及校準拖拉／儲存仍未補。詳見 [互動報告與原始證據](../test-results/windows-20261012/interactive/README.md)。

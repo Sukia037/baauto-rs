@@ -89,7 +89,7 @@
 - **相容**：舊的預設按鍵 JSON 帶 `allowed_lateness_ms` 仍可讀入，內容忽略，下次存檔時移除；其他未知欄位仍然報錯。IPC `PROTOCOL_VERSION` 由 3 升為 4（`TickTiming` 版面改變），app 與 engine 必須一起更新。
 - **一併移除**：`Report::LateCancelled`、GUI「晚到上限（進階）」群組、Windows 原生測試的 `BAAUTO_TEST_DOUBLE_ESC_LATENESS_MS`，以及 bench 校準為了避開第二個 Esc 期限而拉長 `gap_max` 的特例。
 - **待決定**：bench 的 `escape_gap` 校準結果目前仍寫成 `[selected, selected + margin]`（沿用區間語意）。改成固定等待後，應決定校準要分別量快／慢卡幀，還是只寫入其中一個。
-- **待驗收**：需要在 Windows 重跑 `tests/windows/M6.ps1 -Interactive`，確認慢卡幀用正式範本就會送出兩組 Esc。
+- **接收器已驗收（2026-10-12）**：`tests/windows/M6.ps1 -Interactive` 在隔離替代全域熱鍵下通過，正式範本慢卡幀 50ms 等待實際收到兩組完整 Esc。預設熱鍵輪等待 Armed 逾時，首頁確認顯示佔用警告並停用啟用；遊戲仍未驗收。原始 CSV、profile 與兩輪 log 見 [互動報告](test-results/windows-20261012/interactive/README.md)。
 
 ## 使用者體驗相關決定（2026-10-12，使用者決定）
 

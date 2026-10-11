@@ -1,0 +1,62 @@
+{
+  "card_ui_side": "left",
+  "slot_order": "left_to_right",
+  "slot_keys": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5"
+  ],
+  "card_auto_repeat": "ignore",
+  "rects": {
+    "six": {
+      "right": {
+        "x": [
+          0.664,
+          0.91
+        ],
+        "y": [
+          0.781,
+          0.924
+        ],
+        "calibrated": false
+      },
+      "left": {
+        "x": [
+          0.08999999999999997,
+          0.33599999999999997
+        ],
+        "y": [
+          0.781,
+          0.924
+        ],
+        "calibrated": false
+      }
+    },
+    "ten": {
+      "right": {
+        "x": [
+          0.5,
+          0.91
+        ],
+        "y": [
+          0.781,
+          0.924
+        ],
+        "calibrated": false
+      },
+      "left": {
+        "x": [
+          0.08999999999999997,
+          0.5
+        ],
+        "y": [
+          0.781,
+          0.924
+        ],
+        "calibrated": false
+      }
+    }
+  }
+}

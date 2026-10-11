@@ -1,0 +1,57 @@
+[
+  {
+    "name": "card_key_slot_0",
+    "begin": 14271520976004,
+    "end": 14271524982147,
+    "expected": [
+      [
+        256,
+        49
+      ],
+      [
+        257,
+        49
+      ]
+    ],
+    "repeating": false
+  },
+  {
+    "name": "card_key_slot_1",
+    "begin": 14271525989961,
+    "end": 14271529999426,
+    "expected": [
+      [
+        256,
+        50
+      ],
+      [
+        257,
+        50
+      ]
+    ],
+    "repeating": false
+  },
+  {
+    "name": "card_key_slot_2",
+    "begin": 14271531047808,
+    "end": 14271535057847,
+    "expected": [
+      [
+        256,
+        51
+      ],
+      [
+        257,
+        51
+      ]
+    ],
+    "repeating": false
+  },
+  {
+    "name": "card_key_outside",
+    "begin": 14271536063955,
+    "end": 14271540069750,
+    "expected": [],
+    "repeating": false
+  }
+]

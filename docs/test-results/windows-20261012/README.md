@@ -1,6 +1,6 @@
 # Windows 自動測試結果（2026-10-12）
 
-測試來源提交：`4272d3ad4a3212020fd3d6b6e846ffd4748189de`。環境為本機 Windows、`x86_64-pc-windows-msvc`、Rust / Cargo 1.99.0、edition 2024。本次只執行自動檢查，沒有啟動遊戲或互動接收器；以下結果依本次終端輸出整理，未另外保存原始 log。
+測試來源提交：`4272d3ad4a3212020fd3d6b6e846ffd4748189de`。環境為本機 Windows、`x86_64-pc-windows-msvc`、Rust / Cargo 1.99.0、edition 2024。第一輪只執行自動檢查，沒有啟動遊戲或互動接收器；以下結果依本次終端輸出整理，未另外保存原始 log。
 
 | 指令 | 結果 |
 |---|---|
@@ -18,6 +18,6 @@
 | `foreground_hook_focus_loss_and_paired_up` | 需要實體前景／焦點操作。`cargo test -p baauto-win-platform --test windows_interactive -- --ignored --nocapture --test-threads=1` |
 | `paths_unc_native` | 需要真實可寫 UNC 共用資料夾，先設定 `BAAUTO_TEST_UNC_ROOT`，再執行 `cargo test -p baauto-win-platform --test windows_store paths_unc_native -- --ignored` |
 
-本次沒有啟用 `test-hooks`、`fault-injection` 或 `bench-experiments`；其限定測試未執行，不能算入上述 3 個 ignored。沒有執行 all-features 檢查、release build、GUI／DPI、校準拖拉／儲存、故障注入或遊戲功能驗收。正式範本慢卡幀的實際兩組 Esc 仍須以 `tests/windows/M6.ps1 -Interactive` 重跑；自動回歸通過不代表原生送鍵驗收完成。
+第一輪沒有啟用 `test-hooks`、`fault-injection` 或 `bench-experiments`；其限定測試未執行，不能算入上述 3 個 ignored。沒有執行 all-features 檢查、release build、GUI／DPI、校準拖拉／儲存、故障注入或遊戲功能驗收。後續同日已完成互動重跑，正式範本慢卡幀收到兩組完整 Esc；詳見 [互動報告與原始證據](interactive/README.md)。前述未執行範圍只描述第一輪自動檢查。
 
 本次無程式／規格差異、未新增依賴或待決定事項。超過 20 分鐘的測試依既有使用者決定不做；其他原生項目的狀態見 [M6 驗收清單](../../acceptance-m6.md)，先前原生結果見 [2026-10-11 報告](../windows-20261011/README.md)。
