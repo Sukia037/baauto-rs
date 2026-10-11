@@ -196,6 +196,9 @@ pub fn fingerprint(path: &Path) -> Result<Fingerprint, ConfigError> {
     })
 }
 pub trait FsBackend {
+    fn write_temp(&self, file: &mut fs::File, bytes: &[u8]) -> io::Result<()> {
+        file.write_all(bytes)
+    }
     fn identity(&self, path: &Path) -> io::Result<PathBuf>;
     fn replace(&self, temp: &Path, destination: &Path, backup: &Path) -> io::Result<()>;
 }
@@ -279,7 +282,8 @@ fn atomic_text<F: FsBackend>(
             .open(&temp)
             .map_err(|e| file_error(path, e))?;
         created = true;
-        file.write_all(text.as_bytes())
+        backend
+            .write_temp(&mut file, text.as_bytes())
             .map_err(|e| file_error(path, e))?;
         file.flush().map_err(|e| file_error(path, e))?;
         let reread = decode_json(&fs::read(&temp).map_err(|e| file_error(path, e))?)?;
@@ -439,6 +443,7 @@ impl<F: FsBackend> FileStore<F> {
             .backend
             .identity(path)
             .map_err(|e| file_error(path, e))?;
+        let old_settings = self.settings.clone();
         let doc = read_document(&real)?;
         let kind = doc.kind();
         let duplicate = self
@@ -451,10 +456,11 @@ impl<F: FsBackend> FileStore<F> {
             self.paths_mut(kind).push(real.clone());
         }
         self.set_current(kind, real);
-        self.persist_settings()?;
+        self.persist_or_restore(old_settings)?;
         Ok(doc)
     }
     pub fn close(&mut self, path: PathBuf) -> Result<(), ConfigError> {
+        let old_settings = self.settings.clone();
         for kind in [FileKind::Points, FileKind::Keys] {
             if let Some(i) = self.paths(kind).iter().position(|p| *p == path) {
                 if self.paths(kind).len() == 1 {
@@ -469,7 +475,7 @@ impl<F: FsBackend> FileStore<F> {
                     let next = self.paths(kind)[0].clone();
                     self.set_current(kind, next);
                 }
-                return self.persist_settings();
+                return self.persist_or_restore(old_settings);
             }
         }
         Err(file_error(&path, "tab not found"))
@@ -506,6 +512,12 @@ impl<F: FsBackend> FileStore<F> {
         Ok(p)
     }
     pub fn rename(&mut self, path: &Path, name: &str) -> Result<PathBuf, ConfigError> {
+        let real = self
+            .backend
+            .identity(path)
+            .map_err(|e| file_error(path, e))?;
+        let path = real.as_path();
+        let old_settings = self.settings.clone();
         valid_filename(name)?;
         let new = ensure_json_extension(&path.with_file_name(name));
         if new.exists() {
@@ -525,10 +537,19 @@ impl<F: FsBackend> FileStore<F> {
         if self.settings.current_keys == path {
             self.settings.current_keys = new.clone();
         }
-        self.persist_settings()?;
+        if let Err(error) = self.persist_or_restore(old_settings) {
+            fs::rename(&new, path)
+                .map_err(|e| file_error(path, format!("{error}; rename rollback failed: {e}")))?;
+            return Err(error);
+        }
         Ok(new)
     }
     pub fn trash(&mut self, path: &Path) -> Result<PathBuf, ConfigError> {
+        let real = self
+            .backend
+            .identity(path)
+            .map_err(|e| file_error(path, e))?;
+        let path = real.as_path();
         let doc = read_document(path)?;
         if self.paths(doc.kind()).len() == 1 && self.paths(doc.kind()).iter().any(|p| p == path) {
             return Err(file_error(path, "at least one tab must remain"));
@@ -543,10 +564,21 @@ impl<F: FsBackend> FileStore<F> {
             "deleted",
         );
         fs::rename(path, &destination).map_err(|e| file_error(path, e))?;
-        if self.paths(doc.kind()).iter().any(|p| p == path) {
-            self.close(path.into())?;
+        if self.paths(doc.kind()).iter().any(|p| p == path)
+            && let Err(error) = self.close(path.into())
+        {
+            fs::rename(&destination, path)
+                .map_err(|e| file_error(path, format!("{error}; trash rollback failed: {e}")))?;
+            return Err(error);
         }
         Ok(destination)
+    }
+    fn persist_or_restore(&mut self, old: Settings) -> Result<(), ConfigError> {
+        let result = self.persist_settings();
+        if result.is_err() {
+            self.settings = old;
+        }
+        result
     }
     pub fn persist_settings(&self) -> Result<(), ConfigError> {
         self.settings.validate()?;
@@ -580,5 +612,25 @@ impl<F: FsBackend> FileStore<F> {
         stem.push("（新版）.json");
         let converted = self.save_as(&path.with_file_name(stem), &doc)?;
         Ok((converted, imported.report))
+    }
+}
+
+/// Accept M1's standalone hand-only fixture as a CLI compatibility input.
+/// Normal application persistence always uses the complete settings schema.
+pub fn read_machine(path: &Path) -> Result<(HandSettings, EngineParams), ConfigError> {
+    let text = decode_json(&fs::read(path).map_err(|e| file_error(path, e))?)?;
+    let value: serde_json::Value = from_json(&text)?;
+    if value.get("schema").is_some() {
+        let settings: Settings = from_json(&text)?;
+        settings.validate()?;
+        Ok((settings.hand, settings.engine))
+    } else {
+        let hand: HandSettings = from_json(&text)?;
+        let settings = Settings {
+            hand: hand.clone(),
+            ..Settings::default_at(Path::new("/"))
+        };
+        settings.validate()?;
+        Ok((hand, EngineParams::default()))
     }
 }

@@ -1,0 +1,22 @@
+{
+  "points.json.json": {
+    "alternating_to_card": 2,
+    "boolean_number": 2,
+    "dangling_point": 1,
+    "duplicate_id": 1,
+    "orphan_point": 1,
+    "side_modifier_normalized": 1,
+    "unsupported_hotkey": 1
+  },
+  "functions.json": {
+    "timing_unverified": 1,
+    "unsupported_hotkey": 1
+  },
+  "keys-absolute.json": {
+    "boolean_number": 2
+  },
+  "keys-no-resolution.json": {
+    "needs_resolution": 1
+  },
+  "mumu.json": {}
+}

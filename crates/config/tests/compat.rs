@@ -214,3 +214,104 @@ fn real_legacy_files_never_panic() {
         }
     }
 }
+
+#[test]
+fn every_synthetic_import_matches_golden_document_and_report() {
+    let root =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/synthetic");
+    let expected: serde_json::Value = load(include_str!(
+        "../../../tests/fixtures/synthetic/report-codes.expected.json"
+    ));
+    for (name, counts) in expected.as_object().unwrap() {
+        let v = load(&std::fs::read_to_string(root.join(name)).unwrap());
+        let imported = import(
+            &v,
+            if name.starts_with("keys-") {
+                "keys"
+            } else {
+                "legacy"
+            },
+            Mode::Ten,
+            None,
+        )
+        .unwrap();
+        let mut actual = std::collections::BTreeMap::<String, u32>::new();
+        for issue in &imported.report.issues {
+            *actual.entry(issue.code.clone()).or_default() += 1;
+            assert!(issue.path.starts_with('$'));
+            assert!(!issue.reason.is_empty());
+        }
+        assert_eq!(
+            serde_json::to_value(actual).unwrap(),
+            *counts,
+            "{name} report"
+        );
+        match name.as_str() {
+            "functions.json" => assert_eq!(
+                imported.keys.unwrap(),
+                from_json::<KeysProfile>(include_str!(
+                    "../../../tests/fixtures/synthetic/functions.expected.json"
+                ))
+                .unwrap()
+            ),
+            "keys-absolute.json" => assert_eq!(
+                imported.points.unwrap(),
+                from_json::<PointSet>(include_str!(
+                    "../../../tests/fixtures/synthetic/keys-absolute.expected.json"
+                ))
+                .unwrap()
+            ),
+            "mumu.json" => assert_eq!(
+                serde_json::to_value(imported.candidates).unwrap(),
+                load(include_str!(
+                    "../../../tests/fixtures/synthetic/mumu.expected.json"
+                ))
+            ),
+            "keys-no-resolution.json" => assert_eq!(
+                serde_json::json!({"pending_resolution":imported.report.pending_resolution,"items":imported.points.unwrap().items}),
+                load(include_str!(
+                    "../../../tests/fixtures/synthetic/keys-no-resolution.expected.json"
+                ))
+            ),
+            _ => assert_eq!(
+                imported.points.unwrap(),
+                from_json::<PointSet>(include_str!(
+                    "../../../tests/fixtures/synthetic/points.expected.json"
+                ))
+                .unwrap()
+            ),
+        }
+    }
+}
+
+#[test]
+fn deleted_ids_not_reused_and_invalid_edit_keeps_document() {
+    let mut e = PointSetEditor::new(template_points());
+    let id = e.add_card_item("temporary".into()).unwrap();
+    e.delete_item(id).unwrap();
+    assert!(e.add_card_item("next".into()).unwrap() > id);
+    let old = e.document.clone();
+    assert!(
+        e.update_item(
+            1,
+            ItemPatch {
+                position: Some(NormPoint {
+                    x: f64::NAN,
+                    y: 0.5
+                }),
+                ..Default::default()
+            }
+        )
+        .is_err()
+    );
+    assert_eq!(e.document, old);
+    assert!(
+        import(
+            &json!({"schema":"baauto-functions-v99"}),
+            "unknown",
+            Mode::Six,
+            None
+        )
+        .is_err()
+    );
+}

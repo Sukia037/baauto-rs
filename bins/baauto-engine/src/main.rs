@@ -95,7 +95,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
             Some("--help") => {
                 println!(
-                    "baauto-engine --standalone --points <JSON> --keys <JSON> [--settings <HandSettings JSON>] [--target-exe <exe>] [--max-run-secs N] [--dump-ring <CSV>]"
+                    "baauto-engine --standalone --points <JSON> --keys <JSON> [--settings <settings JSON>] [--target-exe <exe>] [--max-run-secs N] [--dump-ring <CSV>]"
                 );
                 return Ok(());
             }
@@ -111,21 +111,23 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         )
         .map_err(Into::into);
     }
-    let p: PointSet = from_json(&std::fs::read_to_string(points)?)?;
-    let k: KeysProfile = from_json(&std::fs::read_to_string(keys)?)?;
-    let h = if let Some(path) = hand {
-        from_json::<HandSettings>(&std::fs::read_to_string(path)?)?
+    let p: PointSet = from_json(&baauto_config::store::decode_json(&std::fs::read(points)?)?)?;
+    let k: KeysProfile = from_json(&baauto_config::store::decode_json(&std::fs::read(keys)?)?)?;
+    let (h, params) = if let Some(path) = hand {
+        baauto_config::store::read_machine(&path)?
     } else {
-        HandSettings::default()
+        (HandSettings::default(), EngineParams::default())
     };
     let clock = baauto_win_platform::Clock::new()?;
-    let cfg = compile(&p, &k, &h, clock.rate).map_err(|errors| {
-        errors
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n")
-    })?;
+    let cfg = compile_with_params(&p, &k, &h, clock.rate, params, ConfigVersion(1)).map_err(
+        |errors| {
+            errors
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("\n")
+        },
+    )?;
     baauto_win_platform::run_standalone(Arc::new(cfg), &target, max, dump.as_deref())?;
     Ok(())
 }

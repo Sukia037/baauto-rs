@@ -11,12 +11,21 @@ pub struct ItemPatch {
 pub struct PointSetEditor {
     pub document: PointSet,
     next_candidate: u32,
+    next_item: Option<u32>,
 }
 impl PointSetEditor {
     pub fn new(document: PointSet) -> Self {
+        let next_item = document
+            .items
+            .iter()
+            .map(|p| p.id)
+            .max()
+            .unwrap_or(0)
+            .checked_add(1);
         Self {
             document,
             next_candidate: 1,
+            next_item,
         }
     }
     pub fn set_mode(&mut self, mode: Mode) -> bool {
@@ -24,15 +33,12 @@ impl PointSetEditor {
         self.document.mode = mode;
         changed
     }
-    fn next_id(&self) -> Result<u32, EditError> {
-        self.document
-            .items
-            .iter()
-            .map(|p| p.id)
-            .max()
-            .unwrap_or(0)
-            .checked_add(1)
-            .ok_or_else(|| ConfigError::new("$.items.id", "ID space exhausted"))
+    fn next_id(&mut self) -> Result<u32, EditError> {
+        let id = self
+            .next_item
+            .ok_or_else(|| ConfigError::new("$.items.id", "ID space exhausted"))?;
+        self.next_item = id.checked_add(1);
+        Ok(id)
     }
     pub fn add_candidate(&mut self, c: Candidate) -> Result<u32, EditError> {
         if !c.position.valid() {

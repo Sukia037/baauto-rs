@@ -206,3 +206,73 @@ fn paths_unicode_spaces_unc_long() {
     assert!(valid_filename("a:b").is_err());
     assert!(valid_filename("foo.").is_err());
 }
+
+struct FailHalfWrite;
+impl FsBackend for FailHalfWrite {
+    fn identity(&self, p: &Path) -> std::io::Result<PathBuf> {
+        PortableFs.identity(p)
+    }
+    fn replace(&self, t: &Path, d: &Path, b: &Path) -> std::io::Result<()> {
+        PortableFs.replace(t, d, b)
+    }
+    fn write_temp(&self, file: &mut std::fs::File, bytes: &[u8]) -> std::io::Result<()> {
+        use std::io::Write;
+        file.write_all(&bytes[..bytes.len() / 2])?;
+        Err(std::io::Error::other("half-written temporary"))
+    }
+}
+#[test]
+fn half_write_leaves_old_file_and_removes_only_owned_temporary() {
+    let t = Temp::new();
+    let p = t.0.join("original.json");
+    std::fs::write(&p, b"old").unwrap();
+    assert!(atomic_save(&FailHalfWrite, &p, &Document::Points(template_points())).is_err());
+    assert_eq!(std::fs::read(p).unwrap(), b"old");
+    assert_eq!(std::fs::read_dir(&t.0).unwrap().count(), 1);
+}
+
+struct FailSettings(std::sync::Arc<std::sync::atomic::AtomicBool>);
+impl FsBackend for FailSettings {
+    fn identity(&self, p: &Path) -> std::io::Result<PathBuf> {
+        PortableFs.identity(p)
+    }
+    fn replace(&self, t: &Path, d: &Path, b: &Path) -> std::io::Result<()> {
+        if d.file_name() == Some(std::ffi::OsStr::new("settings.json"))
+            && self.0.load(Ordering::SeqCst)
+        {
+            return Err(std::io::Error::other("settings write failure"));
+        }
+        PortableFs.replace(t, d, b)
+    }
+}
+#[test]
+fn failed_settings_update_rolls_back_tab_and_file_operations() {
+    let t = Temp::new();
+    let fail = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (mut s, _) = FileStore::initialize(&t.0, FailSettings(fail.clone())).unwrap();
+    let p = s
+        .save_as(
+            &t.0.join("other.json"),
+            &Document::Points(template_points()),
+        )
+        .unwrap();
+    s.open(&p).unwrap();
+    let before = s.settings.clone();
+    fail.store(true, Ordering::SeqCst);
+    assert!(s.rename(&p, "changed").is_err());
+    assert!(p.exists());
+    assert_eq!(s.settings, before);
+    assert!(s.trash(&p).is_err());
+    assert!(p.exists());
+    assert_eq!(s.settings, before);
+    assert!(s.close(p.clone()).is_err());
+    assert_eq!(s.settings, before);
+    let fresh = s
+        .save_as(
+            &t.0.join("fresh.json"),
+            &Document::Points(template_points()),
+        )
+        .unwrap();
+    assert!(s.open(&fresh).is_err());
+    assert_eq!(s.settings, before);
+}

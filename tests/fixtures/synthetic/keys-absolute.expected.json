@@ -1,0 +1,23 @@
+{
+  "schema": "baauto-rs-points-v1",
+  "name": "keys",
+  "mode": "ten",
+  "items": [
+    {
+      "id": 1,
+      "name": "舊版點位 1",
+      "hotkey": "z",
+      "function": "point",
+      "x": 0.25,
+      "y": 0.2
+    },
+    {
+      "id": 2,
+      "name": "舊版點位 2",
+      "hotkey": "x",
+      "function": "point",
+      "x": 1.0,
+      "y": 0.0
+    }
+  ]
+}

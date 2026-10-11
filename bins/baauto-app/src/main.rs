@@ -21,8 +21,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         sync::{Arc, mpsc},
         thread,
     };
-    let mut points = PathBuf::from("points/範例.json");
-    let mut keys = PathBuf::from("keys/預設按鍵.json");
+    let data_root = std::env::current_exe()?
+        .parent()
+        .ok_or("app directory missing")?
+        .to_path_buf();
+    let (store, warnings) = baauto_config::store::FileStore::initialize(&data_root, WindowsFs)?;
+    for warning in warnings {
+        eprintln!("{warning}");
+    }
+    let mut points = store.settings.current_points.clone();
+    let mut keys = store.settings.current_keys.clone();
     let mut hand_path = None;
     let mut target = OsString::from("BlueArchive.exe");
     let mut engine = std::env::current_exe()?.with_file_name("baauto-engine.exe");
@@ -70,27 +78,31 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             Some("--disarmed") => enable = false,
             Some("--help") => {
                 println!(
-                    "baauto-app --headless --profile <points JSON> --keys <keys JSON> [--settings <HandSettings JSON>] [--target-exe <exe>] [--engine <path>] [--disarmed] [--health-timeout-ms N] [--recovery-timeout-ms N]\nCommands: enable, stop, profile <path>, keys <path>, settings <path>, rehook, quit"
+                    "baauto-app --headless --profile <points JSON> --keys <keys JSON> [--settings <settings JSON>] [--target-exe <exe>] [--engine <path>] [--disarmed] [--health-timeout-ms N] [--recovery-timeout-ms N]\nCommands: enable, stop, profile <path>, keys <path>, settings <path>, rehook, quit"
                 );
                 return Ok(());
             }
             _ => return Err("unknown app argument".into()),
         }
     }
-    let mut p: PointSet = from_json(&std::fs::read_to_string(&points)?)?;
-    let mut k: KeysProfile = from_json(&std::fs::read_to_string(&keys)?)?;
-    let mut h = if let Some(path) = hand_path {
-        from_json::<HandSettings>(&std::fs::read_to_string(path)?)?
+    let mut p: PointSet = from_json(&baauto_config::store::decode_json(&std::fs::read(
+        &points,
+    )?)?)?;
+    let mut k: KeysProfile =
+        from_json(&baauto_config::store::decode_json(&std::fs::read(&keys)?)?)?;
+    let (mut h, mut params) = if let Some(path) = hand_path {
+        baauto_config::store::read_machine(&path)?
     } else {
-        HandSettings::default()
+        (store.settings.hand, store.settings.engine)
     };
     let clock = Clock::new()?;
-    let cfg = compile(&p, &k, &h, clock.rate).map_err(|e| {
-        e.iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n")
-    })?;
+    let cfg =
+        compile_with_params(&p, &k, &h, clock.rate, params, ConfigVersion(1)).map_err(|e| {
+            e.iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("\n")
+        })?;
     let options = SupervisorOptions {
         cfg: Arc::new(cfg),
         engine,
@@ -137,19 +149,46 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                             .split_once(' ')
                             .ok_or("expected command and file path")?;
                         let path = PathBuf::from(path.trim().trim_matches('"'));
+                        let (mut next_p, mut next_k, mut next_h, mut next_params) =
+                            (p.clone(), k.clone(), h.clone(), params);
                         match kind {
-                            "profile" => p = from_json(&std::fs::read_to_string(path)?)?,
-                            "keys" => k = from_json(&std::fs::read_to_string(path)?)?,
-                            "settings" => h = from_json(&std::fs::read_to_string(path)?)?,
+                            "profile" => {
+                                next_p = from_json(&baauto_config::store::decode_json(
+                                    &std::fs::read(path)?,
+                                )?)?
+                            }
+                            "keys" => {
+                                next_k = from_json(&baauto_config::store::decode_json(
+                                    &std::fs::read(path)?,
+                                )?)?
+                            }
+                            "settings" => {
+                                (next_h, next_params) = baauto_config::store::read_machine(&path)?
+                            }
                             _ => return Err("unknown command".into()),
                         }
-                        version = version.checked_add(1).ok_or("version exhausted")?;
-                        let mut c = compile(&p, &k, &h, clock.rate).map_err(|e| {
+                        let next_version = version.checked_add(1).ok_or("version exhausted")?;
+                        let mut c = compile_with_params(
+                            &next_p,
+                            &next_k,
+                            &next_h,
+                            clock.rate,
+                            next_params,
+                            ConfigVersion(next_version),
+                        )
+                        .map_err(|e| {
                             e.iter()
                                 .map(ToString::to_string)
                                 .collect::<Vec<_>>()
                                 .join("\n")
                         })?;
+                        if next_k.presets["global_stop"].hotkey.is_none()
+                            || next_k.presets["record"].hotkey.is_none()
+                        {
+                            return Err("emergency and record hotkeys must be assigned".into());
+                        }
+                        (p, k, h, params) = (next_p, next_k, next_h, next_params);
+                        version = next_version;
                         c.version = ConfigVersion(version);
                         Ok(Arc::new(c))
                     })();
