@@ -1,6 +1,16 @@
 # BAauto-rs
 
-Blue Archive PC 版輸入輔助工具的 Rust 重寫版，取代原本的 AutoHotkey 腳本 `BAauto.ahk`。M1–M6 的實作、可攜式測試與 Windows 交叉編譯已完成；原生 Windows／遊戲與長時間驗收仍待執行。
+Blue Archive PC 版輸入輔助工具的 Rust 重寫版，取代原本的 AutoHotkey 腳本 `BAauto.ahk`。M1–M6 的實作、可攜式測試與 Windows 原生短程補測已完成；目前仍有失敗項目，尚未通過完整驗收。
+
+## 目前驗證狀態（2026-10-11）
+
+- Windows `fmt`、`clippy`、160項自動測試與正式release建置通過，3項測試略過。
+- 接收器逐項對照23項預設功能：使用替代全域熱鍵時22項通過，**原始時序的慢卡幀失敗，只送第一組Esc**。獨立5ms晚到容許值控制組可完成23項，但尚非遊戲校準，正式範本未改。
+- 六人／十人各格牌鍵、左右與反向順序、框外不送鍵、錄點、右鍵／側鍵／Space／Tab擷取通過。這些是測試版本的Windows輸入注入，尚未驗收實體硬體與真實遊戲。
+- 本機原本Ctrl+F9註冊衝突仍未解決；故障注入5項通過、掛起案例1項仍失敗。
+- 校準覆蓋層顯示、前景切換與逾時已測；拖拉／確認儲存、完整GUI切檔／匯入、Windows DPI、8小時接收器及六人／十人遊戲各1小時仍待驗收。
+
+完整CSV、測試profile、修正、重跑指令與未測項目見[Windows補測報告](docs/test-results/windows-20261011/expanded/README.md)。正式release已重新建置，不含`test-hooks`／`fault-injection`。
 
 ## 從哪裡開始看
 
@@ -9,6 +19,8 @@ Blue Archive PC 版輸入輔助工具的 Rust 重寫版，取代原本的 AutoHo
 | 整體設計 | `docs/spec/BAauto-rs-融合架構-v0.4.md` |
 | 要做哪些事、照什麼順序 | `docs/tasks/README.md` |
 | 給 Codex 的規則 | `AGENTS.md` |
+| Windows安裝與假遊戲試跑 | [Windows試跑清單](docs/windows-試跑.md) |
+| 最新實測與已知失敗 | [Windows補測報告](docs/test-results/windows-20261011/expanded/README.md) |
 | 延遲和時間點怎麼跑 | `docs/pages/BAauto-rs-延遲時序.html`（用瀏覽器開） |
 | 新介面長什麼樣 | `docs/pages/BAauto-新介面Demo.html`（三欄版，用瀏覽器開，可以點） |
 | 還沒決定的事 | `docs/decisions.md` |
@@ -33,6 +45,17 @@ cargo build --release --locked --workspace
 
 引擎 `baauto-engine.exe` 要和 app 放在同一資料夾。首次啟動會建立兩種範本 JSON 和 `settings.json`，資料預設存在執行檔旁；可用 `--data-dir <資料夾>` 指定其他位置。每個點位／預設按鍵 JSON 仍可單獨放在任何路徑，透過開啟對話框或拖入加入分頁。介面預設保持停止，按「啟用」才開始。
 
+不用遊戲也能試：在兩個PowerShell視窗依序啟動接收器與app，再切到接收器測試輸入。
+
+```powershell
+# 第一個視窗：假遊戲接收器，正常關閉後保留CSV與同名JSON。
+.\target\release\baauto-receiver.exe --hand six --side right --output receiver.csv
+# 第二個視窗：控制介面。
+.\target\release\baauto-app.exe --target-exe baauto-receiver.exe --data-dir C:\BAauto-test
+```
+
+若紀錄顯示全域熱鍵註冊失敗，引擎未就緒；處理方式及逐項操作見[Windows試跑清單](docs/windows-試跑.md)。
+
 macOS／Linux 可查看離線介面：
 
 ```sh
@@ -45,7 +68,9 @@ cargo build -p baauto-app
 ## 實作與驗收
 
 - [M1–M6 提交與驗證總表](docs/implementation/status.md)：每個里程碑至少三個實質提交。
-- [實際介面截圖](docs/screenshots/README.md)：四分頁、淺深色、三種應用程式縮放，共24張；來源是 macOS 離線預覽，不能代替 Windows DPI／遊戲驗收。
+- [實際介面截圖](docs/screenshots/README.md)：四分頁＋牌鍵詳細、淺深色、三種應用程式縮放，共30張；來源是Linux離線預覽，不能代替Windows DPI／遊戲驗收。
+- [Windows原生截圖](docs/screenshots/windows-20261011-current-dpi/)：10張淺／深色介面，加上校準覆蓋層與錄點候選；目前縮放的截圖不代表100%／150%／200% OS DPI均通過。
+- [最新Windows實測](docs/test-results/windows-20261011/expanded/README.md)：23項接收器對照、各格牌鍵、錄點與擷取；列出失敗與未驗收項目。
 - [M6 Windows 驗收清單](docs/acceptance-m6.md)：錄點、側鍵、停止、8小時接收器與六人／十人各1小時遊戲測試。
 - [M6 實作回報](docs/implementation/M6-report.md)：介面、安全界線、依賴、待決定事項及複查位置。
 

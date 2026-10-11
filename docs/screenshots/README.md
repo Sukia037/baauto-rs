@@ -1,5 +1,7 @@
 # 實際 GUI 截圖
 
+2026-10-11另有[Windows原生截圖](windows-20261011-current-dpi/)：10張目前zoom=1的淺／深色介面、[校準覆蓋層](windows-20261011-current-dpi/native-calibration-overlay.png)及[錄點候選](windows-20261011-current-dpi/native-recorded-candidate.png)。實測結果與未驗收項目見[Windows補測報告](../test-results/windows-20261011/expanded/README.md)；這組也不能當成100%／150%／200% OS DPI全部通過。
+
 以下 30 張 PNG 是 app 本身畫出來的畫面（eframe 的 framebuffer 截圖），不是 HTML Demo。使用離線預覽與範本資料；版型照 [新介面 Demo](../pages/BAauto-新介面Demo.html) 的三欄版。五個畫面各有淺色／深色、100／150／200% **應用程式 zoom**。
 
 | 畫面 | 淺色 100% | 深色 100% | 淺色 150% | 深色 150% | 淺色 200% | 深色 200% |
