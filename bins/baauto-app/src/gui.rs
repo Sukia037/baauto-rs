@@ -1436,7 +1436,7 @@ impl App {
             Selection::Preset(role) => {
                 let p = self.keys.document.presets[&role].clone();
                 ui.label(role_name(&role));
-                ui.monospace(&role);
+                ui.label(role_description(&role));
                 self.keycap(ui, p.hotkey, CaptureTarget::Preset(role.clone()));
                 let mut enabled = p.enabled;
                 let mut exact = p
@@ -1471,6 +1471,7 @@ impl App {
                 let fields = timing_fields(&self.timing_draft);
                 if let Some((name, value)) = fields.get(index) {
                     ui.monospace(*name);
+                    ui.label(timing_purpose(index));
                     ui.label("單位：ms；修改後改為未驗證");
                     ui.label(match index {
                         0 => "零按住時間需已驗證；修改時間會清除驗證",
@@ -2208,6 +2209,41 @@ fn role_name(role: &str) -> String {
         "speed" => "戰鬥速度".into(),
         "click_spam" => "左鍵連點".into(),
         _ => role.into(),
+    }
+}
+fn role_description(role: &str) -> &'static str {
+    match role {
+        r if r.starts_with("skill_") => "送出對應技能鍵；按住時依鍵盤重複設定處理。",
+        r if r.starts_with("spam_") => "按住時反覆送出技能鍵並點擊游標位置。",
+        r if r.starts_with("card_") => "先送出 Esc，按住時反覆送出技能鍵與游標位置點擊。",
+        "global_stop" => "全域停止所有動作並釋放合成按鍵。",
+        "record" => "停止後擷取下一次遊戲畫面點擊，加入候選點位。",
+        "pause" => "送出一次 Esc。",
+        "frame_fast" | "frame_slow" => "依對應的間隔送出兩次 Esc。",
+        "auto" => "送出 A，切換遊戲的自動戰鬥。",
+        "speed" => "送出 S，切換遊戲的戰鬥速度。",
+        "click_spam" => "按住時反覆點擊目前游標位置。",
+        _ => "",
+    }
+}
+fn timing_purpose(index: usize) -> &'static str {
+    match index {
+        0 => "每次合成鍵盤按鍵的按住時間。",
+        1 => "每次合成滑鼠點擊的按住時間。",
+        2 => "技能鍵送出後，到滑鼠點擊的間隔。",
+        3 => "連點動作兩輪之間的週期。",
+        4 => "快速卡幀兩次 Esc 之間的間隔。",
+        5 => "慢速卡幀兩次 Esc 之間的間隔。",
+        6 => "卡幀開牌前後 Esc 與技能／點擊之間的間隔。",
+        7 => "普通點位持有期間重新固定游標的週期。",
+        8 => "一般按鍵動作開始時可接受的晚醒時間。",
+        9 => "連點點擊可接受的晚醒時間。",
+        10 => "卡幀開牌開始時可接受的晚醒時間。",
+        11 => "卡幀開牌點擊時可接受的晚醒時間。",
+        12 => "第二次 Esc 可接受的晚醒時間。",
+        13 => "普通點位開始持有時可接受的晚醒時間。",
+        14 => "牌鍵開始送出時可接受的晚醒時間。",
+        _ => "",
     }
 }
 fn timing_fields(t: &TimingProfile) -> Vec<(&'static str, Option<f64>)> {
