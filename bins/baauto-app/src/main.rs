@@ -298,6 +298,8 @@ fn run_gui() -> Result<(), Box<dyn std::error::Error>> {
     let qa = qa_dir.map(|p| (p, qa_dark, qa_scale, qa_tab));
     let backend = baauto_app::backend::Backend::start(root, preview, target);
     let options = eframe::NativeOptions {
+        // QA must start at the requested size rather than inherit another zoom's saved window.
+        persist_window: qa.is_none(),
         viewport: egui::ViewportBuilder::default()
             .with_title("BAauto")
             .with_inner_size([960. * qa_scale, 620. * qa_scale])

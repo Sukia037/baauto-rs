@@ -101,3 +101,45 @@ fn calibration_drag_mirror_and_center_pair_validate_boundaries() {
         .is_err()
     );
 }
+
+#[test]
+fn all_calibration_edges_and_corners_adjust_only_the_selected_boundaries() {
+    let r = HandRect {
+        x: [0.2, 0.8],
+        y: [0.3, 0.7],
+        calibrated: false,
+    };
+    for (corner, x, y) in [
+        (Corner::TopRight, [0.2, 0.6], [0.4, 0.7]),
+        (Corner::BottomLeft, [0.6, 0.8], [0.3, 0.4]),
+        (Corner::Left, [0.6, 0.8], [0.3, 0.7]),
+        (Corner::Right, [0.2, 0.6], [0.3, 0.7]),
+        (Corner::Top, [0.2, 0.8], [0.4, 0.7]),
+        (Corner::Bottom, [0.2, 0.8], [0.3, 0.4]),
+    ] {
+        let moved = drag_corner(r, corner, NormPoint { x: 0.6, y: 0.4 }).unwrap();
+        assert_eq!(moved.x, x);
+        assert_eq!(moved.y, y);
+    }
+}
+
+#[test]
+fn global_control_bindings_require_keyboard_but_actions_accept_side_buttons() {
+    use baauto_config::editor::KeysEditor;
+    let mut keys = KeysEditor::new(template_keys());
+    assert!(
+        keys.set_preset(
+            "global_stop",
+            Some("XButton1".parse().unwrap()),
+            true,
+            false
+        )
+        .is_err()
+    );
+    assert!(
+        keys.set_preset("record", Some("RButton".parse().unwrap()), true, false)
+            .is_err()
+    );
+    keys.set_preset("skill_1", Some("XButton1".parse().unwrap()), true, false)
+        .unwrap();
+}

@@ -60,8 +60,10 @@ pub struct App {
     missing: Vec<PathBuf>,
     busy: bool,
     wanted: bool,
+    resume_generation: u64,
     preview: bool,
     message: String,
+    notice: Option<UiDeadline>,
     observation: Observation,
     monitor: Option<[i32; 4]>,
     records: u64,
@@ -136,12 +138,14 @@ impl App {
             missing: Vec::new(),
             busy: false,
             wanted: false,
+            resume_generation: 0,
             preview,
             message: if preview {
                 "離線預覽：遊戲輸入僅支援 Windows".into()
             } else {
                 "啟動中".into()
             },
+            notice: None,
             observation: Observation {
                 state: "已停止".into(),
                 foreground: false,
@@ -198,15 +202,23 @@ impl App {
             text
         );
         self.message = text.clone();
+        self.notice = Some(UiDeadline::new(5));
         if self.logs.len() >= 1000 {
             self.logs.remove(0);
         }
         self.logs.push(text);
     }
+    fn log_error(&mut self, text: String) {
+        self.log(format!("問題：{text}"));
+    }
     fn job(&mut self, job: Job) {
         if self.busy {
             return;
         }
+        let job = match job {
+            Job::Guarded(..) => job,
+            _ => Job::Guarded(Box::new(job), self.resume_generation),
+        };
         self.busy = true;
         self.backend.controller.cancel_capture();
         self.capture = None;
@@ -216,6 +228,7 @@ impl App {
         if self.busy {
             return;
         }
+        let job = Job::Guarded(Box::new(job), self.resume_generation);
         if (kind == FileKind::Points && self.points_dirty())
             || (kind == FileKind::Keys && self.keys_dirty())
         {
@@ -282,7 +295,9 @@ impl App {
             target,
             ready: false,
         });
-        self.backend.controller.capture(kind, id);
+        self.backend
+            .controller
+            .capture(kind, id, self.resume_generation);
     }
     fn poll(&mut self, ctx: &egui::Context) {
         for _ in 0..128 {
@@ -321,12 +336,23 @@ impl App {
                         }
                     }
                     self.logs_dir = s.logs_dir;
-                    self.settings = Some(s.settings);
+                    let mut settings = s.settings;
+                    if !initial && let Some(previous) = &self.settings {
+                        settings.ui = previous.ui.clone();
+                    }
+                    self.settings = Some(settings);
                     if initial {
                         self.select_tab();
                     }
                     self.busy = false;
-                    self.log("已載入並送出套用；重新啟用會等待按鍵放開".into());
+                    self.log(
+                        if self.preview {
+                            "離線預覽已載入範本；遊戲輸入未啟用"
+                        } else {
+                            "已載入並送出套用；重新啟用會等待按鍵放開"
+                        }
+                        .into(),
+                    );
                 }
                 UiEvent::Message(m) => self.log(m),
                 UiEvent::Candidates(c, report) => {
@@ -340,9 +366,12 @@ impl App {
                         self.timing_error = None;
                         self.log("校準時間已載入，請儲存".into());
                     }
-                    Err(e) => self.log(e.to_string()),
+                    Err(e) => self.log_error(e.to_string()),
                 },
-                UiEvent::Wanted(wanted) => self.wanted = wanted,
+                UiEvent::Wanted(wanted, generation) => {
+                    self.wanted = wanted;
+                    self.resume_generation = generation;
+                }
                 UiEvent::Observe(o) => {
                     if o.monitor.is_some() {
                         self.monitor = o.monitor;
@@ -357,8 +386,20 @@ impl App {
                     if let Some(old) = self.reassign.take() {
                         self.begin(kind, Job::Reassign(old, path, self.wanted));
                     } else {
-                        self.begin(kind, Job::Open(path, self.wanted));
+                        self.begin(kind, Job::OpenAs(path, kind, self.wanted));
                     }
+                }
+                UiEvent::ImportReady(path, mode, resolution, kind) => {
+                    self.begin(
+                        kind,
+                        Job::Import {
+                            path,
+                            mode,
+                            resolution,
+                            expected_kind: kind,
+                            resume: self.wanted,
+                        },
+                    );
                 }
                 UiEvent::NeedImport(path, reason) => {
                     self.import = Some((path, reason));
@@ -422,7 +463,7 @@ impl App {
         let result = match result {
             Ok(r) => r,
             Err(e) => {
-                self.log(e);
+                self.log_error(e);
                 return;
             }
         };
@@ -541,7 +582,7 @@ impl App {
                 CaptureOutcome::TimedOut => "擷取逾時，請重新開始".into(),
                 _ => "擷取已取消".into(),
             }),
-            Err(e) => self.log(e.to_string()),
+            Err(e) => self.log_error(e.to_string()),
         }
     }
     fn header(&mut self, ui: &mut egui::Ui) {
@@ -568,7 +609,20 @@ impl App {
                         self.capture = None;
                     }
                 }
-                ui.label(&self.observation.state);
+                if ui.small_button("緊急停止").clicked() {
+                    self.wanted = false;
+                    self.overlay_resume = false;
+                    self.backend.controller.disable();
+                    self.backend.controller.cancel_capture();
+                    self.capture = None;
+                    if self.overlay.is_some() {
+                        self.finish_overlay(false);
+                    }
+                }
+                ui.colored_label(
+                    state_color(&self.observation.state),
+                    format!("● {}", self.observation.state),
+                );
                 if ui.small_button("淺／深").clicked() {
                     let dark = !ui.visuals().dark_mode;
                     ui.ctx().set_theme(if dark {
@@ -692,7 +746,7 @@ impl App {
                                 self.job(Job::DialogOpen);
                             }
                             if response.clicked() && *path != current {
-                                self.begin(kind, Job::Open(path.clone(), self.wanted));
+                                self.begin(kind, Job::OpenAs(path.clone(), kind, self.wanted));
                             }
                             if *path == current {
                                 response.scroll_to_me(Some(egui::Align::Center));
@@ -791,7 +845,10 @@ impl App {
                     {
                         self.save(None);
                     }
-                    if ui.button("還原").clicked() {
+                    if ui
+                        .add_enabled(!self.busy, egui::Button::new("還原"))
+                        .clicked()
+                    {
                         self.points = PointSetEditor::new(self.saved_points.clone());
                         self.keys = KeysEditor::new(self.saved_keys.clone());
                         self.timing_draft = self.saved_keys.timing.clone();
@@ -810,10 +867,30 @@ impl App {
                     Color32::from_rgb(180, 110, 35),
                     "遊戲不是全螢幕 16:9，點位和牌鍵會不準",
                 );
-            } else if self.capture.is_some() || self.overlay.is_some() {
-                ui.label(&self.message);
+            } else if self.capture.is_some()
+                || self.overlay.is_some()
+                || self.notice.as_ref().is_some_and(|n| !n.expired())
+            {
+                if self.message.contains("問題：") {
+                    ui.colored_label(Color32::from_rgb(200, 65, 65), &self.message);
+                } else {
+                    ui.label(&self.message);
+                }
             } else {
-                ui.label(&self.observation.state);
+                if ui.small_button("緊急停止").clicked() {
+                    self.wanted = false;
+                    self.overlay_resume = false;
+                    self.backend.controller.disable();
+                    self.backend.controller.cancel_capture();
+                    self.capture = None;
+                    if self.overlay.is_some() {
+                        self.finish_overlay(false);
+                    }
+                }
+                ui.colored_label(
+                    state_color(&self.observation.state),
+                    format!("● {}", self.observation.state),
+                );
                 ui.label(if self.observation.foreground {
                     "遊戲在前景"
                 } else {
@@ -822,14 +899,16 @@ impl App {
                 if let Some(m) = self.monitor {
                     ui.label(format!("{}×{}", m[2], m[3]));
                 }
-                let slot = self.observation.cursor.and_then(|p| {
-                    slot_at(
-                        &self.hand.document.layout(self.points.document.mode),
-                        self.points.document.mode.slots(),
-                        self.hand.document.slot_order,
-                        p,
-                    )
-                });
+                let hand = self
+                    .settings
+                    .as_ref()
+                    .map_or(&self.hand.document, |s| &s.hand);
+                let mode = self.saved_points.mode;
+                let slot = self
+                    .observation
+                    .cursor
+                    .filter(|_| self.observation.foreground)
+                    .and_then(|p| slot_at(&hand.layout(mode), mode.slots(), hand.slot_order, p));
                 ui.label(format!(
                     "游標：{}",
                     slot.map_or("不在手牌".into(), |n| format!("第 {} 格", n + 1))
@@ -904,7 +983,35 @@ impl App {
                 } else {
                     "未驗證"
                 });
-                ui.label(format!("{:?}", self.keys.document.timing.source));
+                ui.label(match self.keys.document.timing.source {
+                    ProfileSource::ImportedLegacy => "來源：範本／舊版匯入",
+                    ProfileSource::Calibrated => "來源：校準",
+                    ProfileSource::Manual => "來源：手動",
+                });
+                let mut repeat = self.timing_draft.auto_repeat == AutoRepeatPolicy::FollowTypematic;
+                let mut trailing =
+                    self.timing_draft.card_trailing_esc == TrailingEscPolicy::IfStarted;
+                let changed = ui.checkbox(&mut repeat, "按住技能鍵跟隨鍵盤重複").changed()
+                    | ui.checkbox(&mut trailing, "卡幀動作開始後送結尾 Esc")
+                        .changed();
+                if changed {
+                    let mut timing = self.timing_draft.clone();
+                    timing.auto_repeat = if repeat {
+                        AutoRepeatPolicy::FollowTypematic
+                    } else {
+                        AutoRepeatPolicy::Ignore
+                    };
+                    timing.card_trailing_esc = if trailing {
+                        TrailingEscPolicy::IfStarted
+                    } else {
+                        TrailingEscPolicy::Never
+                    };
+                    self.timing_draft = timing.clone();
+                    self.timing_error = self.keys.set_timing(timing).err().map(|e| e.to_string());
+                    if self.timing_error.is_none() {
+                        self.timing_draft = self.keys.document.timing.clone();
+                    }
+                }
                 if ui.button("載入校準結果…").clicked() {
                     self.job(Job::LoadTiming);
                 }
@@ -952,7 +1059,7 @@ impl App {
                                 self.selection = Selection::Item(id);
                                 self.capture(CaptureTarget::Item(id));
                             }
-                            Err(e) => self.log(e.to_string()),
+                            Err(e) => self.log_error(e.to_string()),
                         }
                     }
                 });
@@ -973,61 +1080,101 @@ impl App {
                     } else {
                         self.pixel_label(item.x.unwrap_or(0.), item.y.unwrap_or(0.))
                     };
-                    let text = format!(
-                        "{}   {}   {}\n{}   {}",
-                        item.name,
-                        item.hotkey.map_or("—".into(), |h| h.to_string()),
-                        if item.function == PointFunction::Card {
-                            "牌鍵"
-                        } else {
-                            "普通點位"
-                        },
-                        position,
-                        status
-                    );
-                    let response =
-                        row_color(ui, self.selection == Selection::Item(id), text, conflict);
-                    if response.clicked() {
-                        self.selection = Selection::Item(id);
-                    }
+                    ui.horizontal(|ui| {
+                        let text = format!(
+                            "{} · {}\n{} · {}",
+                            item.name,
+                            if item.function == PointFunction::Card {
+                                "牌鍵"
+                            } else {
+                                "普通點位"
+                            },
+                            position,
+                            status
+                        );
+                        let response = ui.add_sized(
+                            [ui.available_width() - 90., 34.],
+                            egui::Button::new(if conflict {
+                                RichText::new(text).color(Color32::from_rgb(200, 65, 65))
+                            } else {
+                                RichText::new(text)
+                            })
+                            .selected(self.selection == Selection::Item(id)),
+                        );
+                        if response.clicked() {
+                            self.selection = Selection::Item(id);
+                        }
+                        self.keycap(ui, item.hotkey, CaptureTarget::Item(id));
+                    });
                 }
             }
             1 => {
                 ui.label(RichText::new("23 個預設按鍵").strong());
                 ui.separator();
                 let analysis = analyze(&self.points.document, &self.keys.document);
-                for role in PRESET_ROLES {
+                for role in ["skill_", "spam_", "card_", ""]
+                    .into_iter()
+                    .flat_map(|prefix| {
+                        PRESET_ROLES.into_iter().filter(move |r| {
+                            if prefix.is_empty() {
+                                !r.starts_with("skill_")
+                                    && !r.starts_with("spam_")
+                                    && !r.starts_with("card_")
+                            } else {
+                                r.starts_with(prefix)
+                            }
+                        })
+                    })
+                {
                     let p = self.keys.document.presets[role].clone();
                     let missing = self.points.document.mode == Mode::Six
                         && matches!(
                             role,
                             "skill_4" | "skill_5" | "spam_4" | "spam_5" | "card_4" | "card_5"
                         );
-                    let text = format!(
-                        "{}    {}    {}{}",
-                        role_name(role),
-                        p.hotkey.map_or("—".into(), |h| h.to_string()),
-                        if p.enabled { "啟用" } else { "停用" },
-                        if missing {
-                            "（六人沒有此格）"
-                        } else {
-                            ""
-                        }
-                    );
+                    if matches!(role, "skill_1" | "spam_1" | "card_1" | "global_stop") {
+                        ui.label(match role {
+                            "skill_1" => "技能",
+                            "spam_1" => "技能連點",
+                            "card_1" => "卡幀開牌",
+                            _ => "其他",
+                        });
+                    }
                     let conflict = analysis
                         .preset_errors
                         .iter()
                         .any(|e| e.to_string().contains(role));
-                    if row_color(
-                        ui,
-                        self.selection == Selection::Preset(role.into()),
-                        text,
-                        conflict,
-                    )
-                    .clicked()
-                    {
-                        self.selection = Selection::Preset(role.into());
-                    }
+                    ui.horizontal(|ui| {
+                        let text = format!(
+                            "{} · {}{}",
+                            role_name(role),
+                            if conflict {
+                                "重複：已停用"
+                            } else if p.enabled {
+                                "啟用"
+                            } else {
+                                "停用"
+                            },
+                            if missing {
+                                "（六人沒有此格）"
+                            } else {
+                                ""
+                            }
+                        );
+                        let response = ui.add_sized(
+                            [ui.available_width() - 105., 34.],
+                            egui::Button::new(if conflict {
+                                RichText::new(text).color(Color32::from_rgb(200, 65, 65))
+                            } else {
+                                RichText::new(text)
+                            })
+                            .selected(self.selection == Selection::Preset(role.into())),
+                        );
+                        if response.clicked() {
+                            self.selection = Selection::Preset(role.into());
+                        }
+                        self.keycap(ui, p.hotkey, CaptureTarget::Preset(role.into()));
+                    });
                 }
             }
             2 => {
@@ -1052,10 +1199,11 @@ impl App {
                 ui.label(RichText::new("事件清單").strong());
                 ui.separator();
                 for (index, text) in self.logs.clone().iter().enumerate().rev() {
-                    if row(
+                    if row_color(
                         ui,
                         self.selection == Selection::Log(index),
                         format!("{}  {}", index + 1, text.lines().next().unwrap_or_default()),
+                        text.contains("問題："),
                     )
                     .clicked()
                     {
@@ -1081,7 +1229,53 @@ impl App {
         } else {
             chord.map_or("— 設定熱鍵".into(), |c| c.to_string())
         };
-        if ui.button(RichText::new(text).monospace()).clicked() {
+        let analysis = analyze(&self.points.document, &self.keys.document);
+        let (conflict, disabled) = match &target {
+            CaptureTarget::Item(id) => (analysis.disabled_points.contains(id), chord.is_none()),
+            CaptureTarget::Preset(role) => (
+                analysis
+                    .preset_errors
+                    .iter()
+                    .any(|e| e.to_string().contains(role)),
+                !self.keys.document.presets[role].enabled,
+            ),
+            _ => (false, false),
+        };
+        let mut rich = RichText::new(text).monospace();
+        if disabled {
+            rich = rich.color(ui.visuals().weak_text_color());
+        }
+        if conflict {
+            rich = rich.color(Color32::from_rgb(220, 70, 70));
+        }
+        let mut button = egui::Button::new(rich);
+        if conflict {
+            button = button
+                .fill(Color32::from_rgba_unmultiplied(190, 40, 40, 40))
+                .stroke(egui::Stroke::new(1., Color32::from_rgb(220, 70, 70)));
+        }
+        let response = ui.add(button);
+        if chord.is_none() {
+            let r = response.rect;
+            let stroke = egui::Stroke::new(1., ui.visuals().weak_text_color());
+            for (a, b) in [
+                (r.left_top(), r.right_top()),
+                (r.right_top(), r.right_bottom()),
+                (r.right_bottom(), r.left_bottom()),
+                (r.left_bottom(), r.left_top()),
+            ] {
+                let delta = b - a;
+                let len = delta.length();
+                let dir = delta / len;
+                let mut at = 0.;
+                while at < len {
+                    ui.painter()
+                        .line_segment([a + dir * at, a + dir * (at + 3.).min(len)], stroke);
+                    at += 6.;
+                }
+            }
+        }
+        if response.clicked() {
             self.capture(target);
         }
     }
@@ -1101,7 +1295,7 @@ impl App {
                                 self.selection = Selection::Item(id);
                                 self.capture(CaptureTarget::Item(id));
                             }
-                            Err(e) => self.log(e.to_string()),
+                            Err(e) => self.log_error(e.to_string()),
                         }
                     }
                 }
@@ -1227,7 +1421,7 @@ impl App {
                                     self.selection =
                                         Selection::Candidate(self.candidates.len() - 1);
                                 }
-                                Err(e) => self.log(e.to_string()),
+                                Err(e) => self.log_error(e.to_string()),
                             }
                         }
                     } else {
@@ -1277,7 +1471,14 @@ impl App {
                 let fields = timing_fields(&self.timing_draft);
                 if let Some((name, value)) = fields.get(index) {
                     ui.monospace(*name);
-                    ui.label("單位：ms；変更後清除 verified");
+                    ui.label("單位：ms；修改後改為未驗證");
+                    ui.label(match index {
+                        0 => "零按住時間需已驗證；修改時間會清除驗證",
+                        1 => "滑鼠按住時間必須大於零",
+                        3 | 7 => "週期必須大於零，連點週期需容納按住時間",
+                        8..=14 => "期限容忍必須非負；第二個 Esc 不可放寬",
+                        _ => "間隔必須非負",
+                    });
                     let mut unlimited = value.is_none();
                     let mut number = value.unwrap_or(0.);
                     let mut changed = false;
@@ -1361,22 +1562,50 @@ impl App {
         });
         let mut rect = r;
         let mut changed = false;
-        let mut values = [rect.x[0], rect.x[1], rect.y[0], rect.y[1]];
-        for (label, value) in ["左", "右", "上", "下"].into_iter().zip(values.iter_mut()) {
+        let scale = self.monitor.map_or([1., 1., 1., 1.], |m| {
+            [
+                f64::from(m[2]),
+                f64::from(m[2]),
+                f64::from(m[3]),
+                f64::from(m[3]),
+            ]
+        });
+        let mut values = [
+            rect.x[0] * scale[0],
+            rect.x[1] * scale[1],
+            rect.y[0] * scale[2],
+            rect.y[1] * scale[3],
+        ];
+        for ((label, value), scale) in ["左", "右", "上", "下"]
+            .into_iter()
+            .zip(values.iter_mut())
+            .zip(scale)
+        {
             ui.horizontal(|ui| {
-                ui.label(format!("{label}（0–1）"));
+                ui.label(format!(
+                    "{label}（{}）",
+                    if self.monitor.is_some() {
+                        "px"
+                    } else {
+                        "0–1"
+                    }
+                ));
                 changed |= ui
-                    .add(egui::DragValue::new(value).speed(0.001).range(0.0..=1.0))
+                    .add(
+                        egui::DragValue::new(value)
+                            .speed(if scale > 1. { 1. } else { 0.001 })
+                            .range(0.0..=scale),
+                    )
                     .changed();
             });
         }
         if changed {
-            rect.x = [values[0], values[1]];
-            rect.y = [values[2], values[3]];
+            rect.x = [values[0] / scale[0], values[1] / scale[1]];
+            rect.y = [values[2] / scale[2], values[3] / scale[3]];
             rect.calibrated = true;
             match self.hand.set_hand_rect(mode, side, rect) {
                 Ok(_) => self.store_hand(),
-                Err(e) => self.log(e.to_string()),
+                Err(e) => self.log_error(e.to_string()),
             }
         }
         for slot in 0..usize::from(mode.slots()) {
@@ -1427,8 +1656,13 @@ impl App {
                     ui.horizontal(|ui| {
                         if ui
                             .add_enabled(
-                                self.timing_error.is_none()
-                                    && can_save_keys(&self.points.document, &self.keys.document),
+                                (kind == FileKind::Points
+                                    && !self.pending.as_ref().unwrap().closing)
+                                    || (self.timing_error.is_none()
+                                        && can_save_keys(
+                                            &self.points.document,
+                                            &self.keys.document,
+                                        )),
                                 egui::Button::new("儲存後切換"),
                             )
                             .clicked()
@@ -1519,15 +1753,11 @@ impl App {
                         let resolution = (self.import_resolution.iter().all(|v| *v > 0.))
                             .then_some(self.import_resolution);
                         self.import = None;
-                        self.begin(
-                            FileKind::Points,
-                            Job::Import {
-                                path,
-                                mode: self.import_mode,
-                                resolution,
-                                resume: self.wanted,
-                            },
-                        );
+                        self.job(Job::PlanImport {
+                            path,
+                            mode: self.import_mode,
+                            resolution,
+                        });
                     }
                     if ui.button("取消").clicked() {
                         self.import = None;
@@ -1540,12 +1770,15 @@ impl App {
             self.quitting = true;
             self.busy = true;
             self.backend.controller.cancel_capture();
+            self.backend.controller.quit();
             let _ = self.backend.jobs.send(Job::Quit);
         }
     }
     fn close(&mut self, ctx: &egui::Context) {
         if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.backend.controller.disable();
+            self.wanted = false;
             if self.points_dirty() || self.keys_dirty() {
                 let kind = if self.points_dirty() {
                     FileKind::Points
@@ -1575,7 +1808,7 @@ impl App {
                     },
                 ) {
                     Ok(_) => self.store_hand(),
-                    Err(e) => self.log(e.to_string()),
+                    Err(e) => self.log_error(e.to_string()),
                 }
             } else if self.overlay_resume {
                 self.backend.controller.resume(overlay.generation);
@@ -1669,12 +1902,26 @@ impl App {
                             (Corner::Top, r.center_top()),
                             (Corner::Bottom, r.center_bottom()),
                         ] {
-                            let hit = egui::Rect::from_center_size(p, Vec2::splat(20.));
-                            ui.painter()
-                                .rect_filled(hit, 3., Color32::from_rgb(45, 135, 235));
+                            let hit = egui::Rect::from_center_size(
+                                p,
+                                match corner {
+                                    Corner::Left | Corner::Right => {
+                                        Vec2::new(20., (r.height() - 20.).max(20.))
+                                    }
+                                    Corner::Top | Corner::Bottom => {
+                                        Vec2::new((r.width() - 20.).max(20.), 20.)
+                                    }
+                                    _ => Vec2::splat(20.),
+                                },
+                            );
+                            ui.painter().rect_filled(
+                                egui::Rect::from_center_size(p, Vec2::splat(12.)),
+                                3.,
+                                Color32::from_rgb(45, 135, 235),
+                            );
                             let response = ui.interact(
                                 hit,
-                                ui.id().with(format!("corner-{p:?}")),
+                                ui.id().with(format!("corner-{corner:?}")),
                                 egui::Sense::drag(),
                             );
                             overlay.dragging |= response.dragged();
@@ -1872,6 +2119,8 @@ impl eframe::App for App {
                         Vec2::new(*width, available.y),
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
+                            ui.set_width(*width);
+                            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
                             egui::ScrollArea::vertical().id_salt(index).show(
                                 ui,
                                 |ui| match index {
@@ -1893,6 +2142,7 @@ impl eframe::App for App {
         if let Some(qa) = &mut self.qa
             && self.settings.is_some()
             && self.frames > 15
+            && self.notice.as_ref().is_none_or(|n| n.expired())
             && !qa.requested
         {
             qa.requested = true;
@@ -2056,4 +2306,14 @@ fn overlay_hit(r: HandRect, cursor: Option<NormPoint>, m: [i32; 4]) -> bool {
             && p.x <= r.x[1] + dx;
         control || vertical || horizontal
     })
+}
+
+fn state_color(state: &str) -> Color32 {
+    if state.contains("故障") || state.contains("Faulted") {
+        Color32::from_rgb(200, 65, 65)
+    } else if state == "運作中" || state == "已停止" {
+        Color32::from_rgb(45, 135, 75)
+    } else {
+        Color32::from_rgb(180, 110, 35)
+    }
 }

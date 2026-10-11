@@ -208,6 +208,17 @@ pub fn compile_with_params(
             ));
         }
     }
+    for role in ["global_stop", "record"] {
+        if k.presets
+            .get(role)
+            .is_some_and(|p| p.hotkey.is_some_and(|h| h.key.is_mouse()))
+        {
+            errors.push(ConfigError::new(
+                format!("$.presets.{role}.hotkey"),
+                "全域停止／錄點需鍵盤熱鍵；滑鼠鍵可綁其他動作",
+            ));
+        }
+    }
     for (i, item) in p.items.iter().enumerate() {
         if p.items[..i].iter().any(|p| p.id == item.id) {
             errors.push(ConfigError::new(format!("$.items[{i}].id"), "duplicate ID"));

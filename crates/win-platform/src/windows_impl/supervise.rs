@@ -68,6 +68,7 @@ pub enum SupervisorCommand {
 #[derive(Clone, Debug)]
 pub struct SupervisorStatus {
     pub wanted: bool,
+    pub resume_generation: u64,
     pub state: State,
     pub session: SessionId,
     pub detail: String,
@@ -697,6 +698,7 @@ pub fn run_supervisor(
                             session,
                             detail: format!("command {cmd_seq} rejected: {why}"),
                             records: window.record_count(),
+                            resume_generation: resume_guard.token(),
                             wanted,
                         });
                         if matches!(fsm.state(), State::AwaitArm { .. }) {
@@ -929,8 +931,8 @@ pub fn run_supervisor(
                 }
             }
             let state = fsm.state();
-            if last_status != Some((state, wanted)) {
-                last_status = Some((state, wanted));
+            if last_status != Some((state, wanted, resume_guard.token())) {
+                last_status = Some((state, wanted, resume_guard.token()));
                 let detail = if target.is_none() {
                     "等待遊戲前景與按鍵放開"
                 } else if target.is_some_and(|t| t.warning()) {
@@ -943,6 +945,7 @@ pub fn run_supervisor(
                     session,
                     detail: detail.into(),
                     records: window.record_count(),
+                    resume_generation: resume_guard.token(),
                     wanted,
                 });
             }

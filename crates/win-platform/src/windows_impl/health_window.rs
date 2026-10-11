@@ -38,9 +38,9 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: L
             }
             let state = &mut *ptr;
             if msg == WM_HOTKEY {
-                if wparam.0 == 1 {
+                if (1..=16).contains(&wparam.0) {
                     state.stop = true;
-                } else if wparam.0 == 2 {
+                } else if (17..=32).contains(&wparam.0) {
                     state.record += 1;
                 }
             }
@@ -195,9 +195,9 @@ impl HealthWindow {
                 stop_hotkey: stop,
                 record_hotkey: record,
             };
-            RegisterHotKey(Some(hwnd), 1, modifiers(stop), u32::from(stop.key.0))?;
+            register_group(hwnd, 1, stop)?;
             if let Some(record) = record {
-                RegisterHotKey(Some(hwnd), 2, modifiers(record), u32::from(record.key.0))?;
+                register_group(hwnd, 17, record)?;
             }
             RegisterRawInputDevices(
                 &[
@@ -220,42 +220,16 @@ impl HealthWindow {
         }
     }
     pub fn rebind(&mut self, stop: Chord, record: Option<Chord>) -> Result<()> {
-        // SAFETY: Called only on the owner supervisor thread after cooperative stop. Failure leaves readiness blocked; old bindings are restored where possible.
-        unsafe {
-            let _ = UnregisterHotKey(Some(self.hwnd), 1);
-            let _ = UnregisterHotKey(Some(self.hwnd), 2);
-            let result = RegisterHotKey(Some(self.hwnd), 1, modifiers(stop), u32::from(stop.key.0))
-                .and_then(|_| {
-                    if let Some(record) = record {
-                        RegisterHotKey(
-                            Some(self.hwnd),
-                            2,
-                            modifiers(record),
-                            u32::from(record.key.0),
-                        )
-                    } else {
-                        Ok(())
-                    }
-                });
-            if let Err(error) = result {
-                let _ = UnregisterHotKey(Some(self.hwnd), 1);
-                let _ = UnregisterHotKey(Some(self.hwnd), 2);
-                let _ = RegisterHotKey(
-                    Some(self.hwnd),
-                    1,
-                    modifiers(self.stop_hotkey),
-                    u32::from(self.stop_hotkey.key.0),
-                );
-                if let Some(record) = self.record_hotkey {
-                    let _ = RegisterHotKey(
-                        Some(self.hwnd),
-                        2,
-                        modifiers(record),
-                        u32::from(record.key.0),
-                    );
-                }
-                return Err(error);
+        unregister_groups(self.hwnd);
+        let result = register_group(self.hwnd, 1, stop)
+            .and_then(|_| record.map_or(Ok(()), |r| register_group(self.hwnd, 17, r)));
+        if let Err(error) = result {
+            unregister_groups(self.hwnd);
+            let _ = register_group(self.hwnd, 1, self.stop_hotkey);
+            if let Some(record) = self.record_hotkey {
+                let _ = register_group(self.hwnd, 17, record);
             }
+            return Err(error);
         }
         self.stop_hotkey = stop;
         self.record_hotkey = record;
@@ -305,9 +279,47 @@ impl Drop for HealthWindow {
     fn drop(&mut self) {
         // SAFETY: Only owner thread drops the window, before Box<HealthState>. No callback outlives DestroyWindow.
         unsafe {
-            let _ = UnregisterHotKey(Some(self.hwnd), 1);
-            let _ = UnregisterHotKey(Some(self.hwnd), 2);
+            unregister_groups(self.hwnd);
             let _ = DestroyWindow(self.hwnd);
+        }
+    }
+}
+
+fn register_group(hwnd: HWND, base: i32, chord: Chord) -> Result<()> {
+    if chord.key.is_mouse() {
+        return Err(failure("全域停止／錄點需要鍵盤熱鍵"));
+    }
+    let masks = crate::hotkeys::global_hotkey_masks(chord);
+    if masks.is_empty() {
+        return Err(failure("全域熱鍵修飾符無效"));
+    }
+    for mask in masks {
+        let exact = Chord {
+            mods: ModsMatch::Exact(mask),
+            ..chord
+        };
+        // SAFETY: Live window owned by this thread, unique reserved IDs, value-only key and modifier arguments.
+        unsafe {
+            RegisterHotKey(
+                Some(hwnd),
+                base + i32::from(mask),
+                modifiers(exact),
+                u32::from(chord.key.0),
+            )
+            .map_err(|_| {
+                failure(&format!(
+                    "全域熱鍵 {exact} 註冊失敗；請改鍵或關閉佔用該組合的程式"
+                ))
+            })?;
+        }
+    }
+    Ok(())
+}
+fn unregister_groups(hwnd: HWND) {
+    for id in 1..=32 {
+        // SAFETY: Only this HealthWindow owns these IDs. Unregistered IDs are harmless failures.
+        unsafe {
+            let _ = UnregisterHotKey(Some(hwnd), id);
         }
     }
 }

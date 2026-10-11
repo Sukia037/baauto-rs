@@ -361,3 +361,16 @@ fn resume_guard_rejects_continuation_after_emergency_or_manual_stop() {
     gate.cancel();
     assert!(!gate.allows(next));
 }
+
+#[test]
+fn chained_file_jobs_keep_the_original_resume_generation_after_stop() {
+    let mut guard = ResumeGuard::default();
+    let original_operation = guard.token();
+    guard.cancel();
+    let later_barrier = guard.token();
+    assert!(guard.allows(later_barrier));
+    assert!(
+        !guard.allows(original_operation),
+        "later barriers cannot renew the original operation's authorization"
+    );
+}

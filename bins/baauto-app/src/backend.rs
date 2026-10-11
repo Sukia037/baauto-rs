@@ -34,9 +34,10 @@ pub enum UiEvent {
     Capture(u64, std::result::Result<EngineToApp, String>),
     CaptureReady(u64),
     Observe(Observation),
-    Wanted(bool),
+    Wanted(bool, u64),
     NeedImport(PathBuf, String),
     OpenReady(PathBuf, FileKind),
+    ImportReady(PathBuf, Mode, Option<[f64; 2]>, FileKind),
     Finished(bool),
     Timing(Box<TimingProfile>),
     Reports(Vec<PathBuf>),
@@ -44,6 +45,7 @@ pub enum UiEvent {
     Quit,
 }
 pub enum Job {
+    Guarded(Box<Job>, u64),
     Save {
         points: Option<PointSet>,
         keys: Option<Box<KeysProfile>>,
@@ -52,12 +54,19 @@ pub enum Job {
         resume: bool,
     },
     Open(PathBuf, bool),
+    OpenAs(PathBuf, FileKind, bool),
+    PlanImport {
+        path: PathBuf,
+        mode: Mode,
+        resolution: Option<[f64; 2]>,
+    },
     Reassign(PathBuf, PathBuf, bool),
     Reload(FileKind, bool),
     New(FileKind, bool),
     SaveAs(Document, bool),
     Close(PathBuf, bool, bool),
     Import {
+        expected_kind: FileKind,
         path: PathBuf,
         mode: Mode,
         resolution: Option<[f64; 2]>,
@@ -84,7 +93,7 @@ pub enum Job {
 pub struct Controller {
     #[cfg(windows)]
     pub tx: Option<mpsc::Sender<SupervisorCommand>>,
-    pub events: mpsc::Sender<UiEvent>,
+    pub events: mpsc::SyncSender<UiEvent>,
     pub capture_epoch: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 impl Controller {
@@ -129,13 +138,14 @@ impl Controller {
             let _ = tx.send(SupervisorCommand::EnableAfter { generation });
         }
     }
-    pub fn capture(&self, kind: CaptureKind, id: u64) {
+    pub fn capture(&self, kind: CaptureKind, id: u64, expected_generation: u64) {
         self.capture_epoch
             .store(id, std::sync::atomic::Ordering::SeqCst);
         let this = self.clone();
         thread::spawn(move || {
             let result = (|| -> Result<EngineToApp, String> {
-                let generation = this.quiesce()?;
+                let _stopped_generation = this.quiesce()?;
+                let generation = expected_generation;
                 let _ = generation;
                 if this.capture_epoch.load(std::sync::atomic::Ordering::SeqCst) != id {
                     return Err("擷取已取消".into());
@@ -213,7 +223,7 @@ impl Controller {
         let _ = (s, version, resume, generation);
         Ok(())
     }
-    fn quit(&self) {
+    pub fn quit(&self) {
         #[cfg(windows)]
         if let Some(tx) = &self.tx {
             let _ = tx.send(SupervisorCommand::Quit);
@@ -253,7 +263,7 @@ fn snapshot(store: &FileStore<BackendFs>) -> Result<Snapshot, String> {
 impl Backend {
     pub fn start(root: PathBuf, preview: bool, target: std::ffi::OsString) -> Self {
         let (jobs, rx) = mpsc::channel();
-        let (events, out) = mpsc::channel();
+        let (events, out) = mpsc::sync_channel(256);
         #[cfg(windows)]
         let (native_tx, native_rx) = mpsc::channel();
         let controller = Controller {
@@ -293,7 +303,7 @@ impl Backend {
             let (mut store, initial) = match initialized {
                 Ok(v) => v,
                 Err(e) => {
-                    let _ = events.send(UiEvent::Message(e));
+                    let _ = events.send(UiEvent::Message(format!("問題：{e}")));
                     return;
                 }
             };
@@ -345,9 +355,21 @@ impl Backend {
                     let mut state = "啟動中".to_owned();
                     let mut records = 0;
                     let mut cached = None;
+                    let mut generation = 0;
+                    let mut alive = true;
                     loop {
-                        for s in status_rx.try_iter() {
-                            let s: SupervisorStatus = s;
+                        loop {
+                            let s: SupervisorStatus = match status_rx.try_recv() {
+                                Ok(s) => s,
+                                Err(mpsc::TryRecvError::Empty) => break,
+                                Err(mpsc::TryRecvError::Disconnected) => {
+                                    state = "監督已結束，請重開程式".into();
+                                    alive = false;
+                                    let _ = observe.send(UiEvent::Wanted(false, generation));
+                                    break;
+                                }
+                            };
+                            generation = s.resume_generation;
                             state = match s.state {
                                 baauto_protocol::supervisor::State::Disarmed => "已停止",
                                 baauto_protocol::supervisor::State::Armed(_) => "運作中",
@@ -355,7 +377,7 @@ impl Backend {
                                 _ => "停止／套用中",
                             }
                             .into();
-                            let _ = observe.send(UiEvent::Wanted(s.wanted));
+                            let _ = observe.send(UiEvent::Wanted(s.wanted, s.resume_generation));
                             records = s.records;
                             if !s.detail.is_empty() {
                                 let _ = observe.send(UiEvent::Message(s.detail));
@@ -384,13 +406,16 @@ impl Backend {
                         if observe.send(UiEvent::Observe(obs)).is_err() {
                             break;
                         }
+                        if !alive {
+                            break;
+                        }
                         thread::sleep(Duration::from_millis(67));
                     }
                 });
                 let error_events = events.clone();
                 Some(thread::spawn(move || {
                     if let Err(e) = run_supervisor(options, native_rx, status_tx) {
-                        let _ = error_events.send(UiEvent::Message(e.to_string()));
+                        let _ = error_events.send(UiEvent::Message(format!("問題：{e}")));
                     }
                 }))
             } else {
@@ -413,6 +438,10 @@ impl Backend {
                 crate::telemetry::Telemetry::start(tx.clone(), events.clone(), root.join("logs"))
             });
             while let Ok(job) = rx.recv() {
+                let (job, inherited) = match job {
+                    Job::Guarded(job, generation) => (*job, Some(generation)),
+                    other => (other, None),
+                };
                 if matches!(job, Job::Quit) {
                     control.quit();
                     #[cfg(windows)]
@@ -432,6 +461,7 @@ impl Backend {
                         | Job::OpenExternal(_)
                         | Job::Screenshot { .. }
                 );
+                let mut saved_paths = Vec::new();
                 let result = (|| -> Result<(), String> {
                     let mut changed = 0;
                     let resume;
@@ -526,7 +556,7 @@ impl Backend {
                             return Ok(());
                         }
                         Job::PrepareOverlay => {
-                            let generation = control.quiesce()?;
+                            let generation = inherited.unwrap_or(control.quiesce()?);
                             let _ = generation;
                             #[cfg(windows)]
                             if let Some(tx) = &control.tx {
@@ -558,7 +588,7 @@ impl Backend {
                             resume: r,
                         } => {
                             let token = control.quiesce()?;
-                            generation = expected_generation.unwrap_or(token);
+                            generation = expected_generation.or(inherited).unwrap_or(token);
                             resume = r;
                             if let Some(p) = &points {
                                 Document::Points(p.clone())
@@ -585,6 +615,7 @@ impl Backend {
                                     path.clone(),
                                     fingerprint(path).map_err(|e| e.to_string())?,
                                 );
+                                saved_paths.push(path.clone());
                             }
                             if let Some(k) = keys {
                                 changed |= 2;
@@ -601,6 +632,7 @@ impl Backend {
                                     path.clone(),
                                     fingerprint(path).map_err(|e| e.to_string())?,
                                 );
+                                saved_paths.push(path.clone());
                             }
                             if let Some(h) = hand {
                                 store.settings.hand = HandEditor::new(h).document;
@@ -609,7 +641,7 @@ impl Backend {
                             reload = true;
                         }
                         Job::Reassign(old, new, r) => {
-                            generation = control.quiesce()?;
+                            generation = inherited.unwrap_or(control.quiesce()?);
                             resume = r;
                             let expected = if store.settings.point_tabs.contains(&old) {
                                 FileKind::Points
@@ -627,8 +659,33 @@ impl Backend {
                             changed = kind_mask(expected);
                             reload = true;
                         }
-                        Job::Open(p, r) => {
-                            generation = control.quiesce()?;
+                        Job::PlanImport {
+                            path,
+                            mode,
+                            resolution,
+                        } => {
+                            let text =
+                                decode_json(&std::fs::read(&path).map_err(|e| e.to_string())?)
+                                    .map_err(|e| e.to_string())?;
+                            let v = from_json(&text).map_err(|e| e.to_string())?;
+                            let imported = legacy::import(&v, "匯入", mode, resolution)
+                                .map_err(|e| e.to_string())?;
+                            let kind = if imported.keys.is_some() {
+                                FileKind::Keys
+                            } else {
+                                FileKind::Points
+                            };
+                            let _ = events.send(UiEvent::ImportReady(path, mode, resolution, kind));
+                            return Ok(());
+                        }
+                        Job::Open(ref p, r) | Job::OpenAs(ref p, _, r) => {
+                            if let Job::OpenAs(_, expected, _) = &job
+                                && read_document(p).map_err(|e| e.to_string())?.kind() != *expected
+                            {
+                                return Err("檔案內容種類已改變，請重新開啟".into());
+                            }
+                            let p = p.clone();
+                            generation = inherited.unwrap_or(control.quiesce()?);
                             resume = r;
                             match store.open(&p) {
                                 Ok(doc) => {
@@ -642,7 +699,7 @@ impl Backend {
                             }
                         }
                         Job::Reload(kind, r) => {
-                            generation = control.quiesce()?;
+                            generation = inherited.unwrap_or(control.quiesce()?);
                             resume = r;
                             let path = if kind == FileKind::Points {
                                 store.settings.current_points.clone()
@@ -654,7 +711,7 @@ impl Backend {
                             reload = true;
                         }
                         Job::New(_, r) | Job::SaveAs(_, r) => {
-                            generation = control.quiesce()?;
+                            generation = inherited.unwrap_or(control.quiesce()?);
                             resume = r;
                             let doc = match &job {
                                 Job::SaveAs(d, _) => d.clone(),
@@ -690,7 +747,7 @@ impl Backend {
                             }
                         }
                         Job::Close(p, trash, r) => {
-                            generation = control.quiesce()?;
+                            generation = inherited.unwrap_or(control.quiesce()?);
                             resume = r;
                             let kind = if store.settings.point_tabs.contains(&p) {
                                 FileKind::Points
@@ -706,12 +763,13 @@ impl Backend {
                             reload = true;
                         }
                         Job::Import {
+                            expected_kind,
                             path,
                             mode,
                             resolution,
                             resume: r,
                         } => {
-                            generation = control.quiesce()?;
+                            generation = inherited.unwrap_or(control.quiesce()?);
                             resume = r;
                             let text =
                                 decode_json(&std::fs::read(&path).map_err(|e| e.to_string())?)
@@ -724,6 +782,11 @@ impl Backend {
                                 resolution,
                             )
                             .map_err(|e| e.to_string())?;
+                            if (imported.keys.is_some() && expected_kind != FileKind::Keys)
+                                || (imported.points.is_some() && expected_kind != FileKind::Points)
+                            {
+                                return Err("匯入來源種類已改變，請重新匯入".into());
+                            }
                             let report = to_json(&imported.report).map_err(|e| e.to_string())?;
                             let report_path = store
                                 .save_import_report(&imported.report)
@@ -748,7 +811,7 @@ impl Backend {
                             reload = true;
                             let _ = events.send(UiEvent::Message(report));
                         }
-                        Job::Quit => unreachable!(),
+                        Job::Quit | Job::Guarded(..) => unreachable!(),
                     }
                     if reload {
                         let snapshot = snapshot(&store)?;
@@ -770,7 +833,19 @@ impl Backend {
                 })();
                 let success = result.is_ok();
                 if let Err(e) = result {
-                    let _ = events.send(UiEvent::Message(e));
+                    let e = if saved_paths.is_empty() {
+                        e
+                    } else {
+                        format!(
+                            "{e}；已儲存：{}；保持停止，修正後再儲存",
+                            saved_paths
+                                .iter()
+                                .map(|p| p.display().to_string())
+                                .collect::<Vec<_>>()
+                                .join("、")
+                        )
+                    };
+                    let _ = events.send(UiEvent::Message(format!("問題：{e}")));
                 }
                 if notify_finished {
                     let _ = events.send(UiEvent::Finished(success));

@@ -171,6 +171,12 @@ impl KeysEditor {
                 "緊急停止必須啟用並設定熱鍵",
             ));
         }
+        if matches!(role, "global_stop" | "record") && hotkey.is_some_and(|h| h.key.is_mouse()) {
+            return Err(ConfigError::new(
+                format!("$.presets.{role}.hotkey"),
+                "全域停止／錄點需鍵盤熱鍵；滑鼠鍵可綁其他動作",
+            ));
+        }
         let preset = self
             .document
             .presets

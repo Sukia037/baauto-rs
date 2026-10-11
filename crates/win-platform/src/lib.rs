@@ -7,3 +7,5 @@ mod windows_impl;
 pub use windows_impl::*;
 
 pub mod fault;
+
+pub mod hotkeys;

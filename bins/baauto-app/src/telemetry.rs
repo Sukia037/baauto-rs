@@ -21,7 +21,7 @@ pub struct Telemetry {
 impl Telemetry {
     pub fn start(
         tx: mpsc::Sender<SupervisorCommand>,
-        events: mpsc::Sender<UiEvent>,
+        events: mpsc::SyncSender<UiEvent>,
         folder: PathBuf,
     ) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
@@ -45,7 +45,14 @@ impl Telemetry {
                             .as_ref()
                             .is_none_or(|old| !Arc::ptr_eq(old, &mapping))
                         {
-                            if let Some(old) = file.as_mut() {
+                            if let (Some(map), Some(old)) = (&current, file.as_mut()) {
+                                while let Some((seq, data)) = reader.read(&map.data().ring) {
+                                    write!(old, "{seq}").map_err(|e| e.to_string())?;
+                                    for value in data.0 {
+                                        write!(old, ",{value}").map_err(|e| e.to_string())?;
+                                    }
+                                    writeln!(old).map_err(|e| e.to_string())?;
+                                }
                                 old.flush().map_err(|e| e.to_string())?;
                             }
                             if !path.as_os_str().is_empty() {

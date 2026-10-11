@@ -196,3 +196,21 @@ fn emergency_chord_cancels_capture_and_swallows_its_release() {
     assert!(h.decide(key(Key(120), false, 3)).swallow);
     assert!(h.decide(key(Key(162), false, 4)).swallow);
 }
+
+#[test]
+fn focus_loss_cancels_point_capture_without_releasing_swallowed_pairs() {
+    let mut h = hook();
+    h.focused = true;
+    h.begin_capture(CaptureRequest {
+        id: 1,
+        kind: CaptureKind::Point,
+        deadline: Ticks(100),
+        abort_chord: None,
+    })
+    .unwrap();
+    assert_eq!(
+        h.focus(false, Ticks(1)).capture.unwrap().outcome,
+        CaptureOutcome::Cancelled
+    );
+    assert!(h.decide(key(Key::LEFT, true, 2)).capture.is_none());
+}

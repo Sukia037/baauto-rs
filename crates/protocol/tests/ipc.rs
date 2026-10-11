@@ -107,3 +107,61 @@ fn trial_mode_and_result_preserve_session_and_command() {
     };
     assert!(!bad.allowed_outputs(&cfg));
 }
+
+#[test]
+fn capture_ipc_preserves_session_request_and_cancel_boundary() {
+    use baauto_protocol::capture::*;
+    let commands = [
+        AppToEngine::BeginRecordPoint {
+            cmd_seq: 8,
+            session: SessionId(7),
+            request_id: 10,
+            timeout_ms: 15000,
+            abort_chord: "Ctrl+F9".parse().unwrap(),
+        },
+        AppToEngine::CaptureNextInput {
+            cmd_seq: 9,
+            session: SessionId(7),
+            request_id: 11,
+            timeout_ms: 15000,
+            slot_key: true,
+            abort_chord: "Ctrl+F9".parse().unwrap(),
+        },
+        AppToEngine::CancelRecordPoint {
+            cmd_seq: 10,
+            session: SessionId(7),
+            through_id: 11,
+        },
+    ];
+    for command in commands {
+        assert_eq!(
+            decode_frame::<AppToEngine>(&encode_frame(&command).unwrap()).unwrap(),
+            command
+        );
+    }
+    for outcome in [
+        CaptureOutcome::TimedOut,
+        CaptureOutcome::Cancelled,
+        CaptureOutcome::Chord("Space".parse().unwrap()),
+        CaptureOutcome::EmergencyStop,
+    ] {
+        let reply = EngineToApp::CapturedInput {
+            session: SessionId(7),
+            cmd_seq: 9,
+            result: CaptureResult { id: 11, outcome },
+        };
+        assert_eq!(
+            decode_frame::<EngineToApp>(&encode_frame(&reply).unwrap()).unwrap(),
+            reply
+        );
+    }
+    let ready = EngineToApp::CaptureReady {
+        session: SessionId(7),
+        cmd_seq: 8,
+        request_id: 10,
+    };
+    assert_eq!(
+        decode_frame::<EngineToApp>(&encode_frame(&ready).unwrap()).unwrap(),
+        ready
+    );
+}

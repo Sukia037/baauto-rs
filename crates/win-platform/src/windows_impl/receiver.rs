@@ -1,9 +1,22 @@
 use super::*;
 use baauto_config::{CardUiSide, HandSettings, Mode};
-use std::{mem::size_of, path::Path};
+use rtrb::{Consumer, Producer, RingBuffer};
+use std::{
+    io::Write,
+    mem::size_of,
+    path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering::SeqCst},
+    },
+    thread,
+};
 use windows::{
     Win32::{
-        Foundation::*, Graphics::Gdi::*, System::LibraryLoader::*, UI::WindowsAndMessaging::*,
+        Foundation::*,
+        Graphics::Gdi::*,
+        System::{LibraryLoader::*, Threading::*},
+        UI::WindowsAndMessaging::*,
     },
     core::{PCWSTR, Result, w},
 };
@@ -18,7 +31,10 @@ struct ReceiverState {
     clock: Clock,
     hand: HandSettings,
     mode: Mode,
-    records: Vec<Received>,
+    records: Producer<Received>,
+    received: u64,
+    recent: [Option<Received>; 20],
+    wake: Arc<Event>,
     lost: u64,
     down_count: u64,
 }
@@ -58,11 +74,12 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: L
                 wparam: wparam.0,
                 lparam: lparam.0,
             };
-            if state.records.len() < state.records.capacity() {
-                state.records.push(record);
-            } else {
-                state.lost += 1;
+            state.recent[(state.received % 20) as usize] = Some(record);
+            state.received = state.received.saturating_add(1);
+            if state.records.push(record).is_err() {
+                state.lost = state.lost.saturating_add(1);
             }
+            let _ = state.wake.set();
             // SAFETY: Invalidates only this live window; no RECT pointer is passed.
             unsafe {
                 let _ = InvalidateRect(Some(hwnd), None, false);
@@ -119,15 +136,17 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: L
                 let _ = DeleteObject(HGDIOBJ(pen.0));
                 let header = format!(
                     "BAauto Receiver | {:?} {:?} | events={} lost={} | Alt+F4 to close",
-                    state.mode,
-                    state.hand.card_ui_side,
-                    state.records.len(),
-                    state.lost
+                    state.mode, state.hand.card_ui_side, state.received, state.lost
                 )
                 .encode_utf16()
                 .collect::<Vec<_>>();
                 let _ = TextOutW(dc, 20, 20, &header);
-                for (i, r) in state.records.iter().rev().take(20).enumerate() {
+                for (i, r) in (0..state.received.min(20))
+                    .filter_map(|offset| {
+                        state.recent[((state.received - 1 - offset) % 20) as usize]
+                    })
+                    .enumerate()
+                {
                     let text = format!(
                         "{}  msg=0x{:04x} key={} data={}",
                         r.qpc, r.message, r.wparam, r.lparam
@@ -159,7 +178,11 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: L
     }
 }
 pub fn run_receiver(mode: Mode, side: CardUiSide, output: &Path) -> Result<()> {
-    let _ = set_dpi_awareness();
+    set_dpi_awareness()?;
+    let (producer, consumer) = RingBuffer::new(8192);
+    let wake = Arc::new(Event::new(false)?);
+    let mut writer = ReceiverWriter::new(output, consumer, wake.clone())
+        .map_err(|e| failure(&format!("receiver CSV: {e}")))?;
     let mut state = Box::new(ReceiverState {
         clock: Clock::new()?,
         hand: HandSettings {
@@ -167,7 +190,10 @@ pub fn run_receiver(mode: Mode, side: CardUiSide, output: &Path) -> Result<()> {
             ..Default::default()
         },
         mode,
-        records: Vec::with_capacity(1_000_000),
+        records: producer,
+        received: 0,
+        recent: [None; 20],
+        wake,
         lost: 0,
         down_count: 0,
     });
@@ -207,6 +233,7 @@ pub fn run_receiver(mode: Mode, side: CardUiSide, output: &Path) -> Result<()> {
             Some(HINSTANCE(module.0)),
             Some((&mut *state as *mut ReceiverState).cast()),
         )?;
+        let _window = ReceiverWindow(hwnd);
         let _ = SetForegroundWindow(hwnd);
         let mut msg = MSG::default();
         loop {
@@ -221,15 +248,90 @@ pub fn run_receiver(mode: Mode, side: CardUiSide, output: &Path) -> Result<()> {
             DispatchMessageW(&msg);
         }
     }
-    use std::io::Write;
-    let mut file =
-        std::fs::File::create(output).map_err(|_| failure("receiver CSV open failed"))?;
-    writeln!(file, "qpc,message,wparam,lparam")
-        .map_err(|_| failure("receiver CSV write failed"))?;
-    for r in &state.records {
-        writeln!(file, "{},{},{},{}", r.qpc, r.message, r.wparam, r.lparam)
-            .map_err(|_| failure("receiver CSV write failed"))?;
-    }
+    let count = writer
+        .finish()
+        .map_err(|e| failure(&format!("receiver CSV: {e}")))?;
+    let meta = serde_json::json!({"qpc_frequency":state.clock.rate.0,"lost_records":state.lost,"written_records":count,"complete":true});
+    std::fs::write(
+        output.with_extension("json"),
+        serde_json::to_vec_pretty(&meta).map_err(|_| failure("receiver metadata encode"))?,
+    )
+    .map_err(|_| failure("receiver metadata write"))?;
     println!("receiver lost events: {}", state.lost);
     Ok(())
+}
+struct ReceiverWindow(HWND);
+impl Drop for ReceiverWindow {
+    fn drop(&mut self) {
+        // SAFETY: The receiver state Box outlives this guard. Check ownership because WM_CLOSE may already have destroyed the HWND.
+        unsafe {
+            let mut pid = 0;
+            let tid = GetWindowThreadProcessId(self.0, Some(&mut pid));
+            if pid == GetCurrentProcessId() && tid == GetCurrentThreadId() {
+                let _ = DestroyWindow(self.0);
+            }
+        }
+    }
+}
+struct ReceiverWriter {
+    done: Arc<AtomicBool>,
+    wake: Arc<Event>,
+    join: Option<thread::JoinHandle<std::io::Result<u64>>>,
+}
+impl ReceiverWriter {
+    fn new(
+        path: &Path,
+        mut consumer: Consumer<Received>,
+        wake: Arc<Event>,
+    ) -> std::io::Result<Self> {
+        let mut file = std::io::BufWriter::new(std::fs::File::create(path)?);
+        writeln!(file, "qpc,message,wparam,lparam")?;
+        file.flush()?;
+        let done = Arc::new(AtomicBool::new(false));
+        let stop = done.clone();
+        let signal = wake.clone();
+        let join = thread::spawn(move || {
+            let mut count = 0_u64;
+            let clock = Clock::new().map_err(|e| std::io::Error::other(e.to_string()))?;
+            let mut flushed = clock.now();
+            loop {
+                while let Ok(r) = consumer.pop() {
+                    writeln!(file, "{},{},{},{}", r.qpc, r.message, r.wparam, r.lparam)?;
+                    count = count.saturating_add(1);
+                }
+                if stop.load(SeqCst) && consumer.is_empty() {
+                    break;
+                }
+                if clock.now().0.saturating_sub(flushed.0) >= clock.rate.0 {
+                    file.flush()?;
+                    flushed = clock.now();
+                }
+                // SAFETY: The shared auto-reset Event remains owned by signal; waiting occurs only on this file worker.
+                if unsafe { WaitForSingleObject(signal.raw(), 50) } == WAIT_FAILED {
+                    return Err(std::io::Error::last_os_error());
+                }
+            }
+            file.flush()?;
+            file.get_ref().sync_all()?;
+            Ok(count)
+        });
+        Ok(Self {
+            done,
+            wake,
+            join: Some(join),
+        })
+    }
+    fn finish(&mut self) -> std::io::Result<u64> {
+        self.done.store(true, SeqCst);
+        let _ = self.wake.set();
+        self.join.take().map_or(Ok(0), |j| {
+            j.join()
+                .map_err(|_| std::io::Error::other("receiver writer panic"))?
+        })
+    }
+}
+impl Drop for ReceiverWriter {
+    fn drop(&mut self) {
+        let _ = self.finish();
+    }
 }

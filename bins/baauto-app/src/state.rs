@@ -147,7 +147,7 @@ pub fn mirror_rect(r: HandRect) -> HandRect {
         ..r
     }
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum Corner {
     TopLeft,
     BottomRight,
