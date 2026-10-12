@@ -114,6 +114,8 @@ impl Child {
             OsString::from(std::process::id().to_string()),
             OsString::from("--target-exe"),
             options.target.clone(),
+            OsString::from("--error-log"),
+            options.logs.join("engine-error.txt").into_os_string(),
         ];
         if let Some(rule) = &options.injection {
             args.extend([OsString::from("--inject"), OsString::from(rule)]);
@@ -741,6 +743,16 @@ pub fn run_supervisor(
             if let Some(c) = &child {
                 if c.process.exited() {
                     wanted = false;
+                    let _ = statuses.send(SupervisorStatus {
+                        state: fsm.state(),
+                        session,
+                        detail: crate::describe_engine_exit(c.process.exit_code()),
+                        records: window.record_count(),
+                        hotkey_warning: window.hotkey_warning().map(str::to_owned),
+                        stop_hotkey_registered: window.stop_registered(),
+                        resume_generation: resume_guard.token(),
+                        wanted,
+                    });
                     let effects = fsm.on(FsmEvent::ProcessExited {
                         header_valid: c.mapping.data().header.valid(session),
                         ledger_consistent: c.mapping.data().ledger.snapshot().is_some(),

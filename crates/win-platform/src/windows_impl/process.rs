@@ -86,7 +86,18 @@ impl Process {
     }
     pub fn terminate(&self) -> Result<()> {
         // SAFETY: Owned child process handle created with terminate rights. This call only requests termination.
-        unsafe { TerminateProcess(self.handle.0, 1) }
+        unsafe { TerminateProcess(self.handle.0, crate::TERMINATED_BY_SUPERVISOR) }
+    }
+    /// Exit code once the process has exited; `None` while it is still running or unreadable.
+    pub fn exit_code(&self) -> Option<u32> {
+        if !self.exited() {
+            return None;
+        }
+        let mut code = 0;
+        // SAFETY: Live owned process handle; `code` is valid stack output storage.
+        unsafe { GetExitCodeProcess(self.handle.0, &mut code) }
+            .ok()
+            .map(|()| code)
     }
     pub fn wait_exit(&self) -> Result<ExitedProcessProof> {
         wait(&[self.handle.0], INFINITE)?;

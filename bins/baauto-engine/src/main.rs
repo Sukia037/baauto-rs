@@ -1,10 +1,30 @@
 #![forbid(unsafe_code)]
 #[cfg(windows)]
 fn main() {
+    // The managed engine has no visible console, so the supervisor names a file for errors.
+    let error_log = error_log_arg();
+    if let Some(path) = error_log.clone() {
+        let default = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            if !baauto_win_platform::on_hook_thread() {
+                baauto_win_platform::append_error_log(&path, &format!("panic: {info}"));
+            }
+            default(info);
+        }));
+    }
     if let Err(e) = run() {
         eprintln!("{e}");
+        if let Some(path) = &error_log {
+            baauto_win_platform::append_error_log(path, &format!("error: {e}"));
+        }
         std::process::exit(1);
     }
+}
+#[cfg(windows)]
+fn error_log_arg() -> Option<std::path::PathBuf> {
+    let mut args = std::env::args_os().skip_while(|a| a != "--error-log");
+    args.next()?;
+    args.next().map(Into::into)
 }
 #[cfg(not(windows))]
 fn main() {
@@ -29,6 +49,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     while let Some(a) = args.next() {
         match a.to_str() {
             Some("--standalone") => standalone = true,
+            Some("--error-log") => {
+                args.next().ok_or("missing error log path")?;
+            }
             Some("--managed") => managed = true,
             Some("--inject") => {
                 let text = args

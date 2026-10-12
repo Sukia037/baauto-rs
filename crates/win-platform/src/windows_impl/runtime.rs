@@ -38,6 +38,11 @@ const WM_PROBE: u32 = WM_APP + 2;
 #[cfg(feature = "fault-injection")]
 const WM_UNHOOK: u32 = WM_APP + 3;
 thread_local! {static HOOK_RUNTIME:Cell<*mut HookRuntime>=const{Cell::new(std::ptr::null_mut())};}
+/// True on the hook thread while its runtime is installed; panic reporting uses it to stay
+/// off the hook callback's no-file-I/O path.
+pub fn on_hook_thread() -> bool {
+    HOOK_RUNTIME.with(|slot| !slot.get().is_null())
+}
 #[derive(Clone, Copy)]
 pub struct Target {
     pub hwnd: usize,

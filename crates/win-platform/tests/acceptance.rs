@@ -301,3 +301,26 @@ fn latency_kit_files_compile_with_uncommon_stop_hotkey() {
     );
     assert!(!k.presets["record"].enabled);
 }
+
+#[test]
+fn engine_exit_description_names_the_cause() {
+    use baauto_win_platform::{TERMINATED_BY_SUPERVISOR, describe_engine_exit};
+    assert!(describe_engine_exit(Some(1)).contains("engine-error.txt"));
+    assert!(describe_engine_exit(Some(101)).contains("panic"));
+    assert!(describe_engine_exit(Some(TERMINATED_BY_SUPERVISOR)).contains("監督程式強制結束"));
+    assert!(describe_engine_exit(Some(0xC000_0005)).contains("0xC0000005"));
+    assert!(describe_engine_exit(Some(7)).contains("防毒"));
+    assert!(describe_engine_exit(None).contains("讀不到"));
+}
+
+#[test]
+fn error_log_appends_lines() {
+    let dir = std::env::temp_dir().join(format!("baauto-errlog-{}", std::process::id()));
+    let path = dir.join("logs").join("engine-error.txt");
+    baauto_win_platform::append_error_log(&path, "first");
+    baauto_win_platform::append_error_log(&path, "second");
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(text.lines().count(), 2);
+    assert!(text.lines().last().unwrap().ends_with("second"));
+    let _ = std::fs::remove_dir_all(dir);
+}
