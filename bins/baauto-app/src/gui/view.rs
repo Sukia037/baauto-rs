@@ -49,15 +49,15 @@ pub(super) struct TimingMeta {
 }
 pub(super) const TIMING: [TimingMeta; 12] = [
     TimingMeta {
-        name: "快卡偵 Esc 間隔",
+        name: "快卡幀 Esc 間隔",
         json: "frame_fast.esc_gap_ms",
-        purpose: "卡偵暫停（快）兩次 Esc 之間的間隔。第二個 Esc 一定會送。",
+        purpose: "卡幀暫停（快）兩次 Esc 之間的間隔。第二個 Esc 一定會送。",
         rule: "",
     },
     TimingMeta {
-        name: "慢卡偵 Esc 間隔",
+        name: "慢卡幀 Esc 間隔",
         json: "frame_slow.esc_gap_ms",
-        purpose: "卡偵暫停（慢）兩次 Esc 之間的間隔。第二個 Esc 一定會送。",
+        purpose: "卡幀暫停（慢）兩次 Esc 之間的間隔。第二個 Esc 一定會送。",
         rule: "",
     },
     TimingMeta {
@@ -81,19 +81,19 @@ pub(super) const TIMING: [TimingMeta; 12] = [
     TimingMeta {
         name: "開牌：Esc 到數字鍵",
         json: "card.esc_to_key_ms",
-        purpose: "卡偵開牌：解除暫停的 Esc 之後，多久送數字鍵。",
+        purpose: "卡幀開牌：解除暫停的 Esc 之後，多久送數字鍵。",
         rule: "",
     },
     TimingMeta {
         name: "開牌：數字鍵到點擊",
         json: "card.key_to_click_ms",
-        purpose: "卡偵開牌：送出數字鍵之後，多久在游標位置點左鍵。",
+        purpose: "卡幀開牌：送出數字鍵之後，多久在游標位置點左鍵。",
         rule: "",
     },
     TimingMeta {
         name: "開牌：點擊到 Esc",
         json: "card.click_to_esc_ms",
-        purpose: "卡偵開牌：點完左鍵之後，多久送回到暫停的 Esc。",
+        purpose: "卡幀開牌：點完左鍵之後，多久送回到暫停的 Esc。",
         rule: "",
     },
     TimingMeta {
@@ -144,13 +144,13 @@ pub(super) const TIME_ROWS: [TimeRow; 11] = [
         release: "無",
     },
     TimeRow {
-        name: "卡偵暫停（快）",
+        name: "卡幀暫停（快）",
         roles: &["frame_fast"],
         press: &[T("Esc →"), G(0), T("→ Esc")],
         release: "無",
     },
     TimeRow {
-        name: "卡偵暫停（慢）",
+        name: "卡幀暫停（慢）",
         roles: &["frame_slow"],
         press: &[T("Esc →"), G(1), T("→ Esc")],
         release: "無",
@@ -176,7 +176,7 @@ pub(super) const TIME_ROWS: [TimeRow; 11] = [
         release: "停止",
     },
     TimeRow {
-        name: "卡偵開牌 1–5",
+        name: "卡幀開牌 1–5",
         roles: &["card_1", "card_2", "card_3", "card_4", "card_5"],
         press: &[
             T("Esc →"),
