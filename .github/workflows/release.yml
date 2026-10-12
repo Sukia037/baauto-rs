@@ -16,20 +16,31 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          $name = "BAauto-${{ github.ref_name }}-windows-x64"
-          New-Item -ItemType Directory $name | Out-Null
-          Copy-Item target/release/baauto-app.exe, target/release/baauto-engine.exe, README.md $name
-          Compress-Archive -Path $name -DestinationPath "$name.zip"
-          $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()
-          # LF only, so `sha256sum -c` / `shasum -c` also work outside Windows.
-          [IO.File]::WriteAllText("$PWD/$name.zip.sha256", "$hash  $name.zip`n")
+          $tag = "${{ github.ref_name }}"
+          $r = "target/release"
+          # Players only see baauto-app.exe; the engine lives in engine/.
+          $app = "BAauto-$tag-windows-x64"
+          New-Item -ItemType Directory "$app/engine" | Out-Null
+          Copy-Item "$r/baauto-app.exe", README.md $app
+          Copy-Item "$r/baauto-engine.exe" "$app/engine"
+          # Latency test kit: double-click START.bat, send back result-N.zip.
+          $kit = "BAauto-latency-test-$tag-windows-x64"
+          New-Item -ItemType Directory "$kit/files" | Out-Null
+          Copy-Item tools/latency-kit/START.bat $kit
+          Copy-Item "$r/baauto-bench.exe", "$r/baauto-receiver.exe", "$r/baauto-engine.exe", tools/latency-kit/test-points.json, tools/latency-kit/test-keys.json "$kit/files"
+          foreach ($name in $app, $kit) {
+            Compress-Archive -Path $name -DestinationPath "$name.zip"
+            $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()
+            # LF only, so `sha256sum -c` / `shasum -c` also work outside Windows.
+            [IO.File]::WriteAllText("$PWD/$name.zip.sha256", "$hash  $name.zip`n")
+          }
       - name: Publish
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ github.ref_name }}"
-          $name = "BAauto-$tag-windows-x64"
+          $files = foreach ($name in "BAauto-$tag-windows-x64", "BAauto-latency-test-$tag-windows-x64") { "$name.zip"; "$name.zip.sha256" }
           $flags = @("--title", "BAauto $tag", "--notes-file", "docs/release-notes/$tag.md")
           if ($tag.Contains("-")) { $flags += "--prerelease" }
-          gh release create $tag "$name.zip" "$name.zip.sha256" @flags
+          gh release create $tag @files @flags

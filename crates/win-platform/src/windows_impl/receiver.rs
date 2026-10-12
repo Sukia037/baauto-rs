@@ -1,5 +1,5 @@
 use super::*;
-use baauto_config::{CardUiSide, HandSettings, Mode};
+use baauto_config::{CardUiSide, HandSettings, Mode, Ticks};
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::{
     io::Write,
@@ -41,7 +41,10 @@ struct ReceiverState {
     wake: Arc<Event>,
     lost: u64,
     down_count: u64,
+    /// Guided latency test: shows instructions and a countdown, then closes itself.
+    guide_until: Option<Ticks>,
 }
+const GUIDE_TIMER: usize = 1;
 unsafe extern "system" fn window(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     let answer = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if msg == WM_NCCREATE {
@@ -103,11 +106,13 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: L
                 let dc = BeginPaint(hwnd, &mut paint);
                 let mut client = RECT::default();
                 let _ = GetClientRect(hwnd, &mut client);
-                let background = CreateSolidBrush(if state.down_count % 2 == 0 {
-                    COLORREF(0x00eeeeee)
-                } else {
-                    COLORREF(0x00aa5533)
-                });
+                let background = CreateSolidBrush(
+                    if state.guide_until.is_some() || state.down_count % 2 == 0 {
+                        COLORREF(0x00eeeeee)
+                    } else {
+                        COLORREF(0x00aa5533)
+                    },
+                );
                 let _ = FillRect(dc, &client, background);
                 let _ = DeleteObject(HGDIOBJ(background.0));
                 SetBkMode(dc, TRANSPARENT);
@@ -147,6 +152,43 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: L
                 .encode_utf16()
                 .collect::<Vec<_>>();
                 let _ = TextOutW(dc, 20, 20, &header);
+                if let Some(until) = state.guide_until {
+                    let rate = state.clock.rate.0.max(1);
+                    let left = until.0.saturating_sub(state.clock.now().0).div_ceil(rate);
+                    let lines = [
+                        "延遲測試進行中".to_owned(),
+                        "請反覆按 W，並不時按住 2 一兩秒再放開".to_owned(),
+                        "滑鼠不用動，也不要切換到其他視窗".to_owned(),
+                        format!("剩下 {left} 秒，時間到會自動關閉"),
+                    ];
+                    let size = (client.bottom / 18).max(16);
+                    let font = CreateFontW(
+                        -size,
+                        0,
+                        0,
+                        0,
+                        FW_BOLD.0 as i32,
+                        0,
+                        0,
+                        0,
+                        DEFAULT_CHARSET,
+                        OUT_DEFAULT_PRECIS,
+                        CLIP_DEFAULT_PRECIS,
+                        CLEARTYPE_QUALITY,
+                        0,
+                        w!("Microsoft JhengHei"),
+                    );
+                    let old_font = SelectObject(dc, HGDIOBJ(font.0));
+                    let old_align = SetTextAlign(dc, TA_CENTER);
+                    for (i, line) in lines.iter().enumerate() {
+                        let text = line.encode_utf16().collect::<Vec<_>>();
+                        let y = client.bottom / 6 + i as i32 * size * 3 / 2;
+                        let _ = TextOutW(dc, client.right / 2, y, &text);
+                    }
+                    SetTextAlign(dc, TEXT_ALIGN_OPTIONS(old_align));
+                    SelectObject(dc, old_font);
+                    let _ = DeleteObject(HGDIOBJ(font.0));
+                }
                 for (i, r) in (0..state.received.min(20))
                     .filter_map(|offset| {
                         state.recent[((state.received - 1 - offset) % 20) as usize]
@@ -162,6 +204,20 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: L
                     let _ = TextOutW(dc, 20, 60 + i as i32 * 22, &text);
                 }
                 let _ = EndPaint(hwnd, &paint);
+            }
+            return Some(LRESULT(0));
+        }
+        if msg == WM_TIMER && wparam.0 == GUIDE_TIMER {
+            if let Some(until) = state.guide_until {
+                // SAFETY: Both calls target this thread's live receiver window.
+                unsafe {
+                    if state.clock.now() >= until {
+                        let _ = KillTimer(Some(hwnd), GUIDE_TIMER);
+                        let _ = DestroyWindow(hwnd);
+                    } else {
+                        let _ = InvalidateRect(Some(hwnd), None, false);
+                    }
+                }
             }
             return Some(LRESULT(0));
         }
@@ -183,7 +239,12 @@ unsafe extern "system" fn window(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: L
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
     }
 }
-pub fn run_receiver(mode: Mode, side: CardUiSide, output: &Path) -> Result<()> {
+pub fn run_receiver(
+    mode: Mode,
+    side: CardUiSide,
+    output: &Path,
+    guide_secs: Option<u64>,
+) -> Result<()> {
     set_dpi_awareness()?;
     let (producer, consumer) = RingBuffer::new(8192);
     let wake = Arc::new(Event::new(false)?);
@@ -202,7 +263,16 @@ pub fn run_receiver(mode: Mode, side: CardUiSide, output: &Path) -> Result<()> {
         wake,
         lost: 0,
         down_count: 0,
+        guide_until: None,
     });
+    if let Some(secs) = guide_secs {
+        state.guide_until = Some(
+            state
+                .clock
+                .now()
+                .after(secs.saturating_mul(state.clock.rate.0)),
+        );
+    }
     // SAFETY: Class and callbacks are static; Box lives until all windows have been destroyed and GetMessage returns.
     unsafe {
         let module = GetModuleHandleW(PCWSTR::null())?;
@@ -245,6 +315,9 @@ pub fn run_receiver(mode: Mode, side: CardUiSide, output: &Path) -> Result<()> {
         // The receiver records virtual keys, rather than composing text.
         let _ = ImmAssociateContext(hwnd, HIMC::default());
         let _ = SetForegroundWindow(hwnd);
+        if state.guide_until.is_some() {
+            SetTimer(Some(hwnd), GUIDE_TIMER, 250, None);
+        }
         let mut msg = MSG::default();
         loop {
             let status = GetMessageW(&mut msg, None, 0, 0).0;

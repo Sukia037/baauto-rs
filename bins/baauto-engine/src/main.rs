@@ -22,12 +22,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut max = None;
     let mut dump = None;
     let mut managed = false;
+    let mut standalone = false;
     let mut shm = None;
     let mut pipe = None;
     let mut parent = None;
     while let Some(a) = args.next() {
         match a.to_str() {
-            Some("--standalone") => {}
+            Some("--standalone") => standalone = true,
             Some("--managed") => managed = true,
             Some("--inject") => {
                 let text = args
@@ -101,6 +102,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
             _ => return Err("unknown engine argument".into()),
         }
+    }
+    if !managed && !standalone {
+        // Players who double-click the engine get a pointer to the app instead of an
+        // unsupervised session without the emergency-stop hotkey.
+        println!("這是 BAauto 的引擎，不用直接開。");
+        println!("請改開 BAauto 資料夾裡的 baauto-app.exe。");
+        println!();
+        println!("按 Enter 關閉。");
+        let _ = std::io::stdin().read_line(&mut String::new());
+        return Ok(());
     }
     if managed {
         return baauto_win_platform::run_managed(

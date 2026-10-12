@@ -4,7 +4,7 @@ Blue Archive（蔚藍檔案）PC 版的按鍵輔助工具。按一個鍵就能�
 
 ![BAauto 介面](docs/screenshots/windows-20261011-current-dpi/light-points-card-100pct.png)
 
-> **目前狀態**：預覽版 `v0.1.0-preview.2`。功能都做好了，自動測試全部通過，慢卡幀和其他預設功能已在 Windows 接收器實測。牌鍵剛改成按住循環，還沒在 Windows 實機重測，也還沒在真實遊戲裡長時間使用過。遇到問題請回報，說明見文末。
+> **目前狀態**：預覽版 `v0.1.0-preview.3`。功能都做好了，自動測試全部通過，慢卡幀和其他預設功能已在 Windows 接收器實測。牌鍵剛改成按住循環，還沒在 Windows 實機重測，也還沒在真實遊戲裡長時間使用過。遇到問題請回報，說明見文末。
 
 ## 需要什麼
 
@@ -14,10 +14,10 @@ Blue Archive（蔚藍檔案）PC 版的按鍵輔助工具。按一個鍵就能�
 ## 安裝
 
 1. 到 [Releases 頁面](https://github.com/Sukia037/baauto-rs/releases) 下載最新的 `BAauto-<版本>-windows-x64.zip`。
-2. 解壓縮到你想放的資料夾，裡面有 `baauto-app.exe`、`baauto-engine.exe` 和這份說明。
+2. 解壓縮到你想放的資料夾，裡面有 `baauto-app.exe`、`engine` 資料夾和這份說明。
 3. 執行 `baauto-app.exe`。
 
-兩個 exe 一定要放在同一個資料夾，更新時也要一起換，不能只換其中一個。設定檔會存在同一個資料夾裡，所以更新時只要覆蓋這兩個 exe，原本的設定都會保留。
+只要開 `baauto-app.exe`。`engine` 資料夾裡是引擎，主程式會自己叫它，不用去開，也不要移走或刪掉。設定檔會存在 `baauto-app.exe` 旁邊，所以更新時把新版的 `baauto-app.exe` 和 `engine` 資料夾一起覆蓋過去，原本的設定都會保留。
 
 執行檔沒有數位簽章，第一次開啟時 Windows 可能跳出「Windows 已保護您的電腦」。確認檔案是從上面的 Releases 頁面下載的，就按「其他資訊」→「仍要執行」。想核對檔案沒被動過，可以比對同一頁的 `.sha256` 檔：
 
@@ -34,7 +34,7 @@ Get-FileHash .\BAauto-<版本>-windows-x64.zip -Algorithm SHA256
    cargo build --release --workspace
    ```
    第一次要幾分鐘。
-3. 到 `target\release\`，把 `baauto-app.exe` 和 `baauto-engine.exe` 一起複製到你想放的資料夾。
+3. 到 `target\release\`，把 `baauto-app.exe` 複製到你想放的資料夾，再在旁邊建一個 `engine` 資料夾，把 `baauto-engine.exe` 放進去。兩個 exe 直接放在一起也可以用。
 
 </details>
 
@@ -139,6 +139,17 @@ BAauto 只在遊戲是前景視窗時才會動作。切到別的視窗會自動�
 ## 回報問題
 
 截圖，加一句「做了什麼、看到什麼」就好。需要更多資訊的時候，再附上程式資料夾裡的 `logs` 資料夾。
+
+## 幫忙測延遲
+
+Releases 頁面上另外有一個 `BAauto-latency-test-<版本>-windows-x64.zip`，是量 BAauto 反應速度用的測試包，不需要開遊戲，大約 2 分鐘：
+
+1. 解壓縮，雙擊裡面的 `START.bat`。
+2. 看完說明按 Enter，畫面會變成全螢幕的測試視窗。
+3. 照畫面上的說明，反覆按 `W`、不時按住 `2` 再放開，大約 90 秒。時間到視窗會自己關掉。
+4. 資料夾裡會多出一個 `result-1.zip`，把它傳回來就好。
+
+測試只在那個測試視窗裡有作用，不會碰到其他程式。
 
 ## 底層架構
 

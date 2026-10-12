@@ -45,7 +45,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut keys = store.settings.current_keys.clone();
     let mut hand_path = None;
     let mut target = OsString::from("BlueArchive.exe");
-    let mut engine = std::env::current_exe()?.with_file_name("baauto-engine.exe");
+    let mut engine = baauto_win_platform::engine_path()?;
     let mut health = 1000;
     let mut recovery = 1000;
     let mut injection = None;

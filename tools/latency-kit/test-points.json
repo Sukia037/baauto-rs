@@ -1,0 +1,15 @@
+{
+  "schema": "baauto-rs-points-v1",
+  "name": "延遲測試",
+  "mode": "six",
+  "items": [
+    {
+      "id": 1,
+      "name": "中央",
+      "hotkey": "z",
+      "function": "point",
+      "x": 0.5,
+      "y": 0.389
+    }
+  ]
+}

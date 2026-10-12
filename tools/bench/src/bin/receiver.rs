@@ -17,6 +17,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut mode = Mode::Six;
     let mut side = CardUiSide::Right;
     let mut output = PathBuf::from("receiver.csv");
+    let mut guide = None;
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_str() {
@@ -35,9 +36,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             Some("--output") => output = args.next().ok_or("missing CSV path")?.into(),
+            Some("--guide") => {
+                guide = Some(
+                    args.next()
+                        .and_then(|v| v.into_string().ok())
+                        .ok_or("--guide expects seconds")?
+                        .parse()?,
+                )
+            }
             _ => return Err("unknown receiver argument".into()),
         }
     }
-    baauto_win_platform::run_receiver(mode, side, &output)?;
+    baauto_win_platform::run_receiver(mode, side, &output, guide)?;
     Ok(())
 }

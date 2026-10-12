@@ -336,9 +336,7 @@ impl Backend {
                 };
                 let options = SupervisorOptions {
                     cfg: std::sync::Arc::new(cfg),
-                    engine: std::env::current_exe()
-                        .unwrap_or_default()
-                        .with_file_name("baauto-engine.exe"),
+                    engine: baauto_win_platform::engine_path().unwrap_or_default(),
                     target: target.clone(),
                     stop_hotkey: initial.keys.presets["global_stop"].hotkey.unwrap(),
                     record_hotkey: initial.keys.presets["record"]

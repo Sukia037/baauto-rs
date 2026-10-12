@@ -40,8 +40,10 @@ impl ManagedBench {
             .send(SupervisorCommand::Enable)
             .map_err(|e| e.to_string())?;
         let mut armed = false;
+        let mut warning = None;
         for _ in 0..300 {
             if let Ok(s) = managed.status.recv_timeout(Duration::from_millis(100)) {
+                warning = s.hotkey_warning.or(warning);
                 if matches!(s.state, baauto_protocol::supervisor::State::Armed(_)) {
                     armed = true;
                     break;
@@ -52,6 +54,9 @@ impl ManagedBench {
             }
         }
         if !armed {
+            if let Some(warning) = warning {
+                return Err(format!("Arm timed out: {warning}"));
+            }
             return Err("game/receiver must be foreground; Arm timed out".into());
         }
         Ok(managed)

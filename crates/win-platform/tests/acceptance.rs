@@ -286,3 +286,18 @@ fn exact_modifier_chord_cancels_on_extra_modifier_down() {
     );
     assert!(s.decide(raw(90, false)).swallow);
 }
+
+#[test]
+fn latency_kit_files_compile_with_uncommon_stop_hotkey() {
+    let k: KeysProfile =
+        from_json(include_str!("../../../tools/latency-kit/test-keys.json")).unwrap();
+    let p: PointSet =
+        from_json(include_str!("../../../tools/latency-kit/test-points.json")).unwrap();
+    let c = compile(&p, &k, &HandSettings::default(), TickRate(10_000_000)).unwrap();
+    assert_eq!(c.slots, Mode::Six.slots());
+    assert_ne!(
+        k.presets["global_stop"].hotkey,
+        Some("Ctrl+F9".parse().unwrap())
+    );
+    assert!(!k.presets["record"].enabled);
+}
