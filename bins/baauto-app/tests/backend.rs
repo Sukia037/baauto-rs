@@ -90,7 +90,7 @@ fn worker_saves_each_json_without_combining_machine_settings_or_losing_retry_fin
     let mut p = initial.points.clone();
     p.mode = Mode::Ten;
     let mut k = initial.keys.clone();
-    k.timing.key_hold_ms += 1.;
+    k.timing.spam.click_to_next_ms += 1.;
     b.jobs
         .send(Job::Save {
             points: Some(p.clone()),

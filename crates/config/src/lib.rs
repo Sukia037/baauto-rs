@@ -1,9 +1,11 @@
 #![forbid(unsafe_code)]
 mod compile;
 mod key;
+mod migrate;
 mod model;
 pub use compile::*;
 pub use key::*;
+pub use migrate::*;
 pub use model::*;
 
 pub fn from_json<T: serde::de::DeserializeOwned>(text: &str) -> Result<T, ConfigError> {

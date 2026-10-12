@@ -43,7 +43,7 @@ impl Plan {
             mode: Mode::Six,
             side: CardUiSide::Right,
             action: ActionSpec::DoubleEsc { slow: false },
-            parameter: "escape_gap".into(),
+            parameter: "frame_fast.esc_gap_ms".into(),
             coarse_ms: vec![10., 20., 30., 40., 50., 60.],
             fine_step_ms: 1.,
             attempts: 1000,
@@ -91,15 +91,7 @@ impl Plan {
             || !self.trial_duration_ms.is_finite()
             || self.trial_duration_ms <= 0.
             || self.resolution.contains(&0)
-            || !matches!(
-                self.parameter.as_str(),
-                "key_hold"
-                    | "mouse_hold"
-                    | "key_to_click"
-                    | "repeat_period"
-                    | "escape_gap"
-                    | "card_pre_esc"
-            )
+            || template_keys().timing.gap_mut(&self.parameter).is_none()
         {
             return Err("invalid calibration plan".into());
         }
@@ -484,18 +476,7 @@ pub fn trial_timing(
 ) -> Result<TickTiming, Error> {
     let value = ticks_ms(value_ms, rate).map_err(|e| e.to_string())?;
     let mut t = base;
-    match param {
-        "key_hold" => t.key_hold = value,
-        "mouse_hold" => t.mouse_hold = value,
-        "key_to_click" => t.key_to_click = value,
-        "repeat_period" => t.repeat_period = value,
-        "escape_gap" => {
-            t.esc_gap_fast = value;
-            t.esc_gap_slow = value;
-        }
-        "card_pre_esc" => t.card_pre_esc = value,
-        _ => return Err("unknown timing parameter".into()),
-    }
+    *t.gap_mut(param).ok_or("unknown timing parameter")? = value;
     Ok(t)
 }
 pub fn choose_with_margin(
@@ -525,21 +506,11 @@ pub fn calibrated_profile(
     if !evidence.verified(plan)? {
         return Err("calibration gates incomplete; profile remains unverified".into());
     }
+    // Only the calibrated gap is written back; every other set stays as it was.
     let mut profile = old.clone();
-    match plan.parameter.as_str() {
-        "key_hold" => profile.key_hold_ms = evidence.selected_ms,
-        "mouse_hold" => profile.mouse_hold_ms = evidence.selected_ms,
-        "key_to_click" => profile.key_to_click_ms = evidence.selected_ms,
-        "repeat_period" => profile.repeat_period_ms = evidence.selected_ms,
-        "escape_gap" => {
-            profile.escape_gap_ms = [
-                evidence.selected_ms,
-                evidence.selected_ms + evidence.margin_ms,
-            ]
-        }
-        "card_pre_esc" => profile.card_pre_esc_ms = evidence.selected_ms,
-        _ => return Err("unknown parameter".into()),
-    }
+    *profile
+        .gap_mut(&plan.parameter)
+        .ok_or("unknown parameter")? = evidence.selected_ms;
     profile.identity = evidence.identity.clone();
     profile.identity.fps = format!("{:.3} (PresentMon median)", evidence.measured_fps.unwrap());
     profile.identity.conditions = format!(

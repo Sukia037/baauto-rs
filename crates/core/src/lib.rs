@@ -1,10 +1,7 @@
 #![forbid(unsafe_code)]
 pub mod sim;
 use arrayvec::ArrayVec;
-use baauto_config::{
-    ActionSpec, AutoRepeatPolicy, CompiledConfig, NO_TRIGGER, TickTiming, TrailingEscPolicy,
-    slot_at,
-};
+use baauto_config::{ActionSpec, CompiledConfig, NO_TRIGGER, TickTiming, slot_at};
 pub use baauto_config::{ConfigVersion, Key, NormPoint, TickRate, Ticks};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -161,22 +158,26 @@ impl HeldSet {
         })
     }
 }
+/// The step an action sends when it is next due. Every key step is Down+Up in one batch.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {
+    /// Tap key, first Esc (double Esc / card open) or hold point move+down.
     Start,
-    TapUp,
-    EscUp,
+    /// Double Esc: second Esc.
     Gap,
-    SecondUp,
+    /// Card open: number key, click at the cursor, closing Esc.
+    CardKey,
+    CardClick,
+    CardEsc,
+    /// Repeat / card key cycle start: acquire the mouse, then key (or click).
     WaitCycle,
-    RepeatKeyUp,
-    ClickDown,
-    ClickUp,
+    /// Skill spam: click after the number key.
+    Click,
     Maintain,
     Clean,
-    TrailingDown,
-    TrailingUp,
-    /// Card key: move the cursor back to the user after the target click.
+    /// Card key: move+down and move+up on the target, then back to the user.
+    TargetDown,
+    TargetUp,
     Return,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -203,24 +204,14 @@ struct Action {
     due: Ticks,
     key: Option<Key>,
     mouse: bool,
-    key_reserved: bool,
-    cycle_start: Ticks,
     card_started: bool,
-    trailing: bool,
     /// Card key moved the cursor to its target and has not returned it yet.
     displaced: bool,
-    return_due: Option<Ticks>,
     off_hand: bool,
-}
-impl Action {
-    fn next_due(&self) -> Ticks {
-        self.return_due.map_or(self.due, |r| r.min(self.due))
-    }
 }
 #[derive(Clone, Copy)]
 struct PressBinding {
     press: PressId,
-    trigger: u16,
 }
 struct Pending {
     batch: Batch,
@@ -306,14 +297,7 @@ impl Engine {
             || duration == 0
             || start.0.checked_add(duration).is_none()
             || !cursor.valid()
-            || timing.repeat_period == 0
-            || timing.maintain == 0
-            || matches!(spec, ActionSpec::Repeat { .. } | ActionSpec::Card(_))
-                && timing.repeat_period
-                    < timing
-                        .key_hold
-                        .saturating_add(timing.key_to_click)
-                        .saturating_add(timing.mouse_hold)
+            || !timing.loops_valid()
             || matches!(spec,ActionSpec::HoldPoint(p) | ActionSpec::CardKey(p) if !p.valid())
             || matches!(spec,ActionSpec::Tap(k)|ActionSpec::Card(k)|ActionSpec::Repeat{key:Some(k)} if k.0==0||k.is_mouse())
         {
@@ -439,23 +423,11 @@ impl Engine {
                     self.request_stop(StopReason::Overflow, now);
                     return;
                 };
-                self.bindings[i] = Some(PressBinding { press, trigger });
+                self.bindings[i] = Some(PressBinding { press });
                 self.start(press, trigger, now);
             }
-            InputKind::TriggerRepeat { press, .. } => {
-                if let Some(binding) = self
-                    .bindings
-                    .iter()
-                    .flatten()
-                    .find(|b| b.press == press)
-                    .copied()
-                    && let Some(spec) = self.cfg.actions.get(binding.trigger as usize)
-                    && self.cfg.timing.auto_repeat == AutoRepeatPolicy::FollowTypematic
-                    && matches!(spec, ActionSpec::Tap(_))
-                {
-                    self.start(press, binding.trigger, now);
-                }
-            }
+            // OS auto-repeat never retriggers anything (spec §4, 2026-10-12).
+            InputKind::TriggerRepeat { .. } => {}
             InputKind::TriggerUp { press } => self.cancel(press, now, false),
             InputKind::PressCancelled { press } => self.cancel(press, now, true),
             InputKind::Focus { focused: false } => self.request_stop(StopReason::FocusLost, now),
@@ -474,12 +446,6 @@ impl Engine {
             }
             InputKind::Focus { focused: true } => {}
         }
-    }
-    fn key_busy(&self, key: Key, except: Option<ActionId>) -> bool {
-        self.slots
-            .iter()
-            .flatten()
-            .any(|a| Some(a.id) != except && a.key_reserved && a.key == Some(key))
     }
     fn start(&mut self, press: PressId, trigger: u16, now: Ticks) {
         if trigger == NO_TRIGGER {
@@ -500,12 +466,10 @@ impl Engine {
         };
         let needs_esc = matches!(spec, ActionSpec::Card(_) | ActionSpec::DoubleEsc { .. })
             || key == Some(Key::ESC);
-        let reserve_key = matches!(spec, ActionSpec::Tap(_) | ActionSpec::DoubleEsc { .. });
-        if (needs_esc && self.esc.is_some())
-            || (reserve_key && key.is_some_and(|k| self.key_busy(k, None)))
-            || (matches!(spec, ActionSpec::HoldPoint(_) | ActionSpec::Card(_))
-                && self.mouse.is_some())
-        {
+        // Hold points and card opens own the mouse from the start; repeats and card keys
+        // take it at each cycle.
+        let mouse = matches!(spec, ActionSpec::HoldPoint(_) | ActionSpec::Card(_));
+        if (needs_esc && self.esc.is_some()) || (mouse && self.mouse.is_some()) {
             self.report(Report::ResourceBusy);
             return None;
         }
@@ -525,7 +489,6 @@ impl Engine {
         if needs_esc {
             self.esc = Some(id);
         }
-        let mouse = matches!(spec, ActionSpec::HoldPoint(_));
         if mouse {
             self.mouse = Some(id);
         }
@@ -544,44 +507,51 @@ impl Engine {
             due: now,
             key,
             mouse,
-            key_reserved: reserve_key,
-            cycle_start: now,
             card_started: false,
-            trailing: false,
             displaced: false,
-            return_due: None,
             off_hand: false,
         });
         self.state = EngineState::Running(self.session);
         Some(id)
     }
+    /// Releasing a hotkey stops repeats, card keys and hold points; one-shot actions
+    /// (tap, double Esc, card open) run to completion unless the press is cancelled.
     fn cancel(&mut self, press: PressId, now: Ticks, forced: bool) {
         for b in &mut self.bindings {
             if b.is_some_and(|b| b.press == press) {
                 *b = None;
             }
         }
+        let mut confirm = false;
         for a in self.slots.iter_mut().flatten() {
             if a.press == press
-                && (forced || !matches!(a.spec, ActionSpec::Tap(_) | ActionSpec::DoubleEsc { .. }))
+                && (forced
+                    || matches!(
+                        a.spec,
+                        ActionSpec::Repeat { .. }
+                            | ActionSpec::CardKey(_)
+                            | ActionSpec::HoldPoint(_)
+                    ))
             {
-                a.trailing = !forced
-                    && matches!(a.spec, ActionSpec::Card(_))
-                    && a.timing.trailing == TrailingEscPolicy::IfStarted;
+                confirm |= matches!(a.spec, ActionSpec::Card(_)) && a.card_started;
                 a.phase = Phase::Clean;
                 a.due = now;
             }
+        }
+        if confirm {
+            self.report(Report::ConfirmPause);
         }
     }
     pub fn request_stop(&mut self, reason: StopReason, now: Ticks) {
         if !self.running() {
             return;
         }
+        // A card open cut short leaves the game's pause state unknown; never send the rest.
         if self
             .slots
             .iter()
             .flatten()
-            .any(|a| matches!(a.spec, ActionSpec::Card(_)))
+            .any(|a| matches!(a.spec, ActionSpec::Card(_)) && a.card_started)
         {
             self.report(Report::ConfirmPause);
         }
@@ -589,7 +559,6 @@ impl Engine {
         for a in self.slots.iter_mut().flatten() {
             a.phase = Phase::Clean;
             a.due = now;
-            a.trailing = false;
         }
     }
     fn finish(&mut self, i: usize) {
@@ -668,11 +637,11 @@ impl Engine {
                 .slots
                 .iter()
                 .enumerate()
-                .filter(|(i, a)| !inspected[*i] && a.is_some_and(|a| a.next_due() <= now))
+                .filter(|(i, a)| !inspected[*i] && a.is_some_and(|a| a.due <= now))
                 .min_by_key(|(i, a)| {
                     let a = a.unwrap();
                     (
-                        a.next_due(),
+                        a.due,
                         if a.phase == Phase::WaitCycle {
                             (*i + self.slots.len() - self.fair_slot) % self.slots.len()
                         } else {
@@ -683,119 +652,106 @@ impl Engine {
                 .map(|(i, _)| i)?;
             inspected[i] = true;
             let mut a = self.slots[i].unwrap();
-            let mut events = ArrayVec::new();
-            if let Some(due) = a.return_due.filter(|r| *r <= now && *r <= a.due) {
-                a.return_due = None;
-                a.displaced = false;
-                self.slots[i] = Some(a);
-                // Without a known user position the cursor simply stays on the target.
-                let Some(user) = self.user_cursor.filter(|c| c.valid()) else {
-                    continue;
-                };
-                events.push(OutEvent::MoveTo(user));
-                return self.batch(Some(a.id), Phase::Return as u32, due, events);
-            }
-            if a.phase == Phase::WaitCycle {
-                if matches!(a.spec, ActionSpec::CardKey(_)) {
-                    let slot = self
-                        .user_cursor
-                        .and_then(|c| slot_at(&self.cfg.hand, self.cfg.slots, self.cfg.order, c));
-                    let Some(slot) = slot else {
-                        if !a.off_hand {
-                            self.report(Report::OutsideHand);
-                        }
-                        a.off_hand = true;
-                        a.due = now.after(a.timing.repeat_period);
+            let mut events: ArrayVec<OutEvent, 257> = ArrayVec::new();
+            let tap = |events: &mut ArrayVec<OutEvent, 257>, k: Key| {
+                events.push(OutEvent::KeyDown(k));
+                events.push(OutEvent::KeyUp(k));
+            };
+            let click = |events: &mut ArrayVec<OutEvent, 257>| {
+                events.push(OutEvent::LeftDown);
+                events.push(OutEvent::LeftUp);
+            };
+            let user = self.user_cursor.filter(|c| c.valid());
+            let t = a.timing;
+            match a.phase {
+                Phase::WaitCycle => {
+                    if matches!(a.spec, ActionSpec::CardKey(_)) {
+                        let slot = self.user_cursor.and_then(|c| {
+                            slot_at(&self.cfg.hand, self.cfg.slots, self.cfg.order, c)
+                        });
+                        let Some(slot) = slot else {
+                            if !a.off_hand {
+                                self.report(Report::OutsideHand);
+                            }
+                            a.off_hand = true;
+                            a.due = now.after(off_hand_recheck(&t));
+                            self.slots[i] = Some(a);
+                            continue;
+                        };
+                        a.off_hand = false;
+                        a.key = Some(self.cfg.slot_keys[slot as usize]);
+                    }
+                    if self.mouse.is_some_and(|m| m != a.id) {
+                        self.slots[i] = Some(a);
+                        continue;
+                    }
+                    self.mouse = Some(a.id);
+                    a.mouse = true;
+                    self.fair_slot = (i + 1) % self.slots.len();
+                    match a.key {
+                        Some(k) => tap(&mut events, k),
+                        None => click(&mut events),
+                    }
+                }
+                Phase::Start => match a.spec {
+                    ActionSpec::Tap(k) => tap(&mut events, k),
+                    ActionSpec::Card(_) | ActionSpec::DoubleEsc { .. } => {
+                        tap(&mut events, Key::ESC)
+                    }
+                    ActionSpec::HoldPoint(p) => {
+                        events.push(OutEvent::MoveTo(p));
+                        events.push(OutEvent::LeftDown);
+                    }
+                    ActionSpec::Repeat { .. } | ActionSpec::CardKey(_) => unreachable!(),
+                },
+                Phase::Gap | Phase::CardEsc => tap(&mut events, Key::ESC),
+                Phase::CardKey => tap(&mut events, a.key.unwrap()),
+                Phase::CardClick | Phase::Click => click(&mut events),
+                Phase::Maintain => {
+                    if let ActionSpec::HoldPoint(p) = a.spec {
+                        events.push(OutEvent::MoveTo(p));
+                    }
+                }
+                Phase::TargetDown => {
+                    if let ActionSpec::CardKey(target) = a.spec {
+                        a.displaced = true;
+                        events.push(OutEvent::MoveTo(target));
+                    }
+                    events.push(OutEvent::LeftDown);
+                }
+                Phase::TargetUp => {
+                    if let ActionSpec::CardKey(target) = a.spec {
+                        events.push(OutEvent::MoveTo(target));
+                    }
+                    events.push(OutEvent::LeftUp);
+                }
+                Phase::Return => {
+                    a.displaced = false;
+                    // Without a known user position the cursor simply stays on the target.
+                    let Some(user) = user else {
+                        a.phase = Phase::WaitCycle;
+                        a.due = now.after(t.point_card_return_to_next);
                         self.slots[i] = Some(a);
                         continue;
                     };
-                    a.off_hand = false;
-                    a.key = Some(self.cfg.slot_keys[slot as usize]);
+                    events.push(OutEvent::MoveTo(user));
                 }
-                if self.mouse.is_some_and(|m| m != a.id)
-                    || a.key.is_some_and(|k| self.key_busy(k, Some(a.id)))
-                {
-                    self.slots[i] = Some(a);
-                    continue;
-                }
-                self.mouse = Some(a.id);
-                a.mouse = true;
-                a.key_reserved = a.key.is_some();
-                self.fair_slot = (i + 1) % self.slots.len();
-                if now.0 > a.due.0 {
-                    let skipped = (now.0 - a.due.0) / a.timing.repeat_period;
-                    self.progress.skipped_cycles =
-                        self.progress.skipped_cycles.saturating_add(skipped);
-                }
-                a.cycle_start = now;
-                events.push(a.key.map_or(OutEvent::LeftDown, OutEvent::KeyDown));
-            } else {
-                match a.phase {
-                    Phase::Start => match a.spec {
-                        ActionSpec::Tap(_) => events.push(OutEvent::KeyDown(a.key.unwrap())),
-                        ActionSpec::Card(_) | ActionSpec::DoubleEsc { .. } => {
-                            events.push(OutEvent::KeyDown(Key::ESC))
-                        }
-                        ActionSpec::HoldPoint(p) => {
-                            events.push(OutEvent::MoveTo(p));
-                            events.push(OutEvent::LeftDown);
-                        }
-                        ActionSpec::Repeat { .. } | ActionSpec::CardKey(_) => unreachable!(),
-                    },
-                    Phase::TapUp | Phase::RepeatKeyUp => {
-                        events.push(OutEvent::KeyUp(a.key.unwrap()))
-                    }
-                    Phase::EscUp | Phase::SecondUp | Phase::TrailingUp => {
-                        events.push(OutEvent::KeyUp(Key::ESC))
-                    }
-                    Phase::Gap => events.push(OutEvent::KeyDown(Key::ESC)),
-                    Phase::ClickDown => {
-                        if let ActionSpec::CardKey(target) = a.spec {
-                            // Moving to the target supersedes any return still pending.
-                            a.displaced = true;
-                            a.return_due = None;
-                            events.push(OutEvent::MoveTo(target));
-                        }
-                        events.push(OutEvent::LeftDown);
-                    }
-                    Phase::ClickUp => events.push(OutEvent::LeftUp),
-                    Phase::Maintain => {
-                        if let ActionSpec::HoldPoint(p) = a.spec {
+                Phase::Clean => {
+                    if a.mouse && self.held.contains(OutKey::LeftButton) {
+                        if let ActionSpec::HoldPoint(p) | ActionSpec::CardKey(p) = a.spec {
                             events.push(OutEvent::MoveTo(p));
                         }
-                    }
-                    Phase::Clean => {
-                        if a.key_reserved
-                            && a.key.is_some_and(|k| self.held.contains(OutKey::Key(k)))
-                        {
-                            events.push(OutEvent::KeyUp(a.key.unwrap()));
-                        }
-                        if self.esc == Some(a.id) && self.held.contains(OutKey::Key(Key::ESC)) {
-                            events.push(OutEvent::KeyUp(Key::ESC));
-                        }
-                        if a.mouse && self.held.contains(OutKey::LeftButton) {
-                            events.push(OutEvent::LeftUp);
-                        }
-                        if events.is_empty() && a.displaced {
-                            // Released between click and return: wait out the return delay first.
-                            let due = *a.return_due.get_or_insert(now);
-                            a.due = due;
-                            self.slots[i] = Some(a);
-                            continue;
-                        }
-                        if events.is_empty() {
-                            if a.trailing && a.card_started {
-                                a.phase = Phase::TrailingDown;
-                                a.due = now;
-                                self.slots[i] = Some(a);
-                            } else {
-                                self.finish(i);
-                            }
-                            continue;
+                        events.push(OutEvent::LeftUp);
+                    } else if a.displaced {
+                        a.displaced = false;
+                        if let Some(user) = user {
+                            events.push(OutEvent::MoveTo(user));
                         }
                     }
-                    Phase::TrailingDown => events.push(OutEvent::KeyDown(Key::ESC)),
-                    Phase::WaitCycle | Phase::Return => unreachable!(),
+                    if events.is_empty() {
+                        self.finish(i);
+                        continue;
+                    }
                 }
             }
             self.slots[i] = Some(a);
@@ -822,7 +778,6 @@ impl Engine {
                     self.mouse = None;
                 }
                 a.mouse = false;
-                a.key_reserved = false;
             }
             return;
         }
@@ -871,101 +826,91 @@ impl Engine {
         if matches!(self.state, EngineState::Stopping(..)) {
             return;
         }
-        // Return batches only move the cursor; dispatch already cleared the displacement.
-        if b.stage == Phase::Return as u32 {
-            self.slots[i] = Some(a);
-            return;
-        }
         if a.phase == Phase::Clean && b.stage != Phase::Clean as u32 {
             self.slots[i] = Some(a);
             return;
         }
         let t = a.timing;
         match a.phase {
-            Phase::Start => {
-                a.phase = match a.spec {
-                    ActionSpec::Tap(_) => Phase::TapUp,
-                    ActionSpec::Card(_) | ActionSpec::DoubleEsc { .. } => Phase::EscUp,
-                    ActionSpec::HoldPoint(_) => Phase::Maintain,
-                    _ => unreachable!(),
-                };
-                a.due = end.after(if a.phase == Phase::Maintain {
-                    t.maintain
-                } else {
-                    t.key_hold
-                });
-            }
-            Phase::TapUp | Phase::SecondUp | Phase::TrailingUp => {
+            Phase::Start => match a.spec {
+                ActionSpec::DoubleEsc { slow } => {
+                    a.phase = Phase::Gap;
+                    a.due = end.after(if slow { t.esc_gap_slow } else { t.esc_gap_fast });
+                }
+                ActionSpec::Card(_) => {
+                    a.phase = Phase::CardKey;
+                    a.due = end.after(t.card_esc_to_key);
+                }
+                ActionSpec::HoldPoint(_) => {
+                    a.phase = Phase::Maintain;
+                    a.due = end.after(t.maintain);
+                }
+                _ => {
+                    self.finish(i);
+                    return;
+                }
+            },
+            Phase::Gap | Phase::CardEsc => {
                 self.finish(i);
                 return;
             }
-            Phase::EscUp => {
-                if let ActionSpec::DoubleEsc { slow } = a.spec {
-                    a.phase = Phase::Gap;
-                    a.due = end.after(if slow { t.esc_gap_slow } else { t.esc_gap_fast });
-                } else {
-                    a.card_started = true;
-                    a.phase = Phase::WaitCycle;
-                    a.due = end.after(t.card_pre_esc);
+            Phase::CardKey => {
+                a.phase = Phase::CardClick;
+                a.due = end.after(t.card_key_to_click);
+            }
+            Phase::CardClick => {
+                a.phase = Phase::CardEsc;
+                a.due = end.after(t.card_click_to_esc);
+            }
+            Phase::WaitCycle => match a.spec {
+                ActionSpec::CardKey(_) => {
+                    a.phase = Phase::TargetDown;
+                    a.due = end.after(t.point_card_key_to_down);
                 }
-            }
-            Phase::Gap => {
-                a.phase = Phase::SecondUp;
-                a.due = end.after(t.key_hold);
-            }
-            Phase::WaitCycle => {
-                a.phase = if a.key.is_some() {
-                    Phase::RepeatKeyUp
-                } else {
-                    Phase::ClickUp
-                };
-                a.due = end.after(if a.key.is_some() {
-                    t.key_hold
-                } else {
-                    t.mouse_hold
-                });
-            }
-            Phase::RepeatKeyUp => {
-                a.phase = Phase::ClickDown;
-                a.due = end.after(t.key_to_click);
-            }
-            Phase::ClickDown => {
-                a.phase = Phase::ClickUp;
-                a.due = end.after(t.mouse_hold);
-            }
-            Phase::ClickUp => {
-                if matches!(a.spec, ActionSpec::CardKey(_)) {
-                    // Keep the mouse across cycles so nothing else moves the cursor before it returns.
-                    a.return_due = Some(end.after(t.card_return));
-                } else {
-                    if self.mouse == Some(a.id) {
-                        self.mouse = None;
-                    }
-                    a.mouse = false;
+                ActionSpec::Repeat { key: Some(_) } => {
+                    a.phase = Phase::Click;
+                    a.due = end.after(t.spam_key_to_click);
                 }
-                a.key_reserved = false;
+                _ => {
+                    self.release_mouse(&mut a);
+                    a.due = end.after(t.click_spam_next);
+                }
+            },
+            Phase::Click => {
+                self.release_mouse(&mut a);
                 a.phase = Phase::WaitCycle;
-                a.due = Ticks(a.cycle_start.after(t.repeat_period).0.max(end.0));
+                a.due = end.after(t.spam_click_to_next);
             }
             Phase::Maintain => a.due = end.after(t.maintain),
+            Phase::TargetDown => {
+                a.phase = Phase::TargetUp;
+                a.due = end.after(t.point_card_down_to_up);
+            }
+            Phase::TargetUp => {
+                a.phase = Phase::Return;
+                a.due = end;
+            }
+            // The card key keeps the mouse across cycles so nothing else moves the cursor.
+            Phase::Return => {
+                a.phase = Phase::WaitCycle;
+                a.due = end.after(t.point_card_return_to_next);
+            }
             Phase::Clean => {
-                if a.displaced {
-                    a.due = *a.return_due.get_or_insert(end.after(t.card_return));
-                } else if a.trailing && a.card_started {
-                    a.phase = Phase::TrailingDown;
-                    a.due = end.after(t.card_pre_esc);
+                if a.displaced || (a.mouse && self.held.contains(OutKey::LeftButton)) {
+                    a.due = end;
                 } else {
                     self.finish(i);
                     return;
                 }
             }
-            Phase::TrailingDown => {
-                a.phase = Phase::TrailingUp;
-                a.due = end.after(t.key_hold);
-            }
-            Phase::Return => unreachable!(),
         }
         self.slots[i] = Some(a);
+    }
+    fn release_mouse(&mut self, a: &mut Action) {
+        if self.mouse == Some(a.id) {
+            self.mouse = None;
+        }
+        a.mouse = false;
     }
     pub fn next_wake(&self) -> Option<Ticks> {
         if !self.running() && !matches!(self.state, EngineState::Stopping(..)) {
@@ -976,17 +921,23 @@ impl Engine {
             if let Some(stop_at) = a.stop_at {
                 due = due.min(stop_at);
             }
-            if let Some(r) = a.return_due {
-                due = due.min(r);
-            }
-            if a.phase == Phase::WaitCycle
-                && (self.mouse.is_some_and(|m| m != a.id)
-                    || a.key.is_some_and(|k| self.key_busy(k, Some(a.id))))
-            {
+            if a.phase == Phase::WaitCycle && self.mouse.is_some_and(|m| m != a.id) {
                 continue;
             }
             due = due.min(a.due);
         }
         Some(due)
+    }
+}
+
+/// Off-hand card keys look again after `return_to_next`, or after one whole cycle when that
+/// gap is zero, so an idle card key never spins.
+fn off_hand_recheck(t: &TickTiming) -> u64 {
+    if t.point_card_return_to_next > 0 {
+        t.point_card_return_to_next
+    } else {
+        t.point_card_key_to_down
+            .saturating_add(t.point_card_down_to_up)
+            .max(1)
     }
 }

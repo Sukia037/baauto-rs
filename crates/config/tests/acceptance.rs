@@ -38,15 +38,43 @@ fn config_point_hotkey_conflict_disables_point() {
     ));
 }
 #[test]
-fn config_cycle_shorter_than_stages_rejected() {
-    let mut k = keys();
-    k.timing.repeat_period_ms = 40.;
-    assert!(
-        check(&points(), &k, &HandSettings::default())
-            .unwrap_err()
-            .iter()
-            .any(|e| e.path.contains("repeat_period"))
-    );
+fn timing_rejects_zero_loop_total() {
+    for set in ["spam", "click_spam", "point", "point_card"] {
+        let mut k = keys();
+        let t = &mut k.timing;
+        match set {
+            "spam" => {
+                t.spam = SpamGaps {
+                    key_to_click_ms: 0.,
+                    click_to_next_ms: 0.,
+                }
+            }
+            "click_spam" => t.click_spam.click_to_next_ms = 0.,
+            "point" => t.point.maintain_period_ms = 0.,
+            _ => {
+                t.point_card = PointCardGaps {
+                    key_to_down_ms: 0.,
+                    down_to_up_ms: 0.,
+                    return_to_next_ms: 0.,
+                }
+            }
+        }
+        let errors = check(&points(), &k, &HandSettings::default()).unwrap_err();
+        assert!(
+            errors.iter().any(|e| e.path == format!("$.timing.{set}")),
+            "{set}: {errors:?}"
+        );
+    }
+    for bad in [-1., f64::NAN, f64::INFINITY] {
+        let mut k = keys();
+        k.timing.card.esc_to_key_ms = bad;
+        let errors = check(&points(), &k, &HandSettings::default()).unwrap_err();
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.path == "$.timing.card.esc_to_key_ms")
+        );
+    }
 }
 #[test]
 fn hand_slot_keys_need_five_unique() {
@@ -120,7 +148,7 @@ fn switching_keys_file_keeps_points_file() {
     let p = points();
     let k = keys();
     let mut k2 = k.clone();
-    k2.timing.key_hold_ms = 15.;
+    k2.timing.spam.click_to_next_ms = 15.;
     check(&p, &k2, &HandSettings::default()).unwrap();
     assert_eq!(p, points());
     assert_eq!(k, keys());
@@ -159,12 +187,19 @@ fn config_hotkey_string_roundtrip() {
     assert!(a.overlaps(b));
 }
 #[test]
-fn tap_zero_hold_requires_verified_profile() {
+fn zero_gaps_are_allowed_and_identity_change_unverifies() {
     let mut k = keys();
-    k.timing.key_hold_ms = 0.;
-    assert!(check(&points(), &k, &HandSettings::default()).is_err());
-    k.timing.verified = true;
+    k.timing.frame_fast.esc_gap_ms = 0.;
+    k.timing.card = CardGaps {
+        esc_to_key_ms: 0.,
+        key_to_click_ms: 0.,
+        click_to_esc_ms: 0.,
+    };
+    k.timing.spam.key_to_click_ms = 0.;
+    k.timing.point_card.key_to_down_ms = 0.;
+    k.timing.point_card.down_to_up_ms = 0.;
     assert!(check(&points(), &k, &HandSettings::default()).is_ok());
+    k.timing.verified = true;
     k.timing.set_identity(ProfileIdentity {
         game_version: "changed".into(),
         ..Default::default()
@@ -179,28 +214,62 @@ fn integer_time_conversion_rounds_up() {
     assert!(ticks_ms(1., TickRate(0)).is_err());
 }
 #[test]
-fn removed_lateness_table_still_loads_and_is_dropped_on_save() {
-    let mut legacy: serde_json::Value =
+fn keys_v1_migrates_to_v2_timing() {
+    let text = include_str!("../../../tests/fixtures/keys-v1.json");
+    let (k, notes) = parse_keys(text).unwrap();
+    let template = keys().timing;
+    assert_eq!(k.schema, KEYS_SCHEMA);
+    assert_eq!(
+        k.presets,
+        from_json::<serde_json::Value>(text)
+            .map(|v| {
+                serde_json::from_value::<std::collections::BTreeMap<String, Preset>>(
+                    v["presets"].clone(),
+                )
+                .unwrap()
+            })
+            .unwrap()
+    );
+    assert_eq!(k.timing.frame_fast.esc_gap_ms, 20.);
+    assert_eq!(k.timing.frame_slow.esc_gap_ms, 60.);
+    assert_eq!(k.timing.card.esc_to_key_ms, 12.);
+    assert_eq!(k.timing.point.maintain_period_ms, 24.);
+    assert_eq!(k.timing.spam, template.spam);
+    assert_eq!(k.timing.click_spam, template.click_spam);
+    assert_eq!(k.timing.card.key_to_click_ms, template.card.key_to_click_ms);
+    assert_eq!(k.timing.card.click_to_esc_ms, template.card.click_to_esc_ms);
+    assert_eq!(k.timing.point_card, template.point_card);
+    assert!(!k.timing.verified);
+    assert!(notes.iter().any(|n| n.contains("point_card")));
+    let saved = to_json(&k).unwrap();
+    assert!(saved.contains(KEYS_SCHEMA));
+    for old in [
+        "key_hold_ms",
+        "repeat_period_ms",
+        "escape_gap_ms",
+        "auto_repeat",
+        "allowed_lateness_ms",
+    ] {
+        assert!(!saved.contains(old), "{old}");
+    }
+    assert!(matches!(
+        baauto_config::store::parse_document(text).unwrap(),
+        baauto_config::store::Document::Keys(_)
+    ));
+    assert!(check(&points(), &k, &HandSettings::default()).is_ok());
+}
+#[test]
+fn keys_v2_rejects_old_fields() {
+    let mut v: serde_json::Value =
         serde_json::from_str(include_str!("../../../keys/預設按鍵.json")).unwrap();
-    legacy["timing"]["allowed_lateness_ms"] = serde_json::json!({
-        "tap_start": null,
-        "repeat_click": null,
-        "card_start": null,
-        "card_click": null,
-        "double_esc_second": 0,
-        "hold_start": null,
-        "card_key_start": null
-    });
-    let k: KeysProfile = from_json(&legacy.to_string()).unwrap();
-    assert_eq!(k, keys());
-    assert!(!to_json(&k).unwrap().contains("allowed_lateness_ms"));
-    legacy["timing"]["unknown_field"] = serde_json::json!(1);
-    assert!(from_json::<KeysProfile>(&legacy.to_string()).is_err());
+    v["timing"]["key_hold_ms"] = serde_json::json!(16);
+    assert!(parse_keys(&v.to_string()).is_err());
 }
 #[test]
 fn escape_gaps_are_independent_waits() {
     let mut k = keys();
-    k.timing.escape_gap_ms = [50., 16.];
+    k.timing.frame_fast.esc_gap_ms = 50.;
+    k.timing.frame_slow.esc_gap_ms = 16.;
     assert!(check(&points(), &k, &HandSettings::default()).is_ok());
 }
 #[test]
@@ -252,13 +321,6 @@ fn removed_card_auto_repeat_still_loads_and_is_dropped_on_save() {
     assert!(!to_json(&h).unwrap().contains("card_auto_repeat"));
 }
 #[test]
-fn keys_without_card_return_wait_default_to_sixteen_ms() {
-    let mut old: serde_json::Value =
-        serde_json::from_str(include_str!("../../../keys/預設按鍵.json")).unwrap();
-    old["timing"]
-        .as_object_mut()
-        .unwrap()
-        .remove("card_return_wait_ms");
-    let k: KeysProfile = from_json(&old.to_string()).unwrap();
-    assert_eq!(k.timing.card_return_wait_ms, 16.);
+fn auto_repeat_option_is_gone() {
+    assert!(!include_str!("../../../keys/預設按鍵.json").contains("auto_repeat"));
 }

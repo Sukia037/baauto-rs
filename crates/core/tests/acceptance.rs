@@ -2,28 +2,43 @@ use baauto_config::*;
 use baauto_core::*;
 use proptest::prelude::*;
 use std::sync::Arc;
-fn config(mode: Mode, side: CardUiSide, follow: bool) -> CompiledConfig {
+/// Test gaps in ms; the engine runs at 1000 ticks per second, so 1 tick = 1 ms.
+fn test_timing(t: &mut TimingProfile) {
+    t.frame_fast.esc_gap_ms = 3.;
+    t.frame_slow.esc_gap_ms = 6.;
+    t.spam = SpamGaps {
+        key_to_click_ms: 2.,
+        click_to_next_ms: 5.,
+    };
+    t.click_spam.click_to_next_ms = 4.;
+    t.card = CardGaps {
+        esc_to_key_ms: 2.,
+        key_to_click_ms: 1.,
+        click_to_esc_ms: 3.,
+    };
+    t.point.maintain_period_ms = 4.;
+    t.point_card = PointCardGaps {
+        key_to_down_ms: 1.,
+        down_to_up_ms: 2.,
+        return_to_next_ms: 4.,
+    };
+}
+fn config(mode: Mode, side: CardUiSide, tweak: impl Fn(&mut TimingProfile)) -> CompiledConfig {
     let mut p: PointSet = from_json(include_str!("../../../points/範例.json")).unwrap();
     p.mode = mode;
     let mut k: KeysProfile = from_json(include_str!("../../../keys/預設按鍵.json")).unwrap();
-    k.timing.key_hold_ms = 2.;
-    k.timing.mouse_hold_ms = 2.;
-    k.timing.key_to_click_ms = 3.;
-    k.timing.repeat_period_ms = 10.;
-    k.timing.escape_gap_ms = [3., 6.];
-    k.timing.card_pre_esc_ms = 2.;
-    k.timing.hold_maintain_period_ms = 4.;
-    k.timing.card_return_wait_ms = 4.;
-    k.timing.auto_repeat = if follow {
-        AutoRepeatPolicy::FollowTypematic
-    } else {
-        AutoRepeatPolicy::Ignore
-    };
+    test_timing(&mut k.timing);
+    tweak(&mut k.timing);
     let h = HandSettings {
         card_ui_side: side,
         ..Default::default()
     };
     compile(&p, &k, &h, TickRate(1000)).unwrap()
+}
+const ESC: [OutEvent; 2] = [OutEvent::KeyDown(Key::ESC), OutEvent::KeyUp(Key::ESC)];
+const CLICK: [OutEvent; 2] = [OutEvent::LeftDown, OutEvent::LeftUp];
+fn tap(k: u8) -> [OutEvent; 2] {
+    [OutEvent::KeyDown(Key(k)), OutEvent::KeyUp(Key(k))]
 }
 struct Rig {
     e: Engine,
@@ -33,10 +48,15 @@ struct Rig {
 }
 impl Rig {
     fn new() -> Self {
-        Self::with(Mode::Six, CardUiSide::Right, false)
+        Self::with(Mode::Six, CardUiSide::Right)
     }
-    fn with(mode: Mode, side: CardUiSide, follow: bool) -> Self {
-        let c = config(mode, side, follow);
+    fn with(mode: Mode, side: CardUiSide) -> Self {
+        Self::build(config(mode, side, |_| {}))
+    }
+    fn timed(tweak: impl Fn(&mut TimingProfile)) -> Self {
+        Self::build(config(Mode::Six, CardUiSide::Right, tweak))
+    }
+    fn build(c: CompiledConfig) -> Self {
         let mut e = Engine::new(Arc::new(c.clone()), TickRate(1000));
         e.arm(SessionId(1), Ticks(0)).unwrap();
         Self {
@@ -70,6 +90,12 @@ impl Rig {
     fn up(&mut self, p: u32) {
         self.ev(InputKind::TriggerUp { press: PressId(p) });
     }
+    fn repeat(&mut self, p: u32) {
+        self.ev(InputKind::TriggerRepeat {
+            press: PressId(p),
+            cursor: NormPoint { x: 0.5, y: 0.5 },
+        });
+    }
     fn batch(&mut self, now: u64) -> Batch {
         self.now = now;
         self.e.next_batch(Ticks(now)).expect("batch expected")
@@ -86,6 +112,9 @@ impl Rig {
         );
         b
     }
+    fn none_at(&mut self, now: u64) -> bool {
+        self.e.next_batch(Ticks(now)).is_none()
+    }
     fn card_point(&self) -> NormPoint {
         self.c
             .actions
@@ -95,6 +124,13 @@ impl Rig {
                 _ => None,
             })
             .expect("template has a card key with a target point")
+    }
+    /// The hold point bound to `key` in the template (z or x).
+    fn point_of(&self, key: u8) -> NormPoint {
+        match self.c.actions[self.c.triggers[key as usize][0] as usize] {
+            ActionSpec::HoldPoint(p) => p,
+            other => panic!("{key} is not a hold point: {other:?}"),
+        }
     }
     fn center(&self, i: u8) -> NormPoint {
         NormPoint {
@@ -109,48 +145,73 @@ fn p() -> NormPoint {
     NormPoint { x: 0.5, y: 0.5 }
 }
 #[test]
+fn tap_sends_down_and_up_in_one_batch() {
+    let mut r = Rig::new();
+    r.down(87, 1, p());
+    assert_eq!(r.send(0).events.as_slice(), &tap(49));
+    assert!(r.none_at(100));
+    assert_eq!(r.e.active_actions(), 0);
+    // A zero gap still sends the next step as its own batch.
+    let mut r = Rig::timed(|t| t.spam.key_to_click_ms = 0.);
+    r.down(50, 1, p());
+    assert_eq!(r.send(0).events.as_slice(), &tap(49));
+    assert_eq!(r.send(0).events.as_slice(), &CLICK);
+}
+#[test]
 fn repeat_late_wake_shifts_click_stage() {
     let mut r = Rig::new();
     r.down(50, 1, p());
-    assert_eq!(r.send(0).events.as_slice(), &[OutEvent::KeyDown(Key(49))]);
-    let b = r.batch(2);
+    let b = r.batch(0);
+    assert_eq!(b.events.as_slice(), &tap(49));
     r.e.commit(
         b.id,
         SubmitOutcome::Ok {
-            begin: Ticks(2),
-            end: Ticks(5),
+            begin: Ticks(0),
+            end: Ticks(3),
         },
-        Ticks(5),
+        Ticks(3),
     );
-    assert!(r.e.next_batch(Ticks(7)).is_none());
-    assert_eq!(r.send(8).events.as_slice(), &[OutEvent::LeftDown]);
+    assert!(r.none_at(4));
+    assert_eq!(r.send(5).events.as_slice(), &CLICK);
 }
 #[test]
 fn repeat_skips_overdue_cycles_without_burst() {
     let mut r = Rig::new();
     r.down(50, 1, p());
-    for n in [0, 2, 5, 7] {
-        r.send(n);
-    }
-    let b = r.send(50);
-    assert_eq!(b.events[0], OutEvent::KeyDown(Key(49)));
-    for n in [52, 55, 57] {
-        r.send(n);
-    }
-    assert!(r.e.next_batch(Ticks(59)).is_none());
-    assert!(r.e.progress().skipped_cycles >= 4);
+    assert_eq!(r.send(0).events.as_slice(), &tap(49));
+    assert_eq!(r.send(2).events.as_slice(), &CLICK);
+    // The engine stalls far past the next cycle: exactly one cycle, then normal spacing.
+    assert_eq!(r.send(50).events.as_slice(), &tap(49));
+    assert_eq!(r.send(52).events.as_slice(), &CLICK);
+    assert!(r.none_at(56));
+    assert_eq!(r.send(57).events.as_slice(), &tap(49));
+}
+#[test]
+fn click_spam_clicks_until_release() {
+    let mut r = Rig::new();
+    r.down(2, 1, p());
+    assert_eq!(r.send(0).events.as_slice(), &CLICK);
+    assert!(r.none_at(3));
+    assert_eq!(r.send(4).events.as_slice(), &CLICK);
+    r.up(1);
+    assert!(r.none_at(100));
+    assert_eq!(r.e.active_actions(), 0);
 }
 #[test]
 fn quick_release_repress_uses_new_press() {
     let mut r = Rig::new();
+    let z = r.point_of(90);
     r.down(90, 1, p());
     r.send(0);
     r.up(1);
-    r.send(1);
+    assert_eq!(
+        r.send(1).events.as_slice(),
+        &[OutEvent::MoveTo(z), OutEvent::LeftUp]
+    );
     r.down(90, 2, p());
     r.send(2);
     r.up(1);
-    assert!(r.e.next_batch(Ticks(3)).is_none());
+    assert!(r.none_at(3));
     assert!(r.e.held().contains(OutKey::LeftButton));
 }
 #[test]
@@ -158,15 +219,12 @@ fn stop_releases_everything_then_silent() {
     let mut r = Rig::new();
     r.down(90, 1, p());
     r.send(0);
-    r.down(87, 2, p());
-    r.send(0);
+    r.down(50, 2, p());
     r.e.request_stop(StopReason::Emergency, Ticks(1));
-    let b = r.send(1);
-    assert!(b.events.contains(&OutEvent::LeftUp));
-    assert!(b.events.contains(&OutEvent::KeyUp(Key(49))));
+    assert_eq!(r.send(1).events.as_slice(), &[OutEvent::LeftUp]);
     assert!(matches!(r.e.state(), EngineState::Stopped(SessionId(1))));
     assert!(r.e.held().is_empty());
-    assert!(r.e.next_batch(Ticks(1000)).is_none());
+    assert!(r.none_at(1000));
 }
 #[test]
 fn short_send_goes_faulted_and_keeps_held() {
@@ -187,27 +245,87 @@ fn short_send_goes_faulted_and_keeps_held() {
     assert!(r.e.held().contains(OutKey::LeftButton));
 }
 #[test]
+fn double_esc_second_esc_always_sent() {
+    let mut r = Rig::new();
+    r.down(40, 1, p());
+    let b = r.batch(0);
+    assert_eq!(b.events.as_slice(), &ESC);
+    r.e.commit(
+        b.id,
+        SubmitOutcome::Ok {
+            begin: Ticks(0),
+            end: Ticks(1),
+        },
+        Ticks(1),
+    );
+    r.up(1);
+    assert!(r.none_at(3));
+    assert_eq!(r.send(4).events.as_slice(), &ESC);
+    assert_eq!(r.e.active_actions(), 0);
+}
+#[test]
 fn slow_double_esc_sends_second_esc_even_when_late() {
     let mut r = Rig::new();
     r.down(38, 1, p());
-    r.send(0);
-    r.send(2);
-    assert!(r.e.next_batch(Ticks(7)).is_none());
-    assert_eq!(r.send(50).events.as_slice(), &[OutEvent::KeyDown(Key::ESC)]);
-    assert_eq!(r.send(52).events.as_slice(), &[OutEvent::KeyUp(Key::ESC)]);
+    assert_eq!(r.send(0).events.as_slice(), &ESC);
+    assert!(r.none_at(5));
+    assert_eq!(r.send(50).events.as_slice(), &ESC);
     assert_eq!(r.e.active_actions(), 0);
     assert!(r.e.held().is_empty());
+}
+#[test]
+fn card_is_one_shot_regardless_of_release() {
+    for release_early in [true, false] {
+        let mut r = Rig::new();
+        r.down(65, 1, p());
+        assert_eq!(r.send(0).events.as_slice(), &ESC);
+        if release_early {
+            r.up(1);
+        }
+        r.repeat(1);
+        assert!(r.none_at(1));
+        assert_eq!(r.send(2).events.as_slice(), &tap(49));
+        assert_eq!(r.send(3).events.as_slice(), &CLICK);
+        assert!(r.none_at(5));
+        assert_eq!(r.send(6).events.as_slice(), &ESC);
+        if !release_early {
+            r.up(1);
+        }
+        assert!(r.none_at(100));
+        assert_eq!(r.e.active_actions(), 0);
+        assert!(r.e.held().is_empty());
+        assert!(!r.e.reports().contains(&Report::ConfirmPause));
+    }
+}
+#[test]
+fn card_clicks_at_user_cursor_without_moving() {
+    let mut r = Rig::new();
+    r.down(65, 1, p());
+    let mut events = Vec::new();
+    for now in [0, 2, 3, 6] {
+        events.extend(r.send(now).events);
+    }
+    assert!(!events.iter().any(|e| matches!(e, OutEvent::MoveTo(_))));
 }
 #[test]
 fn card_no_trailing_esc_on_focus_loss() {
     let mut r = Rig::new();
     r.down(65, 1, p());
     r.send(0);
-    r.send(2);
     r.ev(InputKind::Focus { focused: false });
-    assert!(r.e.next_batch(Ticks(3)).is_none());
+    assert!(r.none_at(3));
     assert!(r.e.reports().contains(&Report::ConfirmPause));
     assert!(matches!(r.e.state(), EngineState::Stopped(_)));
+}
+#[test]
+fn card_forced_cancel_skips_remaining_steps_and_asks_to_confirm() {
+    let mut r = Rig::new();
+    r.down(65, 1, p());
+    r.send(0);
+    r.ev(InputKind::PressCancelled { press: PressId(1) });
+    assert!(r.none_at(100));
+    assert!(r.e.reports().contains(&Report::ConfirmPause));
+    assert_eq!(r.e.active_actions(), 0);
 }
 #[test]
 fn hold_point_rejected_while_another_hold_point_active() {
@@ -229,20 +347,18 @@ fn esc_resource_is_exclusive() {
 #[test]
 fn repeat_with_click_takes_mouse_for_whole_cycle() {
     let mut r = Rig::new();
+    let z = r.point_of(90);
     r.down(90, 1, p());
     r.send(0);
     r.down(50, 2, p());
-    assert!(r.e.next_batch(Ticks(0)).is_none());
-    assert_eq!(
-        r.e.held()
-            .keys()
-            .filter(|k| *k == OutKey::Key(Key(49)))
-            .count(),
-        0
-    );
+    // The skill key is not sent while a hold point owns the mouse.
+    assert!(r.none_at(0));
     r.up(1);
-    r.send(1);
-    assert_eq!(r.send(1).events[0], OutEvent::KeyDown(Key(49)));
+    assert_eq!(
+        r.send(1).events.as_slice(),
+        &[OutEvent::MoveTo(z), OutEvent::LeftUp]
+    );
+    assert_eq!(r.send(1).events.as_slice(), &tap(49));
 }
 #[test]
 fn modifier_release_cancels_press() {
@@ -250,68 +366,96 @@ fn modifier_release_cancels_press() {
     r.down(50, 1, p());
     r.send(0);
     r.ev(InputKind::PressCancelled { press: PressId(1) });
-    assert_eq!(r.send(1).events[0], OutEvent::KeyUp(Key(49)));
+    assert!(r.none_at(100));
     assert_eq!(r.e.active_actions(), 0);
 }
 #[test]
-fn auto_repeat_policy_ignore_vs_follow() {
-    for follow in [false, true] {
-        let mut r = Rig::with(Mode::Six, CardUiSide::Right, follow);
-        r.down(87, 1, p());
-        r.send(0);
-        r.send(2);
-        r.ev(InputKind::TriggerRepeat {
-            press: PressId(1),
-            cursor: p(),
-        });
-        assert_eq!(r.e.next_batch(Ticks(3)).is_some(), follow);
+fn auto_repeat_is_always_ignored() {
+    let mut r = Rig::new();
+    r.e.set_user_cursor(Some(r.center(0)));
+    r.down(87, 1, p());
+    r.send(0);
+    r.repeat(1);
+    assert!(r.none_at(1));
+    for (key, press) in [(50, 2), (65, 3), (81, 4), (51, 5)] {
+        r.down(key, press, p());
+        r.repeat(press);
+        r.repeat(press);
     }
+    assert_eq!(r.e.active_actions(), 4);
 }
 #[test]
 fn geometry_change_cancels_hold_point_and_releases_left() {
     let mut r = Rig::new();
+    let z = r.point_of(90);
     r.down(90, 1, p());
     r.send(0);
     r.ev(InputKind::GeometryChanged);
-    assert_eq!(r.send(1).events.as_slice(), &[OutEvent::LeftUp]);
+    assert_eq!(
+        r.send(1).events.as_slice(),
+        &[OutEvent::MoveTo(z), OutEvent::LeftUp]
+    );
 }
 #[test]
-fn card_key_repeats_slot_key_and_clicks_point_while_held() {
+fn hold_point_release_moves_then_ups() {
+    let mut r = Rig::new();
+    let z = r.point_of(90);
+    r.down(90, 1, p());
+    assert_eq!(
+        r.send(0).events.as_slice(),
+        &[OutEvent::MoveTo(z), OutEvent::LeftDown]
+    );
+    assert!(r.none_at(3));
+    assert_eq!(r.send(4).events.as_slice(), &[OutEvent::MoveTo(z)]);
+    r.up(1);
+    assert_eq!(
+        r.send(5).events.as_slice(),
+        &[OutEvent::MoveTo(z), OutEvent::LeftUp]
+    );
+    assert_eq!(r.e.active_actions(), 0);
+}
+#[test]
+fn point_card_cycle_order_and_return() {
     let mut r = Rig::new();
     let card = r.card_point();
     r.e.set_user_cursor(Some(r.center(0)));
     r.down(81, 1, p());
-    assert_eq!(r.send(0).events.as_slice(), &[OutEvent::KeyDown(Key(49))]);
-    assert_eq!(r.send(2).events.as_slice(), &[OutEvent::KeyUp(Key(49))]);
+    assert_eq!(r.send(0).events.as_slice(), &tap(49));
+    assert!(r.none_at(0));
     assert_eq!(
-        r.send(5).events.as_slice(),
+        r.send(1).events.as_slice(),
         &[OutEvent::MoveTo(card), OutEvent::LeftDown]
     );
-    assert_eq!(r.send(7).events.as_slice(), &[OutEvent::LeftUp]);
-    assert!(r.e.next_batch(Ticks(9)).is_none());
-    // The next cycle starts on the repeat period; the return overlaps its key stage.
-    assert_eq!(r.send(10).events.as_slice(), &[OutEvent::KeyDown(Key(49))]);
-    assert_eq!(
-        r.send(11).events.as_slice(),
-        &[OutEvent::MoveTo(r.center(0))]
-    );
-    assert_eq!(r.send(12).events.as_slice(), &[OutEvent::KeyUp(Key(49))]);
-    // Moving onto another card switches the key on the next cycle.
+    assert!(r.e.pointer_displaced());
+    // The user keeps moving the physical mouse while the cursor sits on the target.
     r.e.set_user_cursor(Some(r.center(1)));
+    assert!(r.none_at(2));
     assert_eq!(
-        r.send(15).events.as_slice(),
-        &[OutEvent::MoveTo(card), OutEvent::LeftDown]
+        r.send(3).events.as_slice(),
+        &[OutEvent::MoveTo(card), OutEvent::LeftUp]
     );
-    assert_eq!(r.send(17).events.as_slice(), &[OutEvent::LeftUp]);
-    assert_eq!(r.send(20).events.as_slice(), &[OutEvent::KeyDown(Key(50))]);
-    r.up(1);
-    assert_eq!(r.send(20).events.as_slice(), &[OutEvent::KeyUp(Key(50))]);
-    assert!(r.e.next_batch(Ticks(20)).is_none());
     assert_eq!(
-        r.send(21).events.as_slice(),
+        r.send(3).events.as_slice(),
         &[OutEvent::MoveTo(r.center(1))]
     );
-    assert!(r.e.next_batch(Ticks(30)).is_none());
+    assert!(!r.e.pointer_displaced());
+    assert!(r.none_at(6));
+    // The next cycle sends the key of the card now under the cursor.
+    assert_eq!(r.send(7).events.as_slice(), &tap(50));
+    assert_eq!(
+        r.send(8).events.as_slice(),
+        &[OutEvent::MoveTo(card), OutEvent::LeftDown]
+    );
+    r.up(1);
+    assert_eq!(
+        r.send(8).events.as_slice(),
+        &[OutEvent::MoveTo(card), OutEvent::LeftUp]
+    );
+    assert_eq!(
+        r.send(8).events.as_slice(),
+        &[OutEvent::MoveTo(r.center(1))]
+    );
+    assert!(r.none_at(100));
     assert_eq!(r.e.active_actions(), 0);
     assert!(r.e.held().is_empty());
 }
@@ -319,7 +463,7 @@ fn card_key_repeats_slot_key_and_clicks_point_while_held() {
 fn card_key_sends_key_of_slot_under_user_cursor() {
     for mode in [Mode::Six, Mode::Ten] {
         for side in [CardUiSide::Right, CardUiSide::Left] {
-            let mut r = Rig::with(mode, side, false);
+            let mut r = Rig::with(mode, side);
             for i in 0..r.c.slots {
                 let start = u64::from(i) * 100;
                 r.e.set_user_cursor(Some(r.center(i)));
@@ -329,8 +473,7 @@ fn card_key_sends_key_of_slot_under_user_cursor() {
                     OutEvent::KeyDown(r.c.slot_keys[i as usize])
                 );
                 r.up(u32::from(i) + 1);
-                r.send(start);
-                assert!(r.e.next_batch(Ticks(start + 50)).is_none());
+                assert!(r.none_at(start + 50));
                 assert_eq!(r.e.active_actions(), 0);
             }
         }
@@ -341,32 +484,33 @@ fn card_key_off_hand_waits_and_resumes_on_a_card() {
     let mut r = Rig::new();
     r.e.set_user_cursor(Some(p()));
     r.down(81, 1, p());
-    assert!(r.e.next_batch(Ticks(0)).is_none());
+    assert!(r.none_at(0));
     assert!(r.e.reports().contains(&Report::OutsideHand));
-    assert!(r.e.next_batch(Ticks(9)).is_none());
+    assert!(r.none_at(3));
     r.e.set_user_cursor(Some(r.center(2)));
-    assert_eq!(r.send(10).events.as_slice(), &[OutEvent::KeyDown(Key(51))]);
+    assert_eq!(r.send(4).events.as_slice(), &tap(51));
 }
 #[test]
-fn card_key_release_mid_click_releases_left_then_returns() {
+fn card_key_completes_pulse_after_release() {
     let mut r = Rig::new();
     let card = r.card_point();
     r.e.set_user_cursor(Some(r.center(0)));
     r.down(81, 1, p());
     r.send(0);
-    r.send(2);
     assert_eq!(
-        r.send(5).events.as_slice(),
+        r.send(1).events.as_slice(),
         &[OutEvent::MoveTo(card), OutEvent::LeftDown]
     );
     r.up(1);
-    assert_eq!(r.send(5).events.as_slice(), &[OutEvent::LeftUp]);
-    assert!(r.e.next_batch(Ticks(8)).is_none());
     assert_eq!(
-        r.send(9).events.as_slice(),
+        r.send(1).events.as_slice(),
+        &[OutEvent::MoveTo(card), OutEvent::LeftUp]
+    );
+    assert_eq!(
+        r.send(1).events.as_slice(),
         &[OutEvent::MoveTo(r.center(0))]
     );
-    assert!(r.e.next_batch(Ticks(20)).is_none());
+    assert!(r.none_at(20));
     assert_eq!(r.e.active_actions(), 0);
     assert!(r.e.held().is_empty());
 }
@@ -376,24 +520,10 @@ fn card_key_stop_releases_without_moving_cursor() {
     r.e.set_user_cursor(Some(r.center(0)));
     r.down(81, 1, p());
     r.send(0);
-    r.send(2);
-    r.send(5);
-    r.e.request_stop(StopReason::User, Ticks(6));
-    assert_eq!(r.send(6).events.as_slice(), &[OutEvent::LeftUp]);
+    r.send(1);
+    r.e.request_stop(StopReason::User, Ticks(2));
+    assert_eq!(r.send(2).events.as_slice(), &[OutEvent::LeftUp]);
     assert!(matches!(r.e.state(), EngineState::Stopped(_)));
-}
-#[test]
-fn card_key_ignores_auto_repeat() {
-    let mut r = Rig::with(Mode::Six, CardUiSide::Right, true);
-    r.e.set_user_cursor(Some(r.center(0)));
-    r.down(81, 1, p());
-    r.send(0);
-    r.ev(InputKind::TriggerRepeat {
-        press: PressId(1),
-        cursor: p(),
-    });
-    assert_eq!(r.e.active_actions(), 1);
-    assert_eq!(r.send(2).events.as_slice(), &[OutEvent::KeyUp(Key(49))]);
 }
 #[test]
 fn card_key_seam_and_boundary() {
@@ -420,7 +550,7 @@ fn card_key_seam_and_boundary() {
 }
 #[test]
 fn card_key_slot_order_right_to_left() {
-    let mut c = config(Mode::Ten, CardUiSide::Left, false);
+    let mut c = config(Mode::Ten, CardUiSide::Left, |_| {});
     c.order = SlotOrder::RightToLeft;
     let point = NormPoint {
         x: c.hand.x[0],
@@ -450,27 +580,20 @@ fn card_key_slot_order_right_to_left() {
     );
 }
 #[test]
-fn card_key_waits_while_slot_key_held_by_tap() {
-    let mut r = Rig::new();
-    r.e.set_user_cursor(Some(r.center(0)));
-    r.down(87, 1, p());
-    r.send(0);
-    r.down(81, 2, p());
-    assert!(r.e.next_batch(Ticks(1)).is_none());
-    assert_eq!(r.send(2).events.as_slice(), &[OutEvent::KeyUp(Key(49))]);
-    assert_eq!(r.send(2).events.as_slice(), &[OutEvent::KeyDown(Key(49))]);
-}
-#[test]
 fn card_key_waits_for_mouse_held_by_point() {
     let mut r = Rig::new();
+    let z = r.point_of(90);
     r.e.set_user_cursor(Some(r.center(2)));
     r.down(90, 1, p());
     r.send(0);
     r.down(81, 2, p());
-    assert!(r.e.next_batch(Ticks(1)).is_none());
+    assert!(r.none_at(1));
     r.up(1);
-    assert_eq!(r.send(1).events.as_slice(), &[OutEvent::LeftUp]);
-    assert_eq!(r.send(1).events.as_slice(), &[OutEvent::KeyDown(Key(51))]);
+    assert_eq!(
+        r.send(1).events.as_slice(),
+        &[OutEvent::MoveTo(z), OutEvent::LeftUp]
+    );
+    assert_eq!(r.send(1).events.as_slice(), &tap(51));
 }
 #[test]
 fn idle_engine_still_advances_health() {
@@ -506,7 +629,7 @@ fn focus_loss_stops_session() {
     r.e.next_batch(Ticks(0));
     assert!(matches!(r.e.state(), EngineState::Stopped(_)));
     r.down(87, 1, p());
-    assert!(r.e.next_batch(Ticks(0)).is_none());
+    assert!(r.none_at(0));
 }
 #[test]
 fn seq_gap_stops_session() {
@@ -524,7 +647,6 @@ fn steady_state_zero_allocations() {
             r.now = i * 4;
             r.down(87, i as u32 + 1, p());
             r.send(i * 4);
-            r.send(i * 4 + 2);
             r.up(i as u32 + 1);
             r.e.drain_reports(&mut |_| {});
         }
@@ -544,17 +666,16 @@ fn sim_exports_csv() {
     assert!(csv.starts_with("batch_id,action,stage,deadline,begin,end\n"));
     assert!(csv.lines().count() > 1);
 }
-
 #[test]
-fn cancel_waiting_repeat_does_not_release_another_actions_key() {
+fn cancel_waiting_repeat_does_not_release_another_actions_mouse() {
     let mut r = Rig::new();
-    r.down(87, 1, p());
+    r.down(90, 1, p());
     r.send(0);
     r.down(50, 2, p());
     r.ev(InputKind::PressCancelled { press: PressId(2) });
-    assert!(r.e.next_batch(Ticks(1)).is_none());
-    assert!(r.e.held().contains(OutKey::Key(Key(49))));
-    assert_eq!(r.send(2).events.as_slice(), &[OutEvent::KeyUp(Key(49))]);
+    assert!(r.none_at(1));
+    assert!(r.e.held().contains(OutKey::LeftButton));
+    assert_eq!(r.e.active_actions(), 1);
 }
 #[test]
 fn stop_during_inflight_down_accounts_then_releases() {
@@ -588,7 +709,7 @@ fn short_down_is_conservatively_held_and_never_retried() {
         Ticks(0),
     );
     assert!(r.e.held().contains(OutKey::Key(Key(49))));
-    assert!(r.e.next_batch(Ticks(100)).is_none());
+    assert!(r.none_at(100));
     assert!(r.e.arm(SessionId(2), Ticks(100)).is_err());
 }
 #[test]
@@ -596,33 +717,20 @@ fn repeat_arbiter_serves_multiple_actions_without_stealing_mouse() {
     let mut r = Rig::new();
     r.down(50, 1, p());
     r.down(51, 2, p());
-    for n in [0, 2, 5, 7] {
-        r.send(n);
-    }
-    assert_eq!(r.send(7).events[0], OutEvent::KeyDown(Key(50)));
-    for n in [9, 12, 14] {
-        r.send(n);
-    }
-    assert_eq!(r.send(14).events[0], OutEvent::KeyDown(Key(49)));
-}
-#[test]
-fn card_normal_release_finishes_trailing_escape_pulse() {
-    let mut r = Rig::new();
-    r.down(65, 1, p());
-    r.send(0);
-    r.send(2);
-    r.up(1);
-    r.e.next_batch(Ticks(3));
-    assert_eq!(r.send(3).events[0], OutEvent::KeyDown(Key::ESC));
-    assert_eq!(r.send(5).events[0], OutEvent::KeyUp(Key::ESC));
-    assert!(r.e.held().is_empty());
+    assert_eq!(r.send(0).events.as_slice(), &tap(49));
+    assert_eq!(r.send(2).events.as_slice(), &CLICK);
+    assert_eq!(r.send(2).events.as_slice(), &tap(50));
+    assert_eq!(r.send(4).events.as_slice(), &CLICK);
+    assert_eq!(r.send(7).events.as_slice(), &tap(49));
+    // Both are due at 9: the one holding the mouse finishes its cycle first.
+    assert_eq!(r.send(9).events.as_slice(), &CLICK);
+    assert_eq!(r.send(9).events.as_slice(), &tap(50));
 }
 #[test]
 fn late_tap_start_still_sends_down() {
     let mut r = Rig::new();
     r.down(87, 1, p());
-    assert_eq!(r.send(50).events.as_slice(), &[OutEvent::KeyDown(Key(49))]);
-    assert_eq!(r.send(52).events.as_slice(), &[OutEvent::KeyUp(Key(49))]);
+    assert_eq!(r.send(50).events.as_slice(), &tap(49));
     assert!(r.e.held().is_empty());
 }
 #[test]
@@ -664,48 +772,13 @@ proptest! {
         }
     }
 }
-
 #[test]
 fn forced_cancel_stops_second_escape() {
     let mut r = Rig::new();
     r.down(40, 1, p());
     r.send(0);
-    r.send(2);
     r.ev(InputKind::PressCancelled { press: PressId(1) });
-    assert!(r.e.next_batch(Ticks(5)).is_none());
+    assert!(r.none_at(5));
     assert!(r.e.held().is_empty());
     assert_eq!(r.e.active_actions(), 0);
-}
-#[test]
-fn card_release_during_first_escape_finishes_trailing_pulse() {
-    for in_flight in [false, true] {
-        let mut r = Rig::new();
-        r.down(65, 1, p());
-        let first = r.batch(0);
-        if !in_flight {
-            r.e.commit(
-                first.id,
-                SubmitOutcome::Ok {
-                    begin: Ticks(0),
-                    end: Ticks(0),
-                },
-                Ticks(0),
-            );
-        }
-        r.up(1);
-        if in_flight {
-            r.e.commit(
-                first.id,
-                SubmitOutcome::Ok {
-                    begin: Ticks(0),
-                    end: Ticks(0),
-                },
-                Ticks(0),
-            );
-        }
-        assert_eq!(r.send(0).events[0], OutEvent::KeyUp(Key::ESC));
-        assert_eq!(r.send(2).events[0], OutEvent::KeyDown(Key::ESC));
-        assert_eq!(r.send(4).events[0], OutEvent::KeyUp(Key::ESC));
-        assert!(r.e.held().is_empty());
-    }
 }

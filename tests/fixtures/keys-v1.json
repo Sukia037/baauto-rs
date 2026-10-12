@@ -1,0 +1,126 @@
+{
+  "schema": "baauto-rs-keys-v1",
+  "presets": {
+    "global_stop": {
+      "hotkey": "Ctrl+F9",
+      "enabled": true
+    },
+    "record": {
+      "hotkey": "Ctrl+F10",
+      "enabled": true
+    },
+    "skill_1": {
+      "hotkey": "w",
+      "enabled": true
+    },
+    "skill_2": {
+      "hotkey": "e",
+      "enabled": true
+    },
+    "skill_3": {
+      "hotkey": "r",
+      "enabled": true
+    },
+    "skill_4": {
+      "hotkey": "t",
+      "enabled": true
+    },
+    "skill_5": {
+      "hotkey": "y",
+      "enabled": true
+    },
+    "spam_1": {
+      "hotkey": "2",
+      "enabled": true
+    },
+    "spam_2": {
+      "hotkey": "3",
+      "enabled": true
+    },
+    "spam_3": {
+      "hotkey": "4",
+      "enabled": true
+    },
+    "spam_4": {
+      "hotkey": "5",
+      "enabled": true
+    },
+    "spam_5": {
+      "hotkey": "6",
+      "enabled": true
+    },
+    "pause": {
+      "hotkey": "Space",
+      "enabled": true
+    },
+    "frame_fast": {
+      "hotkey": "Down",
+      "enabled": true
+    },
+    "frame_slow": {
+      "hotkey": "Up",
+      "enabled": true
+    },
+    "auto": {
+      "hotkey": "XButton1",
+      "enabled": true
+    },
+    "speed": {
+      "hotkey": "XButton2",
+      "enabled": true
+    },
+    "click_spam": {
+      "hotkey": "RButton",
+      "enabled": true
+    },
+    "card_1": {
+      "hotkey": "a",
+      "enabled": true
+    },
+    "card_2": {
+      "hotkey": "s",
+      "enabled": true
+    },
+    "card_3": {
+      "hotkey": "d",
+      "enabled": true
+    },
+    "card_4": {
+      "hotkey": "f",
+      "enabled": true
+    },
+    "card_5": {
+      "hotkey": "g",
+      "enabled": true
+    }
+  },
+  "timing": {
+    "identity": {
+      "game_version": "",
+      "window_mode": "fullscreen_16_9",
+      "fps": "",
+      "sync": "",
+      "machine": "",
+      "conditions": "unverified template"
+    },
+    "source": "manual",
+    "verified": false,
+    "key_hold_ms": 16,
+    "mouse_hold_ms": 16,
+    "key_to_click_ms": 16,
+    "repeat_period_ms": 50,
+    "escape_gap_ms": [
+      20,
+      60
+    ],
+    "card_pre_esc_ms": 12,
+    "hold_maintain_period_ms": 24,
+    "card_return_wait_ms": 16,
+    "card_trailing_esc": "if_started",
+    "auto_repeat": "follow_typematic",
+    "allowed_lateness_ms": {
+      "tap_start": null,
+      "double_esc_second": 0
+    }
+  }
+}

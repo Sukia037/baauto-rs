@@ -1018,7 +1018,7 @@ fn role_description(role: &str) -> String {
         r if r.starts_with("skill_") => format!("送出 {n} 一次。"),
         r if r.starts_with("spam_") => format!("按住時一直重複「送出 {n}，再點一下左鍵」。"),
         r if r.starts_with("card_") => {
-            format!("按下先送 Esc，按住時重複「送出 {n}＋左鍵」，放開再送 Esc。")
+            format!("按一下就跑完「Esc → {n} → 在游標位置點左鍵 → Esc」。按住不重複，放開不影響。")
         }
         "global_stop" => "停止全部動作並放開所有按鍵，任何時候都有效。只能用鍵盤組合鍵。".into(),
         "record" => "開始錄製點位（不限遊戲在前景）。只能用鍵盤組合鍵。".into(),
@@ -1031,31 +1031,12 @@ fn role_description(role: &str) -> String {
         _ => String::new(),
     }
 }
-fn timing_fields(t: &TimingProfile) -> [(&'static str, f64); 9] {
-    [
-        ("key_hold_ms", t.key_hold_ms),
-        ("mouse_hold_ms", t.mouse_hold_ms),
-        ("key_to_click_ms", t.key_to_click_ms),
-        ("repeat_period_ms", t.repeat_period_ms),
-        ("escape_gap_ms[0]", t.escape_gap_ms[0]),
-        ("escape_gap_ms[1]", t.escape_gap_ms[1]),
-        ("card_pre_esc_ms", t.card_pre_esc_ms),
-        ("hold_maintain_period_ms", t.hold_maintain_period_ms),
-        ("card_return_wait_ms", t.card_return_wait_ms),
-    ]
+fn timing_fields(t: &TimingProfile) -> [(&'static str, f64); 12] {
+    t.gaps()
 }
 fn set_timing_field(t: &mut TimingProfile, index: usize, value: f64) {
-    match index {
-        0 => t.key_hold_ms = value,
-        1 => t.mouse_hold_ms = value,
-        2 => t.key_to_click_ms = value,
-        3 => t.repeat_period_ms = value,
-        4 => t.escape_gap_ms[0] = value,
-        5 => t.escape_gap_ms[1] = value,
-        6 => t.card_pre_esc_ms = value,
-        7 => t.hold_maintain_period_ms = value,
-        8 => t.card_return_wait_ms = value,
-        _ => {}
+    if let Some(field) = t.gaps().get(index).and_then(|(path, _)| t.gap_mut(path)) {
+        *field = value;
     }
 }
 

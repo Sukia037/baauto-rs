@@ -181,7 +181,9 @@ pub fn parse_document(text: &str) -> Result<Document, ConfigError> {
     let value: serde_json::Value = from_json(text)?;
     match value["schema"].as_str() {
         Some("baauto-rs-points-v1") => from_json(text).map(Document::Points),
-        Some("baauto-rs-keys-v1") => from_json(text).map(|k| Document::Keys(Box::new(k))),
+        Some(KEYS_SCHEMA | KEYS_SCHEMA_V1) => {
+            parse_keys(text).map(|(k, _)| Document::Keys(Box::new(k)))
+        }
         _ => Err(ConfigError::new(
             "$.schema",
             "unsupported schema; legacy files require explicit import",

@@ -41,19 +41,54 @@ pub enum ActionSpec {
     /// While held: send the key of the hand slot under the user's cursor, click the target, return.
     CardKey(NormPoint),
 }
+/// The spec §5 gaps in ticks. Each gap runs from the end of the previous batch.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TickTiming {
-    pub key_hold: u64,
-    pub mouse_hold: u64,
-    pub key_to_click: u64,
-    pub repeat_period: u64,
     pub esc_gap_fast: u64,
     pub esc_gap_slow: u64,
-    pub card_pre_esc: u64,
+    pub spam_key_to_click: u64,
+    pub spam_click_to_next: u64,
+    pub click_spam_next: u64,
+    pub card_esc_to_key: u64,
+    pub card_key_to_click: u64,
+    pub card_click_to_esc: u64,
     pub maintain: u64,
-    pub card_return: u64,
-    pub trailing: TrailingEscPolicy,
-    pub auto_repeat: AutoRepeatPolicy,
+    pub point_card_key_to_down: u64,
+    pub point_card_down_to_up: u64,
+    pub point_card_return_to_next: u64,
+}
+impl TickTiming {
+    /// The tick field for a `TimingProfile::gaps` path.
+    pub fn gap_mut(&mut self, path: &str) -> Option<&mut u64> {
+        Some(match path {
+            "frame_fast.esc_gap_ms" => &mut self.esc_gap_fast,
+            "frame_slow.esc_gap_ms" => &mut self.esc_gap_slow,
+            "spam.key_to_click_ms" => &mut self.spam_key_to_click,
+            "spam.click_to_next_ms" => &mut self.spam_click_to_next,
+            "click_spam.click_to_next_ms" => &mut self.click_spam_next,
+            "card.esc_to_key_ms" => &mut self.card_esc_to_key,
+            "card.key_to_click_ms" => &mut self.card_key_to_click,
+            "card.click_to_esc_ms" => &mut self.card_click_to_esc,
+            "point.maintain_period_ms" => &mut self.maintain,
+            "point_card.key_to_down_ms" => &mut self.point_card_key_to_down,
+            "point_card.down_to_up_ms" => &mut self.point_card_down_to_up,
+            "point_card.return_to_next_ms" => &mut self.point_card_return_to_next,
+            _ => return None,
+        })
+    }
+    /// Looping sets must not spin: each needs a positive total (spec §11).
+    pub fn loops_valid(&self) -> bool {
+        self.spam_key_to_click
+            .saturating_add(self.spam_click_to_next)
+            > 0
+            && self.click_spam_next > 0
+            && self.maintain > 0
+            && self
+                .point_card_key_to_down
+                .saturating_add(self.point_card_down_to_up)
+                .saturating_add(self.point_card_return_to_next)
+                > 0
+    }
 }
 #[derive(Clone, Debug)]
 pub struct CompiledConfig {
@@ -201,8 +236,11 @@ pub fn compile_with_params(
     if p.schema != "baauto-rs-points-v1" {
         errors.push(ConfigError::new("$.schema", "expected baauto-rs-points-v1"));
     }
-    if k.schema != "baauto-rs-keys-v1" {
-        errors.push(ConfigError::new("$.schema", "expected baauto-rs-keys-v1"));
+    if k.schema != KEYS_SCHEMA {
+        errors.push(ConfigError::new(
+            "$.schema",
+            format!("expected {KEYS_SCHEMA}"),
+        ));
     }
     for role in PRESET_ROLES {
         if !k.presets.contains_key(role) {
@@ -299,59 +337,35 @@ pub fn compile_with_params(
         ));
     }
     let t = &k.timing;
-    if t.key_hold_ms == 0.0 && !t.verified {
-        errors.push(ConfigError::new(
-            "$.timing.key_hold_ms",
-            "zero hold requires verified profile",
-        ));
-    }
-    if t.repeat_period_ms < t.key_hold_ms + t.key_to_click_ms + t.mouse_hold_ms {
-        errors.push(ConfigError::new(
-            "$.timing.repeat_period_ms",
-            "shorter than stages",
-        ));
-    }
-    if t.repeat_period_ms <= 0.0 || t.mouse_hold_ms <= 0.0 || t.hold_maintain_period_ms <= 0.0 {
-        errors.push(ConfigError::new(
-            "$.timing",
-            "periods/holds must be positive",
-        ));
-    }
-    let vals = [
-        t.key_hold_ms,
-        t.mouse_hold_ms,
-        t.key_to_click_ms,
-        t.repeat_period_ms,
-        t.escape_gap_ms[0],
-        t.escape_gap_ms[1],
-        t.card_pre_esc_ms,
-        t.hold_maintain_period_ms,
-        t.card_return_wait_ms,
-    ];
-    let mut ticks = [0; 9];
-    for (i, v) in vals.into_iter().enumerate() {
-        match ticks_ms(v, rate) {
-            Ok(n) => ticks[i] = n,
-            Err(e) => errors.push(e),
+    let timing_errors = t.check();
+    let mut ticks = [0; 12];
+    if timing_errors.is_empty() {
+        for (i, (path, v)) in t.gaps().into_iter().enumerate() {
+            match ticks_ms(v, rate) {
+                Ok(n) => ticks[i] = n,
+                Err(e) => errors.push(ConfigError::new(format!("$.timing.{path}"), e.reason)),
+            }
         }
     }
+    errors.extend(timing_errors);
     let a = analyze_conflicts(p, k);
     errors.extend(a.preset_errors);
     if !errors.is_empty() {
         return Err(errors);
     }
     let timing = TickTiming {
-        key_hold: ticks[0],
-        mouse_hold: ticks[1],
-        key_to_click: ticks[2],
-        repeat_period: ticks[3],
-        esc_gap_fast: ticks[4],
-        esc_gap_slow: ticks[5],
-        card_pre_esc: ticks[6],
-        maintain: ticks[7],
-        card_return: ticks[8],
-        trailing: t.card_trailing_esc,
-        auto_repeat: t.auto_repeat,
+        esc_gap_fast: ticks[0],
+        esc_gap_slow: ticks[1],
+        spam_key_to_click: ticks[2],
+        spam_click_to_next: ticks[3],
+        click_spam_next: ticks[4],
+        card_esc_to_key: ticks[5],
+        card_key_to_click: ticks[6],
+        card_click_to_esc: ticks[7],
+        maintain: ticks[8],
+        point_card_key_to_down: ticks[9],
+        point_card_down_to_up: ticks[10],
+        point_card_return_to_next: ticks[11],
     };
     let mut cfg = CompiledConfig {
         version,

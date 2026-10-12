@@ -47,60 +47,78 @@ pub(super) struct TimingMeta {
     pub purpose: &'static str,
     pub rule: &'static str,
 }
-pub(super) const TIMING: [TimingMeta; 9] = [
+pub(super) const TIMING: [TimingMeta; 12] = [
     TimingMeta {
-        name: "按鍵按住",
-        json: "key_hold_ms",
-        purpose: "技能、AUTO、加速、暫停、牌鍵送出時，按下到放開的時間。",
-        rule: "0 只有已驗證的時間能用。",
+        name: "快卡偵 Esc 間隔",
+        json: "frame_fast.esc_gap_ms",
+        purpose: "卡偵暫停（快）兩次 Esc 之間的間隔。第二個 Esc 一定會送。",
+        rule: "",
     },
     TimingMeta {
-        name: "點擊按住",
-        json: "mouse_hold_ms",
-        purpose: "連點、開牌裡左鍵按下到放開的時間。",
+        name: "慢卡偵 Esc 間隔",
+        json: "frame_slow.esc_gap_ms",
+        purpose: "卡偵暫停（慢）兩次 Esc 之間的間隔。第二個 Esc 一定會送。",
+        rule: "",
+    },
+    TimingMeta {
+        name: "連點：數字鍵到點擊",
+        json: "spam.key_to_click_ms",
+        purpose: "技能連點：送出數字鍵之後，多久點左鍵。",
+        rule: "連點這一組加起來要大於 0。",
+    },
+    TimingMeta {
+        name: "連點：點擊到下一輪",
+        json: "spam.click_to_next_ms",
+        purpose: "技能連點：點完左鍵之後，多久開始下一輪。",
+        rule: "連點這一組加起來要大於 0。",
+    },
+    TimingMeta {
+        name: "滑鼠連點間隔",
+        json: "click_spam.click_to_next_ms",
+        purpose: "滑鼠連點：兩次點擊之間的間隔。",
         rule: "要大於 0。",
     },
     TimingMeta {
-        name: "技能鍵到點擊",
-        json: "key_to_click_ms",
-        purpose: "技能連點：技能鍵放開後，多久點左鍵。",
+        name: "開牌：Esc 到數字鍵",
+        json: "card.esc_to_key_ms",
+        purpose: "卡偵開牌：解除暫停的 Esc 之後，多久送數字鍵。",
         rule: "",
     },
     TimingMeta {
-        name: "連點週期",
-        json: "repeat_period_ms",
-        purpose: "連點一輪開始到下一輪開始。",
-        rule: "不能小於「按鍵按住＋技能鍵到點擊＋點擊按住」。",
-    },
-    TimingMeta {
-        name: "快卡幀 Esc 間隔",
-        json: "escape_gap_ms[0]",
-        purpose: "卡幀暫停（快）兩次 Esc 之間的間隔。第二個 Esc 一定會送。",
+        name: "開牌：數字鍵到點擊",
+        json: "card.key_to_click_ms",
+        purpose: "卡偵開牌：送出數字鍵之後，多久在游標位置點左鍵。",
         rule: "",
     },
     TimingMeta {
-        name: "慢卡幀 Esc 間隔",
-        json: "escape_gap_ms[1]",
-        purpose: "卡幀暫停（慢）兩次 Esc 之間的間隔。第二個 Esc 一定會送。",
-        rule: "",
-    },
-    TimingMeta {
-        name: "開牌前等待",
-        json: "card_pre_esc_ms",
-        purpose: "卡幀開牌：第一個 Esc 之後，多久開始送數字鍵。",
+        name: "開牌：點擊到 Esc",
+        json: "card.click_to_esc_ms",
+        purpose: "卡偵開牌：點完左鍵之後，多久送回到暫停的 Esc。",
         rule: "",
     },
     TimingMeta {
         name: "點位維持週期",
-        json: "hold_maintain_period_ms",
+        json: "point.maintain_period_ms",
         purpose: "普通點位按住時，多久把游標拉回點位一次。",
         rule: "要大於 0。",
     },
     TimingMeta {
-        name: "牌鍵回位等待",
-        json: "card_return_wait_ms",
-        purpose: "牌鍵點完位置後，游標在那裡停多久才回到你的位置。太短的話遊戲可能讀不到點擊位置。",
-        rule: "不超過「連點週期－點擊按住」時，牌鍵和連點一樣快。",
+        name: "牌鍵：數字鍵到按下",
+        json: "point_card.key_to_down_ms",
+        purpose: "牌鍵：送出游標所在那張牌的數字鍵之後，多久移到點位並按下左鍵。",
+        rule: "牌鍵這一組加起來要大於 0。",
+    },
+    TimingMeta {
+        name: "牌鍵：按下到放開",
+        json: "point_card.down_to_up_ms",
+        purpose: "牌鍵：左鍵在點位上按住多久才放開。太短的話遊戲可能讀不到點擊位置。",
+        rule: "牌鍵這一組加起來要大於 0。",
+    },
+    TimingMeta {
+        name: "牌鍵：回位到下一輪",
+        json: "point_card.return_to_next_ms",
+        purpose: "牌鍵：游標回到你的位置之後，多久開始下一輪。",
+        rule: "牌鍵這一組加起來要大於 0。",
     },
 ];
 
@@ -216,27 +234,17 @@ impl App {
             },
         }
     }
-    fn timing_checks(&self) -> [Option<String>; 9] {
+    /// Per-gap problems, indexed like [`TIMING`]. A whole-set error marks every gap of that set.
+    fn timing_checks(&self) -> [Option<String>; 12] {
         let t = &self.timing_draft;
-        let values = timing_fields(t);
-        let mut out: [Option<String>; 9] = Default::default();
-        for (i, (_, v)) in values.iter().enumerate() {
-            if !v.is_finite() || *v < 0. {
-                out[i] = Some("要填 0 以上的數字".into());
+        let mut out: [Option<String>; 12] = Default::default();
+        for e in t.check() {
+            let path = e.path.trim_start_matches("$.timing.");
+            for (i, (gap, _)) in t.gaps().iter().enumerate() {
+                if out[i].is_none() && (*gap == path || gap.split('.').next() == Some(path)) {
+                    out[i] = Some(e.reason.clone());
+                }
             }
-        }
-        if out[0].is_none() && t.key_hold_ms == 0. {
-            out[0] = Some("0 只有已驗證的時間能用".into());
-        }
-        if out[1].is_none() && t.mouse_hold_ms <= 0. {
-            out[1] = Some("要大於 0".into());
-        }
-        let need = t.key_hold_ms + t.key_to_click_ms + t.mouse_hold_ms;
-        if out[3].is_none() && t.repeat_period_ms < need {
-            out[3] = Some(format!("至少要 {need}"));
-        }
-        if out[7].is_none() && t.hold_maintain_period_ms <= 0. {
-            out[7] = Some("要大於 0".into());
         }
         out
     }
@@ -1662,37 +1670,6 @@ impl App {
                 self.timing_error = None;
             }
         });
-        let mut repeat = self.timing_draft.auto_repeat == AutoRepeatPolicy::FollowTypematic;
-        let mut trailing = self.timing_draft.card_trailing_esc == TrailingEscPolicy::IfStarted;
-        let changed = ui
-            .checkbox(
-                &mut repeat,
-                k::text("按住技能鍵時跟著鍵盤自動重複", p.ink, k::SMALL),
-            )
-            .changed()
-            | ui.checkbox(
-                &mut trailing,
-                k::text("卡幀開牌放開時再送一次 Esc", p.ink, k::SMALL),
-            )
-            .changed();
-        if changed {
-            let mut timing = self.timing_draft.clone();
-            timing.auto_repeat = if repeat {
-                AutoRepeatPolicy::FollowTypematic
-            } else {
-                AutoRepeatPolicy::Ignore
-            };
-            timing.card_trailing_esc = if trailing {
-                TrailingEscPolicy::IfStarted
-            } else {
-                TrailingEscPolicy::Never
-            };
-            self.timing_draft = timing.clone();
-            self.timing_error = self.keys.set_timing(timing).err().map(|e| e.to_string());
-            if self.timing_error.is_none() {
-                self.timing_draft = self.keys.document.timing.clone();
-            }
-        }
         let Selection::Timing(index) = self.selection else {
             return;
         };

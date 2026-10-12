@@ -1,5 +1,5 @@
 {
-  "schema": "baauto-rs-keys-v1",
+  "schema": "baauto-rs-keys-v2",
   "presets": {
     "global_stop": {
       "hotkey": "Ctrl+F9",
@@ -105,17 +105,31 @@
     },
     "source": "manual",
     "verified": false,
-    "key_hold_ms": 30,
-    "mouse_hold_ms": 30,
-    "key_to_click_ms": 30,
-    "repeat_period_ms": 120,
-    "escape_gap_ms": [
-      80,
-      120
-    ],
-    "card_pre_esc_ms": 30,
-    "hold_maintain_period_ms": 120,
-    "card_trailing_esc": "if_started",
-    "auto_repeat": "follow_typematic"
+    "frame_fast": {
+      "esc_gap_ms": 80
+    },
+    "frame_slow": {
+      "esc_gap_ms": 120
+    },
+    "spam": {
+      "key_to_click_ms": 0,
+      "click_to_next_ms": 16
+    },
+    "click_spam": {
+      "click_to_next_ms": 16
+    },
+    "card": {
+      "esc_to_key_ms": 10,
+      "key_to_click_ms": 0,
+      "click_to_esc_ms": 0
+    },
+    "point": {
+      "maintain_period_ms": 16
+    },
+    "point_card": {
+      "key_to_down_ms": 0,
+      "down_to_up_ms": 16,
+      "return_to_next_ms": 16
+    }
   }
 }

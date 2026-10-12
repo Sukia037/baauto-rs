@@ -53,18 +53,6 @@ pub enum SlotOrder {
     LeftToRight,
     RightToLeft,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AutoRepeatPolicy {
-    Ignore,
-    FollowTypematic,
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum TrailingEscPolicy {
-    Never,
-    IfStarted,
-}
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HandRect {
@@ -232,32 +220,142 @@ impl<'de> Deserialize<'de> for RemovedField {
         serde::de::IgnoredAny::deserialize(d).map(|_| Self)
     }
 }
+pub const KEYS_SCHEMA: &str = "baauto-rs-keys-v2";
+pub const KEYS_SCHEMA_V1: &str = "baauto-rs-keys-v1";
+/// Double Esc: gap between the two Escs. The second Esc is always sent.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EscGap {
+    pub esc_gap_ms: f64,
+}
+/// Skill spam 1–5: number key → click → next cycle.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpamGaps {
+    pub key_to_click_ms: f64,
+    pub click_to_next_ms: f64,
+}
+/// Mouse spam: click → next cycle.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClickSpamGaps {
+    pub click_to_next_ms: f64,
+}
+/// Card open 1–5 (one shot): Esc → number key → click at the cursor → Esc.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CardGaps {
+    pub esc_to_key_ms: f64,
+    pub key_to_click_ms: f64,
+    pub click_to_esc_ms: f64,
+}
+/// Hold point: how often the cursor is pulled back onto the point.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PointGaps {
+    pub maintain_period_ms: f64,
+}
+/// Card key: slot key → move+down → move+up → return → next cycle.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PointCardGaps {
+    pub key_to_down_ms: f64,
+    pub down_to_up_ms: f64,
+    pub return_to_next_ms: f64,
+}
+/// Every key is sent as Down+Up in one batch; only the gaps between adjacent steps are
+/// adjustable, one set per function row of spec §5.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TimingProfile {
     pub identity: ProfileIdentity,
     pub source: ProfileSource,
     pub verified: bool,
-    pub key_hold_ms: f64,
-    pub mouse_hold_ms: f64,
-    pub key_to_click_ms: f64,
-    pub repeat_period_ms: f64,
-    /// Fixed waits between the two Escs: [frame_fast, frame_slow]. The second Esc is always sent.
-    pub escape_gap_ms: [f64; 2],
-    pub card_pre_esc_ms: f64,
-    pub hold_maintain_period_ms: f64,
-    /// Card key: how long the cursor stays on the target after the click before returning.
-    #[serde(default = "default_card_return_wait_ms")]
-    pub card_return_wait_ms: f64,
-    #[serde(default, skip_serializing, rename = "allowed_lateness_ms")]
-    removed_lateness: RemovedField,
-    pub card_trailing_esc: TrailingEscPolicy,
-    pub auto_repeat: AutoRepeatPolicy,
-}
-fn default_card_return_wait_ms() -> f64 {
-    16.0
+    pub frame_fast: EscGap,
+    pub frame_slow: EscGap,
+    pub spam: SpamGaps,
+    pub click_spam: ClickSpamGaps,
+    pub card: CardGaps,
+    pub point: PointGaps,
+    pub point_card: PointCardGaps,
 }
 impl TimingProfile {
+    /// Every gap with its JSON path, in table order.
+    pub fn gaps(&self) -> [(&'static str, f64); 12] {
+        [
+            ("frame_fast.esc_gap_ms", self.frame_fast.esc_gap_ms),
+            ("frame_slow.esc_gap_ms", self.frame_slow.esc_gap_ms),
+            ("spam.key_to_click_ms", self.spam.key_to_click_ms),
+            ("spam.click_to_next_ms", self.spam.click_to_next_ms),
+            (
+                "click_spam.click_to_next_ms",
+                self.click_spam.click_to_next_ms,
+            ),
+            ("card.esc_to_key_ms", self.card.esc_to_key_ms),
+            ("card.key_to_click_ms", self.card.key_to_click_ms),
+            ("card.click_to_esc_ms", self.card.click_to_esc_ms),
+            ("point.maintain_period_ms", self.point.maintain_period_ms),
+            ("point_card.key_to_down_ms", self.point_card.key_to_down_ms),
+            ("point_card.down_to_up_ms", self.point_card.down_to_up_ms),
+            (
+                "point_card.return_to_next_ms",
+                self.point_card.return_to_next_ms,
+            ),
+        ]
+    }
+    /// Mutable access by the same paths as [`Self::gaps`].
+    pub fn gap_mut(&mut self, path: &str) -> Option<&mut f64> {
+        Some(match path {
+            "frame_fast.esc_gap_ms" => &mut self.frame_fast.esc_gap_ms,
+            "frame_slow.esc_gap_ms" => &mut self.frame_slow.esc_gap_ms,
+            "spam.key_to_click_ms" => &mut self.spam.key_to_click_ms,
+            "spam.click_to_next_ms" => &mut self.spam.click_to_next_ms,
+            "click_spam.click_to_next_ms" => &mut self.click_spam.click_to_next_ms,
+            "card.esc_to_key_ms" => &mut self.card.esc_to_key_ms,
+            "card.key_to_click_ms" => &mut self.card.key_to_click_ms,
+            "card.click_to_esc_ms" => &mut self.card.click_to_esc_ms,
+            "point.maintain_period_ms" => &mut self.point.maintain_period_ms,
+            "point_card.key_to_down_ms" => &mut self.point_card.key_to_down_ms,
+            "point_card.down_to_up_ms" => &mut self.point_card.down_to_up_ms,
+            "point_card.return_to_next_ms" => &mut self.point_card.return_to_next_ms,
+            _ => return None,
+        })
+    }
+    /// Spec §11 validator: finite gaps ≥ 0; every looping set must have a positive total.
+    pub fn check(&self) -> Vec<ConfigError> {
+        let mut errors = Vec::new();
+        for (path, v) in self.gaps() {
+            if !v.is_finite() || v < 0.0 || v * 1000.0 > f64::from(u32::MAX) {
+                errors.push(ConfigError::new(
+                    format!("$.timing.{path}"),
+                    "間隔要是 0 以上的毫秒數",
+                ));
+            }
+        }
+        let loops = [
+            (
+                "spam",
+                self.spam.key_to_click_ms + self.spam.click_to_next_ms,
+            ),
+            ("click_spam", self.click_spam.click_to_next_ms),
+            ("point", self.point.maintain_period_ms),
+            (
+                "point_card",
+                self.point_card.key_to_down_ms
+                    + self.point_card.down_to_up_ms
+                    + self.point_card.return_to_next_ms,
+            ),
+        ];
+        for (set, total) in loops {
+            if total.is_finite() && total <= 0.0 {
+                errors.push(ConfigError::new(
+                    format!("$.timing.{set}"),
+                    "會循環的這一組，間隔加起來要大於 0",
+                ));
+            }
+        }
+        errors
+    }
     pub fn set_identity(&mut self, identity: ProfileIdentity) {
         if self.identity != identity {
             self.verified = false;

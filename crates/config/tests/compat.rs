@@ -56,8 +56,8 @@ fn import_functions_json_to_keys() {
     assert_eq!(k.timing.source, ProfileSource::ImportedLegacy);
     assert!(!k.timing.verified);
     assert_eq!(
-        k.timing.escape_gap_ms,
-        template_keys().timing.escape_gap_ms,
+        k.timing.gaps(),
+        template_keys().timing.gaps(),
         "timing_ms never actually used by AHK"
     );
     assert_eq!(
@@ -186,12 +186,12 @@ fn editor_timing_changes_clear_verification_transactionally() {
     e.document.timing.verified = true;
     let old = e.document.clone();
     let mut t = old.timing.clone();
-    t.key_hold_ms = -1.;
+    t.spam.key_to_click_ms = -1.;
     assert!(e.set_timing(t).is_err());
     assert_eq!(e.document, old);
     let mut t = old.timing.clone();
-    t.key_hold_ms = 30.;
-    t.repeat_period_ms = 100.;
+    t.spam.key_to_click_ms = 30.;
+    t.spam.click_to_next_ms = 100.;
     e.set_timing(t).unwrap();
     assert!(!e.document.timing.verified);
     let mut hand = HandEditor::new(HandSettings::default());

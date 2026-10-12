@@ -18,11 +18,11 @@ fn run_trial_only_in_calibration_session_and_uses_its_timing() {
     let mut normal = Engine::new(c.clone(), TickRate(1_000_000));
     normal.arm(SessionId(1), Ticks(0)).unwrap();
     let mut timing = c.timing;
-    timing.key_hold = 30_000;
+    timing.esc_gap_fast = 30_000;
     assert_eq!(
         normal.run_trial(
             1,
-            ActionSpec::Tap(Key(49)),
+            ActionSpec::DoubleEsc { slow: false },
             timing,
             Ticks(100),
             100_000,
@@ -35,7 +35,7 @@ fn run_trial_only_in_calibration_session_and_uses_its_timing() {
     let id = engine
         .run_trial(
             1,
-            ActionSpec::Tap(Key(49)),
+            ActionSpec::DoubleEsc { slow: false },
             timing,
             Ticks(100),
             100_000,
@@ -57,7 +57,7 @@ fn run_trial_only_in_calibration_session_and_uses_its_timing() {
     assert!(engine.next_batch(Ticks(30_099)).is_none());
     assert_eq!(
         engine.next_batch(Ticks(30_100)).unwrap().events.as_slice(),
-        &[OutEvent::KeyUp(Key(49))]
+        &[OutEvent::KeyDown(Key::ESC), OutEvent::KeyUp(Key::ESC)]
     );
 }
 #[test]
@@ -132,7 +132,13 @@ fn expired_trial_releases_held_mouse_and_never_repeats() {
         Some(Ticks(c.timing.maintain.min(50_000)))
     );
     let batch = engine.next_batch(Ticks(50_000)).unwrap();
-    assert_eq!(batch.events.as_slice(), &[OutEvent::LeftUp]);
+    assert_eq!(
+        batch.events.as_slice(),
+        &[
+            OutEvent::MoveTo(NormPoint { x: 0.5, y: 0.5 }),
+            OutEvent::LeftUp
+        ]
+    );
     engine.commit(
         batch.id,
         SubmitOutcome::Ok {
@@ -171,9 +177,10 @@ fn calibration_trials_allocate_nothing_after_engine_construction() {
                 },
                 now,
             );
-            let at = now.after(c.timing.key_hold);
-            let up = e.next_batch(at).unwrap();
-            e.commit(up.id, SubmitOutcome::Ok { begin: at, end: at }, at);
+            assert_eq!(
+                down.events.as_slice(),
+                &[OutEvent::KeyDown(Key(49)), OutEvent::KeyUp(Key(49))]
+            );
             assert_eq!(e.active_actions(), 0);
         }
     });

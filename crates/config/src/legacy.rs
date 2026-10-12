@@ -191,7 +191,6 @@ pub fn import(
             }
             k.timing.source = ProfileSource::ImportedLegacy;
             k.timing.verified = false;
-            k.timing.auto_repeat = AutoRepeatPolicy::FollowTypematic;
             if !data["timing_ms"].is_null() {
                 r.source_timing = Some(data["timing_ms"].clone());
             }

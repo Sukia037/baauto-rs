@@ -353,6 +353,10 @@ pub fn measure(
         #[cfg(feature = "test-hooks")]
         {
             let stop = stop_exercise.clone();
+            // Press and release W at the pace of one skill-spam cycle.
+            let cycle = timing
+                .spam_key_to_click
+                .saturating_add(timing.spam_click_to_next);
             Some(thread::spawn(move || {
                 while !stop.load(SeqCst) {
                     if target_for_foreground(std::ffi::OsStr::new("baauto-receiver.exe"))
@@ -361,16 +365,10 @@ pub fn measure(
                         .is_some()
                     {
                         let _ = inject_test_key(Key(87), true);
-                        let _ = wait_control_period(
-                            clock,
-                            timing
-                                .key_hold
-                                .saturating_add(timing.mouse_hold)
-                                .saturating_add(timing.key_to_click),
-                        );
+                        let _ = wait_control_period(clock, cycle);
                         let _ = inject_test_key(Key(87), false);
                     }
-                    let _ = wait_control_period(clock, timing.repeat_period);
+                    let _ = wait_control_period(clock, cycle);
                 }
                 let _ = inject_test_key(Key(87), false);
             }))
