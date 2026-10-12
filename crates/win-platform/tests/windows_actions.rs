@@ -592,6 +592,133 @@ fn all_presets_card_slots_and_capture_reach_windows_receiver() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+/// preview.4 field report: a related key (or the mouse button) still held when the game took the
+/// foreground made the engine reject Arm, the Stop that followed was never confirmed, and the
+/// supervisor killed the engine after its recovery timeout. A rejected Arm must end Disarmed.
+#[test]
+#[ignore = "requires interactive Windows desktop and test-hooks release engine"]
+fn arm_rejected_for_held_key_stops_without_fault() {
+    let bin = test_bin();
+    let folder = std::env::temp_dir().join(format!("baauto-arm-rejected-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).unwrap();
+    let receiver = Process::spawn(
+        bin.join("baauto-receiver.exe").as_os_str(),
+        &[
+            "--output".into(),
+            folder.join("receiver.csv").into_os_string(),
+        ],
+    )
+    .unwrap();
+    let mut keys = template_keys();
+    for (preset, variable) in [
+        ("global_stop", "BAAUTO_TEST_STOP_HOTKEY"),
+        ("record", "BAAUTO_TEST_RECORD_HOTKEY"),
+    ] {
+        if let Some(chord) = std::env::var_os(variable) {
+            let chord = chord.to_str().expect("test hotkey must be valid Unicode");
+            keys.presets.get_mut(preset).unwrap().hotkey =
+                Some(chord.parse().expect("test hotkey must be a valid chord"));
+        }
+    }
+    let held = keys.presets["skill_1"].hotkey.unwrap().key;
+    let mut guard = Guard {
+        receiver,
+        preview: None,
+        quit: None,
+        join: None,
+        extra_keys: vec![held],
+    };
+    let clock = Clock::new().unwrap();
+    let due = clock.now().after(clock.rate.0 * 15);
+    while target_for_foreground(OsStr::new("baauto-receiver.exe"))
+        .unwrap()
+        .is_none()
+    {
+        assert!(clock.now() < due, "focus receiver");
+        wait_control_period(clock, clock.rate.0 / 20).unwrap();
+    }
+    let cfg = Arc::new(
+        compile(
+            &template_points(),
+            &keys,
+            &HandSettings::default(),
+            clock.rate,
+        )
+        .unwrap(),
+    );
+    let options = SupervisorOptions {
+        cfg,
+        engine: bin.join("baauto-engine.exe"),
+        target: "baauto-receiver.exe".into(),
+        stop_hotkey: keys.presets["global_stop"].hotkey.unwrap(),
+        record_hotkey: keys.presets["record"].hotkey,
+        health_timeout_ms: 1000,
+        recovery_timeout_ms: 1000,
+        logs: folder.clone(),
+        injection: None,
+        mode: baauto_core::RunMode::Normal,
+    };
+    let (tx, rx) = mpsc::channel();
+    let (status, statuses) = mpsc::channel();
+    let join = thread::spawn(move || run_supervisor(options, rx, status));
+    guard.quit = Some(tx.clone());
+    guard.join = Some(join);
+    loop {
+        let s = statuses.recv_timeout(Duration::from_secs(10)).unwrap();
+        if s.state == State::Disarmed {
+            break;
+        }
+    }
+    // Let the engine install its Hook and report KeysReleased, so the supervisor's view of the
+    // keys is stale when the key goes down: the order the field report hit.
+    wait_control_period(clock, clock.rate.0 * 2).unwrap();
+    assert!(inject_test_button_or_key(held, true));
+    wait_control_period(clock, clock.rate.0 / 5).unwrap();
+    tx.send(SupervisorCommand::Enable).unwrap();
+    let mut rejected = false;
+    loop {
+        let s = statuses
+            .recv_timeout(Duration::from_secs(5))
+            .expect("no Disarmed status after the rejected Arm");
+        assert!(
+            !matches!(s.state, State::Armed(_)),
+            "Arm accepted while {held:?} was held"
+        );
+        assert!(
+            !matches!(
+                s.state,
+                State::WaitingExit | State::Recovering | State::Faulted
+            ),
+            "rejected Arm ended in {:?}: {}",
+            s.state,
+            s.detail
+        );
+        rejected |= s.detail.contains("release relevant keys before Arm");
+        if rejected && s.state == State::Disarmed {
+            break;
+        }
+    }
+    assert!(inject_test_button_or_key(held, false));
+    wait_control_period(clock, clock.rate.0 / 5).unwrap();
+    tx.send(SupervisorCommand::Enable).unwrap();
+    loop {
+        let s = statuses
+            .recv_timeout(Duration::from_secs(10))
+            .expect("Enable after releasing the key never armed");
+        if matches!(s.state, State::Armed(_)) {
+            break;
+        }
+        assert_ne!(s.state, State::Faulted, "{}", s.detail);
+    }
+    let faults: Vec<_> = std::fs::read_dir(&folder)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("fault-"))
+        .collect();
+    assert!(faults.is_empty(), "fault dumps written: {faults:?}");
+    println!("evidence: {}", folder.display());
+}
 /// Built binaries: `BAAUTO_TEST_BIN` when run from the release test kit, otherwise this
 /// checkout's `target/release`.
 fn test_bin() -> PathBuf {
