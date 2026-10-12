@@ -137,7 +137,7 @@ BAauto 只在遊戲是前景視窗時才會動作。切到別的視窗會自動�
 - 寫「原因見 logs\engine-error.txt」：打開那個檔案，把內容連同截圖一起回報。
 
 **按了「啟用」，切回遊戲後又變回「已停止」**
-切回遊戲的那一刻，手上還按著滑鼠左鍵、Alt 或其他會用到的鍵，BAauto 為了不卡鍵就不啟用。「紀錄」分頁會寫 `release relevant keys before Arm`。手放開後回 BAauto 再按一次「啟用」，再切回遊戲就好；用工作列切換、或切換後先放開按鍵，就不會遇到。
+切回遊戲的那一刻，手上還按著滑鼠左鍵、Alt 或其他會用到的鍵，BAauto 為了不卡鍵就不啟用。「紀錄」分頁會寫 `release relevant keys before Arm`。手放開後回 BAauto 再按一次「啟用」，再切回遊戲就好。
 
 **雙擊 `baauto-app.exe` 跳出「BAauto 無法開啟」**
 視窗上會寫原因，同樣的內容也存在 `logs\app-error.txt`。
