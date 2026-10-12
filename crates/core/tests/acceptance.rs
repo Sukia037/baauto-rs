@@ -20,6 +20,7 @@ fn test_timing(t: &mut TimingProfile) {
     t.point_card = PointCardGaps {
         key_to_down_ms: 1.,
         down_to_up_ms: 2.,
+        up_to_return_ms: 3.,
         return_to_next_ms: 4.,
     };
 }
@@ -434,25 +435,29 @@ fn point_card_cycle_order_and_return() {
         r.send(3).events.as_slice(),
         &[OutEvent::MoveTo(card), OutEvent::LeftUp]
     );
+    // The cursor stays on the target for `up_to_return` after the button is released.
+    assert!(r.none_at(5));
+    assert!(r.e.pointer_displaced());
     assert_eq!(
-        r.send(3).events.as_slice(),
+        r.send(6).events.as_slice(),
         &[OutEvent::MoveTo(r.center(1))]
     );
     assert!(!r.e.pointer_displaced());
-    assert!(r.none_at(6));
+    assert!(r.none_at(9));
     // The next cycle sends the key of the card now under the cursor.
-    assert_eq!(r.send(7).events.as_slice(), &tap(50));
+    assert_eq!(r.send(10).events.as_slice(), &tap(50));
     assert_eq!(
-        r.send(8).events.as_slice(),
+        r.send(11).events.as_slice(),
         &[OutEvent::MoveTo(card), OutEvent::LeftDown]
     );
     r.up(1);
     assert_eq!(
-        r.send(8).events.as_slice(),
+        r.send(11).events.as_slice(),
         &[OutEvent::MoveTo(card), OutEvent::LeftUp]
     );
+    assert!(r.none_at(13));
     assert_eq!(
-        r.send(8).events.as_slice(),
+        r.send(14).events.as_slice(),
         &[OutEvent::MoveTo(r.center(1))]
     );
     assert!(r.none_at(100));
@@ -506,13 +511,36 @@ fn card_key_completes_pulse_after_release() {
         r.send(1).events.as_slice(),
         &[OutEvent::MoveTo(card), OutEvent::LeftUp]
     );
+    assert!(r.none_at(3));
     assert_eq!(
-        r.send(1).events.as_slice(),
+        r.send(4).events.as_slice(),
         &[OutEvent::MoveTo(r.center(0))]
     );
     assert!(r.none_at(20));
     assert_eq!(r.e.active_actions(), 0);
     assert!(r.e.held().is_empty());
+}
+#[test]
+fn card_key_release_during_up_to_return_still_waits() {
+    let mut r = Rig::new();
+    let card = r.card_point();
+    r.e.set_user_cursor(Some(r.center(0)));
+    r.down(81, 1, p());
+    r.send(0);
+    r.send(1);
+    assert_eq!(
+        r.send(3).events.as_slice(),
+        &[OutEvent::MoveTo(card), OutEvent::LeftUp]
+    );
+    r.now = 4;
+    r.up(1);
+    assert!(r.none_at(5));
+    assert_eq!(
+        r.send(6).events.as_slice(),
+        &[OutEvent::MoveTo(r.center(0))]
+    );
+    assert!(r.none_at(100));
+    assert_eq!(r.e.active_actions(), 0);
 }
 #[test]
 fn card_key_stop_releases_without_moving_cursor() {

@@ -55,6 +55,7 @@ fn timing_rejects_zero_loop_total() {
                 t.point_card = PointCardGaps {
                     key_to_down_ms: 0.,
                     down_to_up_ms: 0.,
+                    up_to_return_ms: 0.,
                     return_to_next_ms: 0.,
                 }
             }
@@ -264,6 +265,22 @@ fn keys_v2_rejects_old_fields() {
         serde_json::from_str(include_str!("../../../keys/預設按鍵.json")).unwrap();
     v["timing"]["key_hold_ms"] = serde_json::json!(16);
     assert!(parse_keys(&v.to_string()).is_err());
+}
+/// preview.6 added `point_card.up_to_return_ms`. Files saved before it still load, wait 0 there
+/// as they did before, and get the field written back.
+#[test]
+fn keys_without_up_to_return_load_as_zero_and_save_it() {
+    let mut v: serde_json::Value =
+        serde_json::from_str(include_str!("../../../keys/預設按鍵.json")).unwrap();
+    v["timing"]["point_card"]
+        .as_object_mut()
+        .unwrap()
+        .remove("up_to_return_ms");
+    let (k, _) = parse_keys(&v.to_string()).unwrap();
+    assert_eq!(k.timing.point_card.up_to_return_ms, 0.);
+    assert!(to_json(&k).unwrap().contains("\"up_to_return_ms\": 0"));
+    let c = check(&points(), &k, &HandSettings::default()).unwrap();
+    assert_eq!(c.timing.point_card_up_to_return, 0);
 }
 #[test]
 fn escape_gaps_are_independent_waits() {

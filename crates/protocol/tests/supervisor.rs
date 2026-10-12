@@ -129,6 +129,85 @@ fn fsm_stale_stopped_from_old_session_ignored() {
     );
     assert!(matches!(f.state(), State::Stopping { .. }));
 }
+/// preview.4 field report: holding the mouse button that clicked the game to the front made the
+/// engine reject Arm. Nothing ran, so the session returns to Disarmed without a stop, and arms
+/// again once the keys are reported released for that session.
+#[test]
+fn fsm_rejected_arm_returns_to_disarmed_without_stop() {
+    let mut f = ready();
+    f.on(Event::RequestArm {
+        session: SessionId(1),
+        cmd_seq: 1,
+    });
+    assert!(
+        f.on(Event::ArmRejected {
+            session: SessionId(1),
+            cmd_seq: 1,
+        })
+        .is_empty()
+    );
+    assert_eq!(f.state(), State::Disarmed);
+    assert!(!f.ready());
+    for n in 0..10 {
+        assert!(
+            f.on(Event::Tick {
+                now: Ticks(n * 100)
+            })
+            .is_empty()
+        );
+    }
+    f.on(Event::KeysReleased {
+        session: SessionId(1),
+        version: ConfigVersion(1),
+    });
+    assert!(f.ready());
+    assert!(
+        f.on(Event::RequestArm {
+            session: SessionId(2),
+            cmd_seq: 2,
+        })
+        .contains(&Effect::Arm {
+            session: SessionId(2),
+            cmd_seq: 2,
+        })
+    );
+}
+#[test]
+fn fsm_rejection_of_another_command_keeps_waiting_for_arm() {
+    let mut f = ready();
+    f.on(Event::RequestArm {
+        session: SessionId(1),
+        cmd_seq: 3,
+    });
+    for (session, cmd_seq) in [(SessionId(1), 2), (SessionId(0), 3)] {
+        assert!(f.on(Event::ArmRejected { session, cmd_seq }).is_empty());
+        assert_eq!(
+            f.state(),
+            State::AwaitArm {
+                session: SessionId(1),
+                cmd_seq: 3
+            }
+        );
+    }
+}
+/// Spec §9A: a user holding the same key or the left button stops the session and must release
+/// it before arming again. That is a stop, not a fault: the engine is not killed.
+#[test]
+fn fsm_physical_conflict_is_a_cooperative_stop() {
+    let mut f = armed();
+    f.on(Event::RequestStop {
+        reason: StopReason::PhysicalConflict,
+        cmd_seq: 2,
+        now: Ticks(10),
+    });
+    assert!(matches!(f.state(), State::Stopping { fault: false, .. }));
+    f.on(Event::Stopped {
+        session: SessionId(1),
+        cmd_seq: 2,
+    });
+    assert_eq!(f.state(), State::Disarmed);
+    assert!(f.on(Event::Tick { now: Ticks(1000) }).is_empty());
+}
 #[test]
 fn fsm_no_auto_resume_after_fault() {
     let mut f = armed();

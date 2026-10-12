@@ -10,7 +10,7 @@ use baauto_protocol::{capture::*, ipc::EngineToApp, supervisor::State};
 use baauto_win_platform::*;
 use std::{
     ffi::OsStr,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, mpsc},
     thread,
     time::Duration,
@@ -591,6 +591,191 @@ fn all_presets_card_slots_and_capture_reach_windows_receiver() {
         failures.extend(run_profile(mode, side, order, all));
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+struct Supervised {
+    /// Releases the keys, quits the supervisor and closes the receiver on drop.
+    _guard: Guard,
+    clock: Clock,
+    tx: mpsc::Sender<SupervisorCommand>,
+    statuses: mpsc::Receiver<SupervisorStatus>,
+    folder: PathBuf,
+}
+/// Receiver in front, supervisor running the template and Disarmed with its Hook installed.
+fn supervised_receiver(name: &str, extra_keys: Vec<Key>) -> Supervised {
+    let bin = test_bin();
+    let folder = std::env::temp_dir().join(format!("baauto-{name}-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).unwrap();
+    let receiver = Process::spawn(
+        bin.join("baauto-receiver.exe").as_os_str(),
+        &[
+            "--output".into(),
+            folder.join("receiver.csv").into_os_string(),
+        ],
+    )
+    .unwrap();
+    let mut keys = template_keys();
+    for (preset, variable) in [
+        ("global_stop", "BAAUTO_TEST_STOP_HOTKEY"),
+        ("record", "BAAUTO_TEST_RECORD_HOTKEY"),
+    ] {
+        if let Some(chord) = std::env::var_os(variable) {
+            let chord = chord.to_str().expect("test hotkey must be valid Unicode");
+            keys.presets.get_mut(preset).unwrap().hotkey =
+                Some(chord.parse().expect("test hotkey must be a valid chord"));
+        }
+    }
+    let mut guard = Guard {
+        receiver,
+        preview: None,
+        quit: None,
+        join: None,
+        extra_keys,
+    };
+    let clock = Clock::new().unwrap();
+    let due = clock.now().after(clock.rate.0 * 15);
+    while target_for_foreground(OsStr::new("baauto-receiver.exe"))
+        .unwrap()
+        .is_none()
+    {
+        assert!(clock.now() < due, "focus receiver");
+        wait_control_period(clock, clock.rate.0 / 20).unwrap();
+    }
+    let cfg = Arc::new(
+        compile(
+            &template_points(),
+            &keys,
+            &HandSettings::default(),
+            clock.rate,
+        )
+        .unwrap(),
+    );
+    let options = SupervisorOptions {
+        cfg,
+        engine: bin.join("baauto-engine.exe"),
+        target: "baauto-receiver.exe".into(),
+        stop_hotkey: keys.presets["global_stop"].hotkey.unwrap(),
+        record_hotkey: keys.presets["record"].hotkey,
+        health_timeout_ms: 1000,
+        recovery_timeout_ms: 1000,
+        logs: folder.clone(),
+        injection: None,
+        mode: baauto_core::RunMode::Normal,
+    };
+    let (tx, rx) = mpsc::channel();
+    let (status, statuses) = mpsc::channel();
+    let join = thread::spawn(move || run_supervisor(options, rx, status));
+    guard.quit = Some(tx.clone());
+    guard.join = Some(join);
+    loop {
+        let s = statuses.recv_timeout(Duration::from_secs(10)).unwrap();
+        if s.state == State::Disarmed {
+            break;
+        }
+    }
+    // Let the engine install its Hook and report KeysReleased, so the supervisor's view of the
+    // keys is stale when a key goes down later: the order the field reports hit.
+    wait_control_period(clock, clock.rate.0 * 2).unwrap();
+    Supervised {
+        _guard: guard,
+        clock,
+        tx,
+        statuses,
+        folder,
+    }
+}
+/// Waits for `want`; a kill, recovery or fault on the way fails the test.
+fn until_state(s: &Supervised, what: &str, want: impl Fn(&SupervisorStatus) -> bool) {
+    loop {
+        let status = s
+            .statuses
+            .recv_timeout(Duration::from_secs(10))
+            .unwrap_or_else(|_| panic!("{what}"));
+        assert!(
+            !matches!(
+                status.state,
+                State::WaitingExit | State::Recovering | State::Faulted
+            ),
+            "{what}: ended in {:?}: {}",
+            status.state,
+            status.detail
+        );
+        if want(&status) {
+            return;
+        }
+    }
+}
+fn assert_no_fault_dumps(folder: &Path) {
+    let faults: Vec<_> = std::fs::read_dir(folder)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("fault-"))
+        .collect();
+    assert!(faults.is_empty(), "fault dumps written: {faults:?}");
+    println!("evidence: {}", folder.display());
+}
+/// preview.4 field report: the mouse button that clicked the game to the front was still held,
+/// the engine rejected Arm, the Stop that followed was never confirmed, and the supervisor killed
+/// the engine after its recovery timeout. A rejected Arm must end Disarmed, keep the enable
+/// request, and arm as soon as the key is released. A keyboard key stands in for the button so the
+/// test does not click the receiver; both are the same related-key check.
+#[test]
+#[ignore = "requires interactive Windows desktop and test-hooks release engine"]
+fn arm_rejected_for_held_key_waits_and_arms_after_release() {
+    let held = template_keys().presets["skill_1"].hotkey.unwrap().key;
+    let s = supervised_receiver("arm-rejected", vec![held]);
+    assert!(inject_test_button_or_key(held, true));
+    wait_control_period(s.clock, s.clock.rate.0 / 5).unwrap();
+    s.tx.send(SupervisorCommand::Enable).unwrap();
+    until_state(&s, "no Disarmed status after the rejected Arm", |st| {
+        assert!(
+            !matches!(st.state, State::Armed(_)),
+            "Arm accepted while {held:?} was held"
+        );
+        if st.state == State::Disarmed && st.detail.contains("放開後自動啟用") {
+            assert!(st.wanted, "the enable request was dropped");
+            return true;
+        }
+        false
+    });
+    // No second Enable: releasing the key alone must arm.
+    assert!(inject_test_button_or_key(held, false));
+    until_state(&s, "releasing the key never armed", |st| {
+        matches!(st.state, State::Armed(_))
+    });
+    assert_no_fault_dumps(&s.folder);
+}
+/// preview.4 field faults mid-game (stop reason 8): the user pressed the left button while a hold
+/// point held it. Spec §9A makes that a stop until release, not an engine kill.
+#[test]
+#[ignore = "requires interactive Windows desktop and test-hooks release engine"]
+fn physical_left_during_hold_point_stops_and_rearms_without_fault() {
+    let s = supervised_receiver("physical-conflict", vec![Key::LEFT]);
+    let point = template_points()
+        .items
+        .iter()
+        .find(|i| i.function == PointFunction::Point)
+        .and_then(|i| i.hotkey)
+        .unwrap()
+        .key;
+    s.tx.send(SupervisorCommand::Enable).unwrap();
+    until_state(&s, "Enable never armed", |st| {
+        matches!(st.state, State::Armed(_))
+    });
+    assert!(inject_test_button_or_key(point, true));
+    wait_control_period(s.clock, s.clock.rate.0 / 5).unwrap();
+    assert!(key_is_down(Key::LEFT), "hold point must hold LeftButton");
+    assert!(inject_test_button_or_key(Key::LEFT, true));
+    until_state(&s, "the conflict did not stop the session", |st| {
+        st.detail.contains("滑鼠左鍵 被實際按住")
+    });
+    assert!(inject_test_button_or_key(Key::LEFT, false));
+    assert!(inject_test_button_or_key(point, false));
+    until_state(&s, "releasing the button never armed again", |st| {
+        matches!(st.state, State::Armed(_)) && st.wanted
+    });
+    assert!(!key_is_down(Key::LEFT), "LeftButton left held");
+    assert_no_fault_dumps(&s.folder);
 }
 /// Built binaries: `BAAUTO_TEST_BIN` when run from the release test kit, otherwise this
 /// checkout's `target/release`.

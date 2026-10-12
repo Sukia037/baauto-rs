@@ -98,6 +98,43 @@ fn decide_physical_conflict_stops() {
     assert_eq!(d.stop, Some(StopReason::PhysicalConflict));
     assert!(!s.armed);
 }
+/// Field faults: spam_1 is held on `2` while spam_2 types `2`. The hook swallowed that `2`, so
+/// Windows never saw it held and the synthetic `2` cannot collide with it.
+#[test]
+fn swallowed_trigger_is_not_held_in_the_system() {
+    let mut s = state();
+    assert!(s.decide(raw(50, true)).swallow);
+    assert!(s.physical[50]);
+    let held = s.system_held();
+    assert!(conflicting_output(&[baauto_core::OutEvent::KeyDown(Key(50))], held).is_none());
+    s.decide(raw(49, true));
+    assert_eq!(
+        conflicting_output(&[baauto_core::OutEvent::KeyDown(Key(49))], s.system_held()),
+        Some(49)
+    );
+    s.decide(raw(50, false));
+    s.decide(raw(49, false));
+    assert_eq!(s.system_held(), [0; 4]);
+}
+#[test]
+fn trigger_down_while_its_key_is_being_sent_is_no_conflict() {
+    let mut s = state();
+    let mut e = raw(50, true);
+    e.ledger_keys[0] = 1 << 50;
+    let d = s.decide(e);
+    assert!(d.swallow);
+    assert_eq!(d.stop, None);
+    assert!(matches!(d.events[0].kind, InputKind::TriggerDown { .. }));
+    assert!(s.armed);
+}
+#[test]
+fn left_button_while_output_holds_it_stops() {
+    let mut s = state();
+    let mut e = raw(1, true);
+    e.ledger_mouse = true;
+    assert_eq!(s.decide(e).stop, Some(StopReason::PhysicalConflict));
+    assert!(!s.armed);
+}
 #[test]
 fn decide_overflow_only_swallows_paired_up() {
     let mut s = state();
@@ -198,14 +235,11 @@ fn decide_side_modifier_matches_generic_trigger_and_ledger() {
 #[test]
 fn physical_before_synthetic_is_rejected() {
     let physical = [1u64 << 49, 0, 0, 0];
-    assert!(outputs_conflict(
-        &[baauto_core::OutEvent::KeyDown(Key(49))],
-        physical
-    ));
-    assert!(!outputs_conflict(
-        &[baauto_core::OutEvent::KeyUp(Key(49))],
-        physical
-    ));
+    assert_eq!(
+        conflicting_output(&[baauto_core::OutEvent::KeyDown(Key(49))], physical),
+        Some(49)
+    );
+    assert!(conflicting_output(&[baauto_core::OutEvent::KeyUp(Key(49))], physical).is_none());
     let c = cfg();
     let mut s = HookState::new(&c, 123);
     let mut keys = [false; 256];
