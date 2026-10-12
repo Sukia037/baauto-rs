@@ -29,6 +29,8 @@ pub struct Observation {
     pub hotkey_warning: Option<String>,
     /// False while the emergency stop hotkey is unregistered; Enable is refused until it is fixed.
     pub can_arm: bool,
+    /// A running tool whose keyboard hooks can hide hotkeys from BAauto; warning only.
+    pub tool_warning: Option<String>,
 }
 pub enum UiEvent {
     Loaded(Box<Snapshot>, u8),
@@ -377,6 +379,8 @@ impl Backend {
                     let mut cached = None;
                     let mut generation = 0;
                     let mut alive = true;
+                    let mut tool_warning = None;
+                    let mut tools_checked: Option<std::time::Instant> = None;
                     loop {
                         loop {
                             let s: SupervisorStatus = match status_rx.try_recv() {
@@ -410,6 +414,17 @@ impl Backend {
                             cached = target;
                         }
                         let cursor = cursor_screen().ok();
+                        // Process enumeration is far heavier than the frame poll; refresh it every few seconds.
+                        if tools_checked.is_none_or(|at| at.elapsed() >= Duration::from_secs(3)) {
+                            tools_checked = Some(std::time::Instant::now());
+                            tool_warning = running_process_names().ok().and_then(|names| {
+                                names.iter().find_map(|n| startup::hook_conflict(n))
+                            }).map(|tool| {
+                                format!(
+                                    "偵測到 {tool} 正在執行。它（例如舊版 BAauto.ahk）如果也用了相同的熱鍵，BAauto 會收不到按鍵而進入故障。\n請先結束 {tool}（工作列右下角的綠色 H 圖示按右鍵 → Exit）再啟用。"
+                                )
+                            });
+                        }
                         let obs = Observation {
                             state: state.clone(),
                             foreground: target.is_some(),
@@ -426,6 +441,7 @@ impl Backend {
                             records,
                             hotkey_warning: hotkey_warning.clone(),
                             can_arm,
+                            tool_warning: tool_warning.clone(),
                         };
                         if observe.send(UiEvent::Observe(obs)).is_err() {
                             break;

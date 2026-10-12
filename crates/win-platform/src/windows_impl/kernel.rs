@@ -276,6 +276,46 @@ pub fn set_dpi_awareness() -> Result<()> {
     // SAFETY: Called before creating a window or hook; no pointers are involved.
     unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) }
 }
+/// Executable names of running processes; used only for warnings, never on a hot path.
+pub fn running_process_names() -> Result<Vec<String>> {
+    use windows::Win32::System::Diagnostics::ToolHelp::*;
+    // SAFETY: The snapshot handle is owned and closed by OwnedHandle; the entry is sized before each
+    // call and szExeFile is a fixed in-struct buffer read only up to its NUL.
+    unsafe {
+        let snapshot = OwnedHandle(CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)?);
+        let mut entry = PROCESSENTRY32W {
+            dwSize: size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        let mut names = Vec::new();
+        let mut more = Process32FirstW(snapshot.0, &mut entry).is_ok();
+        while more {
+            let len = entry
+                .szExeFile
+                .iter()
+                .position(|c| *c == 0)
+                .unwrap_or(entry.szExeFile.len());
+            names.push(String::from_utf16_lossy(&entry.szExeFile[..len]));
+            more = Process32NextW(snapshot.0, &mut entry).is_ok();
+        }
+        Ok(names)
+    }
+}
+/// Modal error box for failures that happen before or instead of the GUI window.
+pub fn error_dialog(title: &str, text: &str) {
+    use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
+    let title = wide(OsStr::new(title));
+    let text = wide(OsStr::new(text));
+    // SAFETY: Both buffers are NUL-terminated and outlive the modal call; there is no owner window.
+    unsafe {
+        MessageBoxW(
+            None,
+            PCWSTR(text.as_ptr()),
+            PCWSTR(title.as_ptr()),
+            MB_OK | MB_ICONERROR,
+        );
+    }
+}
 
 #[cfg(test)]
 mod tests {

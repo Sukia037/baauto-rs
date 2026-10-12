@@ -454,7 +454,10 @@ impl App {
             });
         });
         if let Some(warning) = self.observation.hotkey_warning.clone() {
-            self.hotkey_banner(ui, &warning);
+            self.warning_banner(ui, &warning, true);
+        }
+        if let Some(warning) = self.observation.tool_warning.clone() {
+            self.warning_banner(ui, &warning, false);
         }
         ui.add_space(2.);
         for kind in [FileKind::Points, FileKind::Keys] {
@@ -465,7 +468,8 @@ impl App {
         ui.add_space(6.);
         self.tabs(ui);
     }
-    fn hotkey_banner(&mut self, ui: &mut egui::Ui, warning: &str) {
+    /// Red banner on the home page; `rebind` adds the link to the preset-key tab.
+    fn warning_banner(&mut self, ui: &mut egui::Ui, warning: &str, rebind: bool) {
         let p = Pal::of(ui);
         ui.add_space(4.);
         egui::Frame::new()
@@ -477,7 +481,7 @@ impl App {
                 for line in warning.lines() {
                     ui.label(k::text(line, p.bad, k::BODY));
                 }
-                if k::link(ui, "前往「預設按鍵」改鍵").clicked() {
+                if rebind && k::link(ui, "前往「預設按鍵」改鍵").clicked() {
                     let role = if self.observation.can_arm {
                         "record"
                     } else {
