@@ -290,15 +290,17 @@ fn run_profile(mode: Mode, side: CardUiSide, order: SlotOrder, all_presets: bool
         ));
         for i in 1..=5 {
             let role = format!("card_{i}");
-            let mut cycle = key_pair(48 + i);
-            cycle.extend([(513, 0), (514, 0)]);
-            // ESC pair, one or more numbered-click cycles, trailing ESC pair.
+            // One shot even while held: Esc, number key, click at the cursor, Esc.
+            let mut once = key_pair(27);
+            once.extend(key_pair(48 + i));
+            once.extend([(513, 0), (514, 0)]);
+            once.extend(key_pair(27));
             cases.push(action(
                 clock,
                 keys.presets[&role].hotkey.unwrap().key,
                 &role,
-                cycle,
-                true,
+                once,
+                false,
             ));
         }
         cases.push(action(
@@ -497,32 +499,20 @@ fn run_profile(mode: Mode, side: CardUiSide, order: SlotOrder, all_presets: bool
                 _ => None,
             })
             .collect();
-        let sequence = if case.name.starts_with("card_")
-            && !case.name.starts_with("card_key")
-            && actual.len() >= 4
-        {
-            &actual[2..actual.len() - 2]
+        let sequence = actual.as_slice();
+        let pass = if case.repeating {
+            let complete = sequence.len() / case.expected.len();
+            let tail = &sequence[complete * case.expected.len()..];
+            // Release cancels an unsubmitted click after a completed key pair.
+            // Require repeated complete cycles and only that paired key prefix as a tail.
+            complete >= 2
+                && sequence[..complete * case.expected.len()]
+                    .chunks(case.expected.len())
+                    .all(|chunk| chunk == case.expected)
+                && (tail.is_empty() || (case.expected.len() == 4 && tail == &case.expected[..2]))
         } else {
-            actual.as_slice()
+            sequence == case.expected
         };
-        let bookends = !case.name.starts_with("card_")
-            || case.name.starts_with("card_key")
-            || (actual.starts_with(&key_pair(27)) && actual.ends_with(&key_pair(27)));
-        let pass = bookends
-            && if case.repeating {
-                let complete = sequence.len() / case.expected.len();
-                let tail = &sequence[complete * case.expected.len()..];
-                // Release cancels an unsubmitted click after a completed key pair.
-                // Require repeated complete cycles and only that paired key prefix as a tail.
-                complete >= 2
-                    && sequence[..complete * case.expected.len()]
-                        .chunks(case.expected.len())
-                        .all(|chunk| chunk == case.expected)
-                    && (tail.is_empty()
-                        || (case.expected.len() == 4 && tail == &case.expected[..2]))
-            } else {
-                sequence == case.expected
-            };
         println!(
             "{:?}/{:?}/{:?} {}: {} {:?}",
             mode,
