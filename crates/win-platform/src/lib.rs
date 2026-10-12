@@ -10,6 +10,8 @@ pub mod fault;
 
 pub mod hotkeys;
 
+pub mod startup;
+
 /// Released builds keep the engine in an `engine` subfolder so players only see one exe;
 /// development builds (`target/release`) keep it beside the caller.
 pub fn engine_path() -> std::io::Result<std::path::PathBuf> {
