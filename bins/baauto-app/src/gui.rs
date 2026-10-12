@@ -148,7 +148,6 @@ impl App {
                 records: 0,
                 hotkey_warning: None,
                 can_arm: true,
-                tool_warning: None,
             },
             monitor: None,
             records: 0,

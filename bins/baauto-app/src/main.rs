@@ -10,48 +10,15 @@ fn main() {
 }
 #[cfg(windows)]
 fn main() {
-    let console = std::env::args_os().any(|a| a == "--headless" || a == "--help");
-    if console {
+    if std::env::args_os().any(|a| a == "--headless" || a == "--help") {
         baauto_win_platform::attach_parent_console();
     }
-    if std::env::args_os().any(|a| a == "--headless") {
-        if let Err(e) = run() {
-            eprintln!("{e}");
-            std::process::exit(1);
-        }
-        return;
-    }
-    // A double-clicked GUI has no console, so failures go to a dialog and logs\app-error.txt.
-    let error_log = std::env::current_exe()
-        .ok()
-        .and_then(|exe| Some(exe.parent()?.join("logs").join("app-error.txt")));
-    if let Some(path) = error_log.clone() {
-        let default = std::panic::take_hook();
-        std::panic::set_hook(Box::new(move |info| {
-            if !baauto_win_platform::on_hook_thread() {
-                baauto_win_platform::append_error_log(&path, &format!("panic: {info}"));
-            }
-            default(info);
-        }));
-    }
-    let preview = std::env::args_os().any(|a| a == "--preview");
-    let engine_found = baauto_win_platform::engine_path().is_ok_and(|p| p.is_file());
-    let result = if !console && !preview && !engine_found {
-        Err(baauto_win_platform::startup::MISSING_ENGINE.into())
+    if let Err(e) = if std::env::args_os().any(|a| a == "--headless") {
+        run()
     } else {
         run_gui()
-    };
-    if let Err(e) = result {
+    } {
         eprintln!("{e}");
-        if let Some(path) = &error_log {
-            baauto_win_platform::append_error_log(path, &format!("error: {e}"));
-        }
-        if !console {
-            baauto_win_platform::error_dialog(
-                "BAauto 無法開啟",
-                &format!("{e}\n\n這段訊息也寫在 logs\\app-error.txt，回報問題時請附上。"),
-            );
-        }
         std::process::exit(1);
     }
 }

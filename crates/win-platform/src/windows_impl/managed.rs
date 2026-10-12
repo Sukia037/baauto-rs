@@ -442,11 +442,6 @@ pub fn run_managed(shm: &str, pipe: &str, parent_pid: u32, target_exe: &OsStr) -
                         reason,
                         ..
                     } => {
-                        // A newer session with no engine means its Arm was rejected and nothing ran.
-                        // Adopt it so the stop is confirmed below instead of waiting out recovery.
-                        if requested.0 > session.0 && engine.is_none() {
-                            session = requested;
-                        }
                         if requested != session {
                             io.send(EngineToApp::Rejected {
                                 session: requested,
