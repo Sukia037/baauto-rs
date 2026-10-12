@@ -391,6 +391,10 @@ impl Backend {
                             };
                             generation = s.resume_generation;
                             state = match s.state {
+                                // Enabled but waiting for the game, or for held keys to be released.
+                                baauto_protocol::supervisor::State::Disarmed if s.wanted => {
+                                    "等待啟用"
+                                }
                                 baauto_protocol::supervisor::State::Disarmed => "已停止",
                                 baauto_protocol::supervisor::State::Armed(_) => "運作中",
                                 baauto_protocol::supervisor::State::Faulted => "故障，請檢查紀錄",

@@ -55,6 +55,7 @@ pub struct TickTiming {
     pub maintain: u64,
     pub point_card_key_to_down: u64,
     pub point_card_down_to_up: u64,
+    pub point_card_up_to_return: u64,
     pub point_card_return_to_next: u64,
 }
 impl TickTiming {
@@ -72,6 +73,7 @@ impl TickTiming {
             "point.maintain_period_ms" => &mut self.maintain,
             "point_card.key_to_down_ms" => &mut self.point_card_key_to_down,
             "point_card.down_to_up_ms" => &mut self.point_card_down_to_up,
+            "point_card.up_to_return_ms" => &mut self.point_card_up_to_return,
             "point_card.return_to_next_ms" => &mut self.point_card_return_to_next,
             _ => return None,
         })
@@ -86,6 +88,7 @@ impl TickTiming {
             && self
                 .point_card_key_to_down
                 .saturating_add(self.point_card_down_to_up)
+                .saturating_add(self.point_card_up_to_return)
                 .saturating_add(self.point_card_return_to_next)
                 > 0
     }
@@ -338,7 +341,7 @@ pub fn compile_with_params(
     }
     let t = &k.timing;
     let timing_errors = t.check();
-    let mut ticks = [0; 12];
+    let mut ticks = [0; 13];
     if timing_errors.is_empty() {
         for (i, (path, v)) in t.gaps().into_iter().enumerate() {
             match ticks_ms(v, rate) {
@@ -365,7 +368,8 @@ pub fn compile_with_params(
         maintain: ticks[8],
         point_card_key_to_down: ticks[9],
         point_card_down_to_up: ticks[10],
-        point_card_return_to_next: ticks[11],
+        point_card_up_to_return: ticks[11],
+        point_card_return_to_next: ticks[12],
     };
     let mut cfg = CompiledConfig {
         version,

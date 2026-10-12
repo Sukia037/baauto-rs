@@ -1031,7 +1031,7 @@ fn role_description(role: &str) -> String {
         _ => String::new(),
     }
 }
-fn timing_fields(t: &TimingProfile) -> [(&'static str, f64); 12] {
+fn timing_fields(t: &TimingProfile) -> [(&'static str, f64); 13] {
     t.gaps()
 }
 fn set_timing_field(t: &mut TimingProfile, index: usize, value: f64) {

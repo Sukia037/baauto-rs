@@ -652,11 +652,37 @@ pub fn run_supervisor(
                         reason,
                     } if s == session => {
                         if matches!(fsm.state(), State::Armed(_) | State::AwaitArm { .. }) {
+                            // Spec §9A: a held key or button stops until it is released, then
+                            // arms again like a focus change does.
                             if !matches!(
                                 reason,
-                                StopReason::FocusLost | StopReason::GeometryChanged
+                                StopReason::FocusLost
+                                    | StopReason::GeometryChanged
+                                    | StopReason::PhysicalConflict
                             ) {
                                 wanted = false;
+                            }
+                            if reason == StopReason::PhysicalConflict
+                                && let Some(c) = &child
+                            {
+                                let key = match c.mapping.data().progress.conflict_key.load(SeqCst)
+                                {
+                                    0 => "某個按鍵".to_owned(),
+                                    1 => "滑鼠左鍵".to_owned(),
+                                    k => baauto_config::Key(k as u8).to_string(),
+                                };
+                                let _ = statuses.send(SupervisorStatus {
+                                    state: fsm.state(),
+                                    session,
+                                    detail: format!(
+                                        "{key} 被實際按住，和 BAauto 送出的按鍵衝突，已停止；放開後自動啟用"
+                                    ),
+                                    records: window.record_count(),
+                                    hotkey_warning: window.hotkey_warning().map(str::to_owned),
+                                    stop_hotkey_registered: window.stop_registered(),
+                                    resume_generation: resume_guard.token(),
+                                    wanted,
+                                });
                             }
                             let effects = fsm.on(FsmEvent::RequestStop {
                                 reason,
@@ -709,33 +735,32 @@ pub fn run_supervisor(
                             let _ = reply.send(Err(why.clone()));
                             continue;
                         }
+                        let arm = matches!(fsm.state(), State::AwaitArm { cmd_seq: q, .. } if q == cmd_seq);
+                        // Holding the mouse button that brought the game to the front is normal:
+                        // keep the enable request and arm again once the keys are released.
+                        let keys_held = arm && why == ARM_KEYS_HELD;
+                        if arm {
+                            wanted &= keys_held;
+                            fsm.on(FsmEvent::ArmRejected {
+                                session: s,
+                                cmd_seq,
+                            });
+                            released = false;
+                        }
                         let _ = statuses.send(SupervisorStatus {
                             state: fsm.state(),
                             session,
-                            detail: format!("command {cmd_seq} rejected: {why}"),
+                            detail: if keys_held {
+                                "按鍵或滑鼠還按著，放開後自動啟用".into()
+                            } else {
+                                format!("command {cmd_seq} rejected: {why}")
+                            },
                             records: window.record_count(),
                             hotkey_warning: window.hotkey_warning().map(str::to_owned),
                             stop_hotkey_registered: window.stop_registered(),
                             resume_generation: resume_guard.token(),
                             wanted,
                         });
-                        if matches!(fsm.state(), State::AwaitArm { .. }) {
-                            wanted = false;
-                            let effects = fsm.on(FsmEvent::RequestStop {
-                                reason: StopReason::User,
-                                cmd_seq: next_seq(&mut seq)?,
-                                now,
-                            });
-                            execute_effects(
-                                effects,
-                                &mut child,
-                                &options,
-                                &mut seq,
-                                &mut wanted,
-                                &mut restart,
-                                &mut dump_workers,
-                            )?;
-                        }
                     }
                     _ => {}
                 }

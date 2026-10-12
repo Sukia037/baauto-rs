@@ -261,6 +261,9 @@ pub struct PointGaps {
 pub struct PointCardGaps {
     pub key_to_down_ms: f64,
     pub down_to_up_ms: f64,
+    /// Added in preview.6; older files have none and keep returning right after the release.
+    #[serde(default)]
+    pub up_to_return_ms: f64,
     pub return_to_next_ms: f64,
 }
 /// Every key is sent as Down+Up in one batch; only the gaps between adjacent steps are
@@ -281,7 +284,7 @@ pub struct TimingProfile {
 }
 impl TimingProfile {
     /// Every gap with its JSON path, in table order.
-    pub fn gaps(&self) -> [(&'static str, f64); 12] {
+    pub fn gaps(&self) -> [(&'static str, f64); 13] {
         [
             ("frame_fast.esc_gap_ms", self.frame_fast.esc_gap_ms),
             ("frame_slow.esc_gap_ms", self.frame_slow.esc_gap_ms),
@@ -297,6 +300,10 @@ impl TimingProfile {
             ("point.maintain_period_ms", self.point.maintain_period_ms),
             ("point_card.key_to_down_ms", self.point_card.key_to_down_ms),
             ("point_card.down_to_up_ms", self.point_card.down_to_up_ms),
+            (
+                "point_card.up_to_return_ms",
+                self.point_card.up_to_return_ms,
+            ),
             (
                 "point_card.return_to_next_ms",
                 self.point_card.return_to_next_ms,
@@ -317,6 +324,7 @@ impl TimingProfile {
             "point.maintain_period_ms" => &mut self.point.maintain_period_ms,
             "point_card.key_to_down_ms" => &mut self.point_card.key_to_down_ms,
             "point_card.down_to_up_ms" => &mut self.point_card.down_to_up_ms,
+            "point_card.up_to_return_ms" => &mut self.point_card.up_to_return_ms,
             "point_card.return_to_next_ms" => &mut self.point_card.return_to_next_ms,
             _ => return None,
         })
@@ -343,6 +351,7 @@ impl TimingProfile {
                 "point_card",
                 self.point_card.key_to_down_ms
                     + self.point_card.down_to_up_ms
+                    + self.point_card.up_to_return_ms
                     + self.point_card.return_to_next_ms,
             ),
         ];

@@ -212,6 +212,19 @@ impl HookRuntime {
                 .fetch_add(1, SeqCst);
         }
         if let Some(reason) = d.stop {
+            if reason == StopReason::PhysicalConflict
+                && let Some(InputKind::PhysicalConflict { key }) = d.events.last().map(|e| e.kind)
+            {
+                let code = match key {
+                    OutKey::LeftButton => 1,
+                    OutKey::Key(k) => u64::from(k.0),
+                };
+                self.mapping
+                    .data()
+                    .progress
+                    .conflict_key
+                    .store(code, SeqCst);
+            }
             let _ = self
                 .mapping
                 .data()
@@ -250,10 +263,7 @@ impl HookRuntime {
         }
     }
     fn publish_physical(&self) {
-        for chunk in 0..4 {
-            let bits = (0..64).fold(0u64, |bits, i| {
-                bits | (u64::from(self.state.physical[chunk * 64 + i]) << i)
-            });
+        for (chunk, bits) in self.state.system_held().into_iter().enumerate() {
             self.mapping.data().progress.physical_keys[chunk].store(bits, SeqCst);
         }
     }
@@ -965,6 +975,8 @@ impl EngineThread {
                                 let mut fields = [0; 16];
                                 fields[0] = 3;
                                 fields[1] = u64::from(session.0);
+                                // Which key a physical conflict was about (1 = left button).
+                                fields[2] = mapping.data().progress.conflict_key.load(SeqCst);
                                 let requested =
                                     mapping.data().progress.stop_request_qpc.load(SeqCst);
                                 fields[6] = if requested == 0 { now.0 } else { requested };

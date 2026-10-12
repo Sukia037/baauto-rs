@@ -47,6 +47,11 @@ pub enum Event {
         cmd_seq: u64,
         now: Ticks,
     },
+    /// The engine refused this Arm before anything ran (e.g. a related key still held).
+    ArmRejected {
+        session: SessionId,
+        cmd_seq: u64,
+    },
     RequestStop {
         reason: StopReason,
         cmd_seq: u64,
@@ -179,6 +184,7 @@ impl SupervisorFsm {
                 | StopReason::FocusLost
                 | StopReason::GeometryChanged
                 | StopReason::ConfigChange
+                | StopReason::PhysicalConflict
         );
         self.state = State::Stopping {
             session: self.session,
@@ -239,6 +245,13 @@ impl SupervisorFsm {
                 self.last_scheduler = now;
                 self.last_hook = now;
                 self.unmatched = None;
+            }
+            // Nothing was armed or sent, so there is nothing to stop or release.
+            Event::ArmRejected { session, cmd_seq }
+                if self.state == (State::AwaitArm { session, cmd_seq }) =>
+            {
+                self.state = State::Disarmed;
+                self.keys = false;
             }
             Event::RequestStop {
                 reason,

@@ -261,6 +261,10 @@ pub fn run_managed(shm: &str, pipe: &str, parent_pid: u32, target_exe: &OsStr) -
                             || cfg.is_none()
                             || hook.is_none()
                         {
+                            if engine.is_none() && new_session.0 > session.0 {
+                                session = new_session;
+                                keys_notified = false;
+                            }
                             io.send(EngineToApp::Rejected {
                                 session: new_session,
                                 cmd_seq: seq,
@@ -284,11 +288,21 @@ pub fn run_managed(shm: &str, pipe: &str, parent_pid: u32, target_exe: &OsStr) -
                             .progress
                             .stop_reason
                             .store(0, std::sync::atomic::Ordering::SeqCst);
+                        mapping
+                            .data()
+                            .progress
+                            .conflict_key
+                            .store(0, std::sync::atomic::Ordering::SeqCst);
                         if !h.arm(new_session, new_stop.clone())? {
+                            // Typically the mouse button that clicked the game to the front.
+                            // Nothing ran: adopt the session so the next KeysReleased reaches the
+                            // supervisor, which then arms again.
+                            session = new_session;
+                            keys_notified = false;
                             io.send(EngineToApp::Rejected {
                                 session: new_session,
                                 cmd_seq: seq,
-                                why: "release relevant keys before Arm".into(),
+                                why: ARM_KEYS_HELD.into(),
                             })?;
                             continue;
                         }

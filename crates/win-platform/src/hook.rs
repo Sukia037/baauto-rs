@@ -115,6 +115,17 @@ impl HookState {
     pub fn seed_physical(&mut self, physical: [bool; 256]) {
         self.physical = physical;
     }
+    /// Keys the user holds that Windows also sees held. A swallowed trigger never reached the
+    /// system, so synthetic output of the same key cannot collide with it.
+    pub fn system_held(&self) -> [u64; 4] {
+        let mut bits = [0u64; 4];
+        for i in 0..256 {
+            if self.physical[i] && self.pairs[i].is_none() && !self.capture_pairs[i] {
+                bits[i / 64] |= 1 << (i % 64);
+            }
+        }
+        bits
+    }
     pub fn keys_released(&self, cfg: &CompiledConfig) -> bool {
         let related = cfg.related_keys();
         self.physical
@@ -343,13 +354,26 @@ impl HookState {
             }
             return d;
         }
+        let swallowable = !repeat
+            && self.armed
+            && !self.invalid
+            && self.focused
+            && !(key.is_mouse() && !raw.inside_window);
+        let table_index = if self.triggers[i][usize::from(mods)] == NO_TRIGGER {
+            alias as usize
+        } else {
+            i
+        };
+        let trigger = self.triggers[table_index][usize::from(mods)];
+        let fires = swallowable && trigger != NO_TRIGGER;
+        // A firing trigger is swallowed; only a Down that reaches Windows can collide with output.
         let conflict = if key == Key::LEFT {
             raw.ledger_mouse
         } else {
             raw.ledger_keys[i / 64] & (1u64 << (i % 64)) != 0
                 || raw.ledger_keys[alias as usize / 64] & (1u64 << (alias % 64)) != 0
         };
-        if conflict && self.armed {
+        if conflict && self.armed && !fires {
             self.emit(
                 &mut d,
                 InputKind::PhysicalConflict {
@@ -367,21 +391,7 @@ impl HookState {
             d.stop = Some(StopReason::PhysicalConflict);
             return d;
         }
-        if repeat
-            || !self.armed
-            || self.invalid
-            || !self.focused
-            || key.is_mouse() && !raw.inside_window
-        {
-            return d;
-        }
-        let table_index = if self.triggers[i][usize::from(mods)] == NO_TRIGGER {
-            alias as usize
-        } else {
-            i
-        };
-        let trigger = self.triggers[table_index][usize::from(mods)];
-        if trigger == NO_TRIGGER {
+        if !fires {
             return d;
         }
         let Some(press) = self.press.checked_add(1) else {
@@ -421,13 +431,14 @@ impl HookState {
 }
 
 /// Both physical-before-synthetic and synthetic-before-physical must stop the session.
-pub fn outputs_conflict(events: &[OutEvent], physical: [u64; 4]) -> bool {
-    events.iter().any(|e| {
+/// Returns the first Down (virtual key, 1 = left button) that the user already holds.
+pub fn conflicting_output(events: &[OutEvent], physical: [u64; 4]) -> Option<u8> {
+    events.iter().find_map(|e| {
         let key = match e {
             OutEvent::KeyDown(k) => k.0,
             OutEvent::LeftDown => 1,
-            _ => return false,
+            _ => return None,
         };
-        physical[key as usize / 64] & (1u64 << (key % 64)) != 0
+        (physical[key as usize / 64] & (1u64 << (key % 64)) != 0).then_some(key)
     })
 }

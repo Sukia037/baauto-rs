@@ -534,8 +534,11 @@ impl Engine {
                     ))
             {
                 confirm |= matches!(a.spec, ActionSpec::Card(_)) && a.card_started;
+                // A card key already released on its target still waits `up_to_return`.
+                if a.phase != Phase::Return {
+                    a.due = now;
+                }
                 a.phase = Phase::Clean;
-                a.due = now;
             }
         }
         if confirm {
@@ -886,9 +889,10 @@ impl Engine {
                 a.phase = Phase::TargetUp;
                 a.due = end.after(t.point_card_down_to_up);
             }
+            // The cursor stays on the target until the game has read the release there.
             Phase::TargetUp => {
                 a.phase = Phase::Return;
-                a.due = end;
+                a.due = end.after(t.point_card_up_to_return);
             }
             // The card key keeps the mouse across cycles so nothing else moves the cursor.
             Phase::Return => {
@@ -896,7 +900,10 @@ impl Engine {
                 a.due = end.after(t.point_card_return_to_next);
             }
             Phase::Clean => {
-                if a.displaced || (a.mouse && self.held.contains(OutKey::LeftButton)) {
+                if a.displaced {
+                    // Only the release batch leaves the cursor displaced; wait as in a cycle.
+                    a.due = end.after(t.point_card_up_to_return);
+                } else if a.mouse && self.held.contains(OutKey::LeftButton) {
                     a.due = end;
                 } else {
                     self.finish(i);
@@ -938,6 +945,7 @@ fn off_hand_recheck(t: &TickTiming) -> u64 {
     } else {
         t.point_card_key_to_down
             .saturating_add(t.point_card_down_to_up)
+            .saturating_add(t.point_card_up_to_return)
             .max(1)
     }
 }

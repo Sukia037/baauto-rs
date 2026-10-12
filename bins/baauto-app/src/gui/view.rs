@@ -47,7 +47,7 @@ pub(super) struct TimingMeta {
     pub purpose: &'static str,
     pub rule: &'static str,
 }
-pub(super) const TIMING: [TimingMeta; 12] = [
+pub(super) const TIMING: [TimingMeta; 13] = [
     TimingMeta {
         name: "快卡幀 Esc 間隔",
         json: "frame_fast.esc_gap_ms",
@@ -112,6 +112,12 @@ pub(super) const TIMING: [TimingMeta; 12] = [
         name: "牌鍵：按下到放開",
         json: "point_card.down_to_up_ms",
         purpose: "牌鍵：左鍵在點位上按住多久才放開。太短的話遊戲可能讀不到點擊位置。",
+        rule: "牌鍵這一組加起來要大於 0。",
+    },
+    TimingMeta {
+        name: "牌鍵：放開到回位",
+        json: "point_card.up_to_return_ms",
+        purpose: "牌鍵：在點位上放開左鍵之後，游標停多久才移回你的位置。太短的話遊戲可能還沒讀到放開的位置。",
         rule: "牌鍵這一組加起來要大於 0。",
     },
     TimingMeta {
@@ -203,8 +209,10 @@ pub(super) const TIME_ROWS: [TimeRow; 11] = [
             G(9),
             T("→ 移到點位＋左鍵↓ →"),
             G(10),
-            T("→ 移到點位＋左鍵↑ → 游標回原位 →"),
+            T("→ 移到點位＋左鍵↑ →"),
             G(11),
+            T("→ 游標回原位 →"),
+            G(12),
             T("→ 下一輪"),
         ],
         release: "停止，游標回原位",
@@ -381,9 +389,9 @@ impl App {
         }
     }
     /// Per-gap problems, indexed like [`TIMING`]. A whole-set error marks every gap of that set.
-    fn timing_checks(&self) -> [Option<String>; 12] {
+    fn timing_checks(&self) -> [Option<String>; 13] {
         let t = &self.timing_draft;
-        let mut out: [Option<String>; 12] = Default::default();
+        let mut out: [Option<String>; 13] = Default::default();
         for e in t.check() {
             let path = e.path.trim_start_matches("$.timing.");
             for (i, (gap, _)) in t.gaps().iter().enumerate() {

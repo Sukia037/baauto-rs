@@ -5,8 +5,11 @@ use baauto_config::*;
 pub use baauto_core::{RunMode, TrialError};
 use baauto_core::{SessionId, StopReason};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-pub const PROTOCOL_VERSION: u32 = 6;
+pub const PROTOCOL_VERSION: u32 = 7;
 pub const MAX_FRAME: usize = 1024 * 1024;
+/// `Rejected.why` when Arm finds a related key or mouse button still held. The supervisor keeps
+/// the enable request and arms again once the engine reports the keys released.
+pub const ARM_KEYS_HELD: &str = "release relevant keys before Arm";
 #[derive(Debug, thiserror::Error)]
 pub enum IpcError {
     #[error("truncated or trailing IPC frame")]

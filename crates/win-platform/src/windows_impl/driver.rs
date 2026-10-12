@@ -148,7 +148,12 @@ impl Driver {
         let physical = std::array::from_fn(|i| {
             self.mapping.data().progress.physical_keys[i].load(std::sync::atomic::Ordering::SeqCst)
         });
-        if crate::hook::outputs_conflict(&b.events, physical) {
+        if let Some(key) = crate::hook::conflicting_output(&b.events, physical) {
+            self.mapping
+                .data()
+                .progress
+                .conflict_key
+                .store(u64::from(key), std::sync::atomic::Ordering::SeqCst);
             self.mapping
                 .data()
                 .progress
