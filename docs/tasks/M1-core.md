@@ -124,24 +124,28 @@ pub struct HandSettings {                  // settings.json 裡這台電腦的�
     pub slot_order: SlotOrder,
     pub rects: HandRects,                  // 六人右、六人左、十人右、十人左四組 HandRect
     pub slot_keys: [Key; 5],               // 六人用前 3 個
-    pub card_auto_repeat: AutoRepeatPolicy,// 牌鍵按住時是否跟著自動重複（預設 Ignore）
 }
 
+// 2026-10-12 使用者決定：每個按鍵都是 Down＋Up 同一批，沒有按住時間；
+// 兩個相鄰按鍵之間各有一個間隔，依功能分七組（規格 §5 的表）。
 pub struct TimingProfile {
     pub identity: ProfileIdentity,   // 遊戲版本、視窗模式、FPS／同步設定、機器、測試條件
     pub source: ProfileSource,       // ImportedLegacy | Manual | Calibrated
     pub verified: bool,              // identity 任一欄位改變就要變回 false
-    pub key_hold_us: u32,
-    pub mouse_hold_us: u32,
-    pub key_to_click_us: u32,
-    pub repeat_period_us: u32,
-    pub escape_gap_us: Range<u32>,   // 雙 Esc 第二下可接受的區間（有最小也有最大）
-    pub card_pre_esc_us: u32,
-    pub hold_maintain_period_us: u32,
-    pub allowed_lateness_us: LatenessTable, // 每種動作、每個階段過期多少要取消
-    pub card_trailing_esc: TrailingEscPolicy,
-    pub auto_repeat: AutoRepeatPolicy,      // Ignore | FollowTypematic（AHK 原本的行為）
+    pub frame_fast: EscGap,          // 卡偵暫停（快）
+    pub frame_slow: EscGap,          // 卡偵暫停（慢）
+    pub spam: SpamGaps,              // 技能連點 1–5 共用
+    pub click_spam: ClickSpamGaps,   // 滑鼠連點
+    pub card: CardGaps,              // 卡偵開牌 1–5 共用
+    pub point: PointGaps,            // 所有普通點位共用
+    pub point_card: PointCardGaps,   // 所有牌鍵共用
 }
+pub struct EscGap { pub esc_gap_ms: f64 }
+pub struct SpamGaps { pub key_to_click_ms: f64, pub click_to_next_ms: f64 }
+pub struct ClickSpamGaps { pub click_to_next_ms: f64 }
+pub struct CardGaps { pub esc_to_key_ms: f64, pub key_to_click_ms: f64, pub click_to_esc_ms: f64 }
+pub struct PointGaps { pub maintain_period_ms: f64 }
+pub struct PointCardGaps { pub key_to_down_ms: f64, pub down_to_up_ms: f64, pub return_to_next_ms: f64 }
 
 pub struct EngineParams {   // 工程調校，和遊戲時序分開
     pub max_actions: u16, pub queue_capacity: u32, pub max_events_per_round: u16,
@@ -175,16 +179,23 @@ pub fn slot_at(layout: &HandRect, slots: u8, order: SlotOrder, p: NormPoint) -> 
 
 ```json
 {
-  "schema": "baauto-rs-keys-v1",
+  "schema": "baauto-rs-keys-v2",
   "presets": {
     "skill_1": { "hotkey": "w", "enabled": true },
     "skill_4": { "hotkey": "t", "enabled": true },
     "frame_fast": { "hotkey": "Down", "enabled": true }
   },
   "timing": {
-    "source": "manual", "verified": false,
-    "key_hold_ms": 16, "mouse_hold_ms": 16, "key_to_click_ms": 16, "repeat_period_ms": 50,
-    "escape_gap_ms": [16, 50], "card_pre_esc_ms": 10, "hold_maintain_period_ms": 16
+    "identity": { "game_version": "", "window_mode": "fullscreen_16_9", "fps": "", "sync": "", "machine": "", "conditions": "unverified template" },
+    "source": "manual",
+    "verified": false,
+    "frame_fast": { "esc_gap_ms": 16 },
+    "frame_slow": { "esc_gap_ms": 50 },
+    "spam": { "key_to_click_ms": 0, "click_to_next_ms": 16 },
+    "click_spam": { "click_to_next_ms": 16 },
+    "card": { "esc_to_key_ms": 10, "key_to_click_ms": 0, "click_to_esc_ms": 0 },
+    "point": { "maintain_period_ms": 16 },
+    "point_card": { "key_to_down_ms": 0, "down_to_up_ms": 16, "return_to_next_ms": 16 }
   }
 }
 ```
@@ -196,7 +207,6 @@ pub fn slot_at(layout: &HandRect, slots: u8, order: SlotOrder, p: NormPoint) -> 
   "card_ui_side": "right",
   "slot_order": "left_to_right",
   "slot_keys": ["1", "2", "3", "4", "5"],
-  "card_auto_repeat": "ignore",
   "rects": {
     "six": { "right": { "x": [0.664, 0.910], "y": [0.781, 0.924], "calibrated": false },
              "left":  { "x": [0.090, 0.336], "y": [0.781, 0.924], "calibrated": false } },
@@ -231,8 +241,9 @@ pub fn slot_at(layout: &HandRect, slots: u8, order: SlotOrder, p: NormPoint) -> 
 - 拒絕把左鍵設成任何觸發鍵。
 - `slot_keys` 必須有 5 個、不能重複；六人模式只用前 3 個。
 - 手牌矩形必須在 0–1 之內、寬高大於 0。編譯時用點位檔的 `mode` 和 `card_ui_side` 選四組裡的一組。
-- 驗證器：每種動作的週期不能短於它各階段時間的總和。例如 Repeat 的 `repeat_period` ≥ `key_hold + key_to_click + mouse_hold`。
-- `key_hold_us = 0` 只有在 `verified = true` 時才允許；否則 Tap 一定分成 Down、Up 兩批。
+- 驗證器：每個間隔是有限、≥ 0 的毫秒數；`spam`、`click_spam`、`point_card` 一輪的間隔總和必須 > 0。錯誤路徑指到欄位，例如 `$.timing.spam.click_to_next_ms`。
+- 每個按鍵都是 Down＋Up 同一批；間隔 0 的下一步仍是分開的一批。
+- 讀到 `baauto-rs-keys-v1`：照 `docs/decisions.md` 的轉換規則轉成七組，存檔時寫成 v2。
 - 編譯結果包含：固定大小的觸發表（每個 key 一格）、動作規格陣列、`ConfigVersion`、所有時間換算成 tick。
 
 ## 行為規格摘要
@@ -249,19 +260,24 @@ pub fn slot_at(layout: &HandRect, slots: u8, order: SlotOrder, p: NormPoint) -> 
 
 | 動作 | 階段與時間 | 資源 |
 |---|---|---|
-| Tap | KeyDown →`key_hold`→ KeyUp | 無（Esc 要 Esc 資源） |
-| Repeat | 〔KeyDown →`key_hold`→ KeyUp →`key_to_click`→〕LeftDown →`mouse_hold`→ LeftUp；下一輪開始 = max(本輪開始＋`repeat_period`, 上一批 end＋最小間隔) | 有點擊時要滑鼠資源，**整輪**取得後才送技能鍵 |
-| Card | Esc 脈衝 →`card_pre_esc`→ 重複（技能鍵＋點擊）直到放開；正常放開時依 `card_trailing_esc` 決定補不補 Esc | Esc 資源＋滑鼠資源 |
-| DoubleEsc | Esc 脈衝 →`escape_gap`→ Esc 脈衝；第二下如果會晚過 `escape_gap.end`＋允許延遲，就取消並回報，不盲目補送 | Esc 資源 |
-| HoldPoint | MoveTo＋LeftDown（同一批）→ 每 `hold_maintain_period` MoveTo → 放開時 LeftUp | 滑鼠資源，獨占 |
-| CardKey（牌鍵） | 用 `TriggerDown.cursor` 和 `slot_at` 判定第 i 格 → 送 `slot_keys[i]` 的 Tap；不在手牌上就不送並回報 | 只佔該格按鍵本身 |
+（2026-10-12 改寫：每個按鍵都是 Down＋Up 同一批；`→x→` 是從上一批提交結束起算的間隔，欄位在 `timing` 底下。）
 
-- 牌鍵只在按下那一刻判定，之後游標怎麼動都不影響。放開熱鍵時，如果 Tap 還沒送完（例如 `key_hold` 還沒到），照樣把 Up 送完，不中斷成半個脈衝。
+| 動作 | 階段與時間 | 資源 |
+|---|---|---|
+| Tap | Key（Down＋Up）；放開熱鍵不影響 | 無（Esc 要 Esc 資源） |
+| Repeat（技能連點） | 數字鍵 →`spam.key_to_click_ms`→ 左鍵 →`spam.click_to_next_ms`→ 下一輪；放開熱鍵停止 | 滑鼠資源，**整輪**取得後才送技能鍵 |
+| Repeat（滑鼠連點） | 左鍵 →`click_spam.click_to_next_ms`→ 下一輪；放開熱鍵停止 | 滑鼠資源 |
+| Card（卡偵開牌，單次） | Esc →`card.esc_to_key_ms`→ 數字鍵 →`card.key_to_click_ms`→ 左鍵（游標目前位置，不移動游標）→`card.click_to_esc_ms`→ Esc；跑完就結束，放開熱鍵不影響，`TriggerRepeat` 一律忽略 | Esc 資源＋滑鼠資源 |
+| DoubleEsc | Esc →`frame_fast.esc_gap_ms`／`frame_slow.esc_gap_ms`→ Esc；第二個 Esc 一定送出，晚到照送 | Esc 資源 |
+| HoldPoint | MoveTo＋LeftDown（同一批）→ 每 `point.maintain_period_ms` MoveTo → 放開時 MoveTo＋LeftUp（同一批） | 滑鼠資源，獨占 |
+| CardKey（牌鍵） | 依使用者游標和 `slot_at` 判定第 i 格 → `slot_keys[i]` →`point_card.key_to_down_ms`→ MoveTo 點位＋LeftDown →`point_card.down_to_up_ms`→ MoveTo 點位＋LeftUp → MoveTo 使用者位置 →`point_card.return_to_next_ms`→ 下一輪；放開熱鍵停止並回原位 | 按住期間持有滑鼠資源 |
+
+- 牌鍵每一輪開頭都重新判定游標所在格（規格 §9A）。
 - 衝突的新請求直接拒絕並回報原因，不延後執行：普通點位持有中再按另一個普通點位、Esc 資源被佔用時按 Card／DoubleEsc／pause、牌鍵要送的鍵正被其他動作按住。
 - 純鍵盤動作（Tap、牌鍵）可以和普通點位同時進行，除非是同一個鍵或需要 Esc 資源。
 - Repeat 過期的週期直接跳過並計數，永遠不一次補送多輪。
 - 修飾鍵放開造成 chord 失效（`PressCancelled`）：取消該 press 的動作。
-- `AutoRepeatPolicy::FollowTypematic` 時，`TriggerRepeat` 對 Tap 再觸發一次；`Ignore` 時忽略。牌鍵看 `HandSettings.card_auto_repeat`（預設 Ignore）。Repeat、HoldPoint 等持續型動作一律忽略 `TriggerRepeat`。
+- `TriggerRepeat`（OS 自動重複）一律忽略，所有動作都一樣，沒有設定選項（2026-10-12 使用者決定）。
 - `geometry` 變了就取消普通點位（持有左鍵時送 LeftUp）。
 
 **手牌格判定 `slot_at`**：手牌矩形依格數切成等寬的格；格與格之間的縫算進最近的格，沒有死區；矩形外回傳 `None`。`slot_order` 為 `RightToLeft` 時把編號反過來。剛好落在兩格分界線上，算右邊那一格（寫成測試，固定下來）。
@@ -285,18 +301,25 @@ pub fn slot_at(layout: &HandRect, slots: u8, order: SlotOrder, p: NormPoint) -> 
 
 **情境測試**（名稱照用）
 
-- [ ] `repeat_late_wake_shifts_click_stage`：連點的技能鍵 Up 晚送 3ms → 點擊的期限 = 技能鍵 Up 的 end＋`key_to_click`，間隔不縮短。
-- [ ] `repeat_skips_overdue_cycles_without_burst`：引擎卡住 5 個週期後恢復，恢復後第一個 `repeat_period` 內只送一輪，略過計數 ≥ 4，沒有連續補送。
+- [ ] `repeat_late_wake_shifts_click_stage`：技能連點的數字鍵那批晚送 3ms → 點擊的期限 = 該批 end＋`spam.key_to_click_ms`，間隔不縮短。
+- [ ] `repeat_skips_overdue_cycles_without_burst`：引擎卡住約 5 輪的時間後恢復 → 只送一輪，下一輪從實際提交結束＋`spam.click_to_next_ms` 起算，沒有連續補送。
+- [ ] `tap_sends_down_and_up_in_one_batch`：每個按鍵（Tap、數字鍵、Esc、點擊）都是 Down＋Up 同一批；間隔 0 的下一步是分開的下一批。
+- [ ] `card_is_one_shot_regardless_of_release`：卡偵開牌按下後立刻放開、或一直按住 → 都只送一次「Esc、數字鍵、左鍵、Esc」，順序與間隔照 `card` 那組；按住期間的 `TriggerRepeat` 不再觸發。
+- [ ] `card_clicks_at_user_cursor_without_moving`：卡偵開牌的左鍵不送 MoveTo。
+- [ ] `point_card_cycle_order_and_return`：牌鍵一輪依序為數字鍵 → MoveTo＋LeftDown → MoveTo＋LeftUp → MoveTo 使用者位置（含累積的實體位移），間隔照 `point_card` 那組；放開熱鍵後游標回原位。
+- [ ] `hold_point_release_moves_then_ups`：普通點位放開時送 MoveTo＋LeftUp 同一批。
+- [ ] `timing_rejects_zero_loop_total`：`spam`、`click_spam`、`point_card` 任一組間隔總和為 0 → 編譯失敗，回報該組的 JSON 路徑；負數、NaN 也回報。
+- [ ] `keys_v1_migrates_to_v2_timing`：讀 `baauto-rs-keys-v1` 範本 → 轉成七組（規則見 `docs/decisions.md`），`verified` 為 false；存檔後是 v2，沒有舊欄位。
 - [ ] `quick_release_repress_uses_new_press`：放開後 1 tick 內重按，舊 press 的期限不會讓新動作提早或多送。
 - [ ] `stop_releases_everything_then_silent`：任何狀態下停止 → 一個釋放批次 → Stopped → 之後同一 session 不再有任何批次。
 - [ ] `short_send_goes_faulted_and_keeps_held`：釋放批次短送 → Faulted，`held` 沒有被清成空的。
-- [ ] `double_esc_cancels_when_beyond_max_gap`：第二下會超出 `escape_gap.end`＋允許延遲 → 不送第二下，回報取消。
-- [ ] `card_no_trailing_esc_on_focus_loss`：Card 進行中失焦 → 釋放按鍵，但不送結尾的 Esc，回報需要人工確認。
+- [ ] `double_esc_second_esc_always_sent`：第二個 Esc 晚到也照送，期限 = 第一個 Esc 那批 end＋`frame_fast.esc_gap_ms`（慢的用 `frame_slow.esc_gap_ms`）。
+- [ ] `card_no_trailing_esc_on_focus_loss`：卡偵開牌序列進行中失焦 → 釋放按鍵，但不送剩下的 Esc，回報需要人工確認。
 - [ ] `hold_point_rejected_while_another_hold_point_active`。
 - [ ] `esc_resource_is_exclusive`：DoubleEsc 進行中按 Card 或 pause → 拒絕。
 - [ ] `repeat_with_click_takes_mouse_for_whole_cycle`：滑鼠被普通點位佔用時，Repeat 不會先送技能鍵。
 - [ ] `modifier_release_cancels_press`。
-- [ ] `auto_repeat_policy_ignore_vs_follow`。
+- [ ] `auto_repeat_is_always_ignored`：每種動作按住期間收到 `TriggerRepeat` 都不再觸發。
 - [ ] `geometry_change_cancels_hold_point_and_releases_left`。
 
 **牌鍵**
@@ -305,9 +328,8 @@ pub fn slot_at(layout: &HandRect, slots: u8, order: SlotOrder, p: NormPoint) -> 
 - [ ] `card_key_outside_hand_sends_nothing_and_reports`：手牌矩形外（上下左右各一點）不送任何鍵，回報「游標不在手牌上」。
 - [ ] `card_key_seam_and_boundary`：格與格的縫、分界線、矩形邊緣的判定和規則一致。
 - [ ] `card_key_left_side_uses_left_layout`、`card_key_slot_order_right_to_left`。
-- [ ] `card_key_ignores_auto_repeat_by_default`、`card_key_follow_typematic_when_configured`。
 - [ ] `card_key_rejected_when_slot_key_held`：該格的鍵正被 Repeat 或另一個 Tap 按住 → 拒絕並回報。
-- [ ] `card_key_completes_pulse_after_release`：熱鍵在 `key_hold` 之內放開，Up 照樣送出，不殘留。
+- [ ] `card_key_completes_pulse_after_release`：牌鍵在 LeftDown 之後、LeftUp 之前放開熱鍵 → 送 MoveTo 點位＋LeftUp（同一批）再回原位，不殘留左鍵。
 - [ ] `card_key_runs_alongside_hold_point`：普通點位持有滑鼠時，牌鍵照常送出。
 
 **設定**
@@ -330,7 +352,7 @@ pub fn slot_at(layout: &HandRect, slots: u8, order: SlotOrder, p: NormPoint) -> 
 - [ ] Stopped 之後，該 session 沒有任何新批次。
 - [ ] 成功停止後 `held` 為空；Faulted 時 `held` 不為空或有記錄原因。
 - [ ] 同一個動作相鄰兩批的開始時間，不小於前一批 end 加上設定的最小間隔。
-- [ ] 任意長度 W 的時間窗內，一個 Repeat 的輸出輪數 ≤ ⌈W ÷ repeat_period⌉＋1。
+- [ ] 任意長度 W 的時間窗內，一個技能連點的輸出輪數 ≤ ⌈W ÷（`spam.key_to_click_ms`＋`spam.click_to_next_ms`）⌉＋1。
 - [ ] `next_wake` 永遠不是 `None`（除了 Disarmed／Faulted）。
 
 **其他**

@@ -46,7 +46,7 @@
 - 檔名可能是 `xxx.json.json`（`SubStr(path, -4)` 的 bug），照樣接受。
 - 數值欄位可能是 `false`／`true`（`JsonDump` 把 0、1 寫成布林）。座標等數值欄位遇到布林，`false` → 0、`true` → 1，並在報告裡記一筆。
 - 綁定 ID 可能重複或和新產生的 ID 撞號；`point_id` 可能指向不存在的點；點可能沒有任何綁定引用（AHK 刪綁定時不刪點）。合併成新格式時重新編號、刪掉孤兒，報告附舊 ID → 新 ID 的對照。
-- `timing_ms` 寫了但 AHK 從來沒讀，所以真正生效的一直是程式裡寫死的值。匯入成 `timing.source = "imported_legacy"`、`verified: false`，報告註明 AHK 實際的等待會被 Windows 計時粒度拉長（例如 16ms 實際約 31ms）。
+- `timing_ms` 寫了但 AHK 從來沒讀，所以真正生效的一直是程式裡寫死的值。匯入成 v2 範本的七組間隔（規格 §5），`timing.source = "imported_legacy"`、`verified: false`，報告註明 AHK 實際的等待會被 Windows 計時粒度拉長（例如 16ms 實際約 31ms）。
 - 預設按鍵設成左鍵：匯入後停用該功能，報告說明原因。
 
 **座標**
@@ -82,7 +82,6 @@ impl KeysEditor {            // 預設按鍵 JSON
 }
 impl HandEditor {            // settings.json 的手牌設定，改了馬上存
     pub fn set_slot_keys(&mut self, keys: [Key; 5]) -> Result<(), EditError>;
-    pub fn set_card_auto_repeat(&mut self, policy: AutoRepeatPolicy);
     pub fn set_card_ui_side(&mut self, side: CardUiSide);
     pub fn set_slot_order(&mut self, order: SlotOrder);
     pub fn set_hand_rect(&mut self, mode: Mode, side: CardUiSide, rect: HandRect); // 寫入校準結果
@@ -105,7 +104,7 @@ pub fn analyze(points: &PointSet, keys: &KeysProfile) -> ConflictReport; // 衝�
 
 ```text
 <程式資料夾>/
-  settings.json           這台電腦的設定：手牌（位置、順序、四組矩形、每格按鍵、自動重複）、EngineParams、目前的點位檔與預設按鍵檔、兩列各自開著的分頁（含其他位置的檔案）、介面偏好
+  settings.json           這台電腦的設定：手牌（位置、順序、四組矩形、每格按鍵）、EngineParams、目前的點位檔與預設按鍵檔、兩列各自開著的分頁（含其他位置的檔案）、介面偏好
   points/                 點位 JSON（含六人／十人）
     範例.json
     <每個關卡或 Boss 一份>.json
@@ -139,9 +138,9 @@ pub fn analyze(points: &PointSet, keys: &KeysProfile) -> ConflictReport; // 衝�
 2. 一樣是兩種檔：點位 JSON（現在多了六人／十人，拖曳點位變成牌鍵項目）和預設按鍵 JSON（就是原本的功能 JSON：預設按鍵＋時間）。各自切換、各自存檔。
 3. 手牌左右位置、範圍、每格按鍵是這台電腦的設定（`settings.json`），預設右邊，要和遊戲選項「スキルカードUI位置」一致；校準一次，所有點位檔共用。
 4. Esc 變成獨占資源：卡幀開牌、雙 Esc、普通暫停同時觸發時，後到的會被拒絕。
-5. 卡幀開牌在停止或失焦時不補結尾的 Esc，改提示人工確認暫停狀態。
-6. 按住熱鍵時的自動重複：新版可以選。匯入舊設定時一般功能預設 `FollowTypematic`，和 AHK 版一樣；牌鍵預設不重複。
-7. 時間參數：舊值只當起點，標成未驗證；實際值要經過 M5 校準。
+5. 卡偵開牌改成單次（2026-10-12）：AHK 版是按下送 Esc、按住期間每次計時器觸發都送數字鍵＋點擊、放開才送 Esc；新版按一下就跑完「Esc → 數字鍵 → 左鍵 → Esc」，按住不重複、放開不影響。序列進行中停止或失焦時不補剩下的 Esc，改提示人工確認暫停狀態。
+6. 按住熱鍵時的自動重複：AHK 版的單次功能（普通暫停、AUTO、加速、技能）按住時會一直重複送；新版一律忽略，按住只算一次，沒有選項。
+7. 時間參數：每個按鍵都是按下後馬上放開，可調的只有按鍵之間的間隔，分七組（規格 §5）。舊值只當起點，標成未驗證；實際值要經過 M5 校準。
 8. 座標：和 AHK 版一樣相對整個螢幕（遊戲一律全螢幕 16:9），舊座標直接沿用；換 16:9 的其他解析度也不用重錄。不支援視窗化。
 9. 左鍵不能當觸發鍵。
 10. 主視窗按 Esc 不再關閉程式。
