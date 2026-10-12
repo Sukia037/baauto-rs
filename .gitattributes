@@ -4,3 +4,4 @@ docs/test-results/windows-20261011/** -text whitespace=cr-at-eol
 docs/test-results/windows-20261011/*.log -whitespace
 docs/test-results/windows-20261011/expanded/*.log -whitespace
 *.bat text eol=crlf
+*.txt text eol=crlf

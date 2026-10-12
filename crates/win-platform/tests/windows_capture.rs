@@ -2,6 +2,7 @@
 //! Requires an interactive Windows desktop. Build release workspace with test-hooks first.
 //! Run: cargo test -p baauto-win-platform --features test-hooks --test windows_capture -- --ignored --nocapture --test-threads=1
 //! Focus the receiver when prompted; foreign keyboard injections are test-only.
+//! The release test kit sets BAAUTO_TEST_BIN to its own folder of test-hooks binaries.
 //! If the default global hotkeys are occupied, set BAAUTO_TEST_STOP_HOTKEY and
 //! BAAUTO_TEST_RECORD_HOTKEY to unused chords. This only changes the test profile.
 use baauto_config::*;
@@ -70,11 +71,7 @@ fn request(
 #[test]
 #[ignore = "requires Windows receiver, foreground focus and test-hooks engine"]
 fn ipc_capture_timeout_cancel_chord_and_armed_rejection() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .unwrap();
-    let bin = root.join("target/release");
+    let bin = test_bin();
     let folder = std::env::temp_dir().join(format!("baauto-capture-{}", std::process::id()));
     std::fs::create_dir_all(&folder).unwrap();
     let receiver = Process::spawn(
@@ -364,4 +361,16 @@ fn ipc_capture_timeout_cancel_chord_and_armed_rejection() {
         serde_json::from_slice(&std::fs::read(folder.join("receiver.json")).unwrap()).unwrap();
     assert_eq!(meta["lost_records"], 0);
     assert!(meta["written_records"].as_u64().unwrap() >= 2);
+}
+/// Built binaries: `BAAUTO_TEST_BIN` when run from the release test kit, otherwise this
+/// checkout's `target/release`.
+fn test_bin() -> PathBuf {
+    std::env::var_os("BAAUTO_TEST_BIN")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../target/release")
+                .canonicalize()
+                .unwrap()
+        })
 }

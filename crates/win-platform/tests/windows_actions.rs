@@ -2,6 +2,7 @@
 //! Requires an interactive Windows desktop. Build release workspace with test-hooks first.
 //! Run: cargo test -p baauto-win-platform --features test-hooks --test windows_actions -- --ignored --nocapture --test-threads=1
 //! Keep the receiver foreground; foreign keyboard/mouse injections are test-only.
+//! The release test kit sets BAAUTO_TEST_BIN to its own folder of test-hooks binaries.
 //! If the default global hotkeys are occupied, set BAAUTO_TEST_STOP_HOTKEY and
 //! BAAUTO_TEST_RECORD_HOTKEY to unused chords. This only changes the test profile.
 use baauto_config::*;
@@ -125,11 +126,7 @@ fn chord(chord: Chord) {
     }
 }
 fn run_profile(mode: Mode, side: CardUiSide, order: SlotOrder, all_presets: bool) -> Vec<String> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .unwrap();
-    let bin = root.join("target/release");
+    let bin = test_bin();
     let folder = std::env::temp_dir().join(format!(
         "baauto-actions-{}-{mode:?}-{side:?}-{order:?}",
         std::process::id()
@@ -594,4 +591,16 @@ fn all_presets_card_slots_and_capture_reach_windows_receiver() {
         failures.extend(run_profile(mode, side, order, all));
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+/// Built binaries: `BAAUTO_TEST_BIN` when run from the release test kit, otherwise this
+/// checkout's `target/release`.
+fn test_bin() -> PathBuf {
+    std::env::var_os("BAAUTO_TEST_BIN")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../target/release")
+                .canonicalize()
+                .unwrap()
+        })
 }

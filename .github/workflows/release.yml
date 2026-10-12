@@ -13,34 +13,50 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --release --locked --workspace
+      - name: Build test-hooks binaries for the test kit
+        shell: pwsh
+        run: |
+          # Separate target dir: test-hooks builds never replace the player binaries.
+          cargo build --release --locked --workspace --features test-hooks --target-dir target/kit
+          if ($LASTEXITCODE -ne 0) { throw "test-hooks build failed" }
+          $out = cargo test --release --locked -p baauto-win-platform --features test-hooks --test windows_capture --test windows_actions --no-run --target-dir target/kit --message-format=json
+          if ($LASTEXITCODE -ne 0) { throw "test build failed" }
+          New-Item -ItemType Directory kit-tests | Out-Null
+          foreach ($line in $out) {
+            try { $m = $line | ConvertFrom-Json } catch { continue }
+            if ($m.reason -eq 'compiler-artifact' -and $m.executable -and $m.target.kind -contains 'test') {
+              Copy-Item $m.executable "kit-tests/$($m.target.name).exe"
+            }
+          }
+          foreach ($t in 'windows_capture', 'windows_actions') {
+            if (-not (Test-Path "kit-tests/$t.exe")) { throw "missing test executable $t" }
+          }
       - name: Package
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           $r = "target/release"
-          # Players only see baauto-app.exe; the engine lives in engine/.
+          $k = "target/kit/release"
           $app = "BAauto-$tag-windows-x64"
-          New-Item -ItemType Directory "$app/engine" | Out-Null
+          # Players only see baauto-app.exe; the engine lives in engine/.
+          New-Item -ItemType Directory "$app/engine", "$app/tests/tools", "$app/tests/receiver-test" | Out-Null
           Copy-Item "$r/baauto-app.exe", README.md $app
           Copy-Item "$r/baauto-engine.exe" "$app/engine"
-          # Latency test kit: double-click START.bat, send back result-N.zip.
-          $kit = "BAauto-latency-test-$tag-windows-x64"
-          New-Item -ItemType Directory "$kit/files" | Out-Null
-          Copy-Item tools/latency-kit/START.bat $kit
-          Copy-Item "$r/baauto-bench.exe", "$r/baauto-receiver.exe", "$r/baauto-engine.exe", tools/latency-kit/test-points.json, tools/latency-kit/test-keys.json "$kit/files"
-          foreach ($name in $app, $kit) {
-            Compress-Archive -Path $name -DestinationPath "$name.zip"
-            $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()
-            # LF only, so `sha256sum -c` / `shasum -c` also work outside Windows.
-            [IO.File]::WriteAllText("$PWD/$name.zip.sha256", "$hash  $name.zip`n")
-          }
+          # tests/: double-click 1-latency-test.bat or 2-receiver-test.bat, send back the zip.
+          Copy-Item tools/test-kit/*.bat, tools/test-kit/README-tests.txt "$app/tests"
+          Copy-Item "$r/baauto-bench.exe", "$r/baauto-receiver.exe", "$r/baauto-engine.exe", tools/test-kit/test-points.json, tools/test-kit/test-keys.json "$app/tests/tools"
+          Copy-Item "$k/baauto-app.exe", "$k/baauto-engine.exe", "$k/baauto-receiver.exe", kit-tests/*.exe "$app/tests/receiver-test"
+          Compress-Archive -Path $app -DestinationPath "$app.zip"
+          $hash = (Get-FileHash "$app.zip" -Algorithm SHA256).Hash.ToLower()
+          # LF only, so `sha256sum -c` / `shasum -c` also work outside Windows.
+          [IO.File]::WriteAllText("$PWD/$app.zip.sha256", "$hash  $app.zip`n")
       - name: Publish
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ github.ref_name }}"
-          $files = foreach ($name in "BAauto-$tag-windows-x64", "BAauto-latency-test-$tag-windows-x64") { "$name.zip"; "$name.zip.sha256" }
+          $app = "BAauto-$tag-windows-x64"
           $flags = @("--title", "BAauto $tag", "--notes-file", "docs/release-notes/$tag.md")
           if ($tag.Contains("-")) { $flags += "--prerelease" }
-          gh release create $tag @files @flags
+          gh release create $tag "$app.zip" "$app.zip.sha256" @flags

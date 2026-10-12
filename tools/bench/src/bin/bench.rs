@@ -157,13 +157,19 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(not(windows))]
             return Err("the latency test requires Windows".into());
         }
+        Some("receiver-test") => {
+            #[cfg(windows)]
+            receiver_test()?;
+            #[cfg(not(windows))]
+            return Err("the receiver test requires Windows".into());
+        }
         Some("compare") => {
             let base: AbResult = load(Path::new(&args.next().ok_or("baseline JSON required")?))?;
             let variant: AbResult = load(Path::new(&args.next().ok_or("variant JSON required")?))?;
             println!("retain={}", keep_experiment(&base, &variant));
         }
         Some("--help" | "help") => println!(
-            "baauto-bench plan <draft.json>\nseal <draft.json> <sealed.json> [settings.json]\nanalyze <ring.csv> <QPC frequency> <out.md>\nalign <PresentMon.csv> <ring.csv> <out.csv>\nvalidate-detector <plan.json> <labelled-trials.csv> <validation.json>\nfinalize <plan.json> <result.json> <labelled-trials.csv> <final.json>\napply <plan.json> <result.json> [keys JSON]\nmeasure --points <JSON> --keys <JSON> --out <new directory> [--seconds N] [--settings JSON] [--target-exe EXE] [--engine EXE] [--presentmon EXE] [--exercise-receiver]\nscan --plan <sealed.json> --out <new directory> [--pilot-count N | --validation JSON] [native options]\nab [measure options] [--spin-us N]; requires bench-experiments build\ncompare <baseline.json> <variant.json>\nquick  (latency test kit: guided receiver run, zipped result)"
+            "baauto-bench plan <draft.json>\nseal <draft.json> <sealed.json> [settings.json]\nanalyze <ring.csv> <QPC frequency> <out.md>\nalign <PresentMon.csv> <ring.csv> <out.csv>\nvalidate-detector <plan.json> <labelled-trials.csv> <validation.json>\nfinalize <plan.json> <result.json> <labelled-trials.csv> <final.json>\napply <plan.json> <result.json> [keys JSON]\nmeasure --points <JSON> --keys <JSON> --out <new directory> [--seconds N] [--settings JSON] [--target-exe EXE] [--engine EXE] [--presentmon EXE] [--exercise-receiver]\nscan --plan <sealed.json> --out <new directory> [--pilot-count N | --validation JSON] [native options]\nab [measure options] [--spin-us N]; requires bench-experiments build\ncompare <baseline.json> <variant.json>\nquick  (latency test kit: guided receiver run, zipped result)\nreceiver-test  (release test kit: automatic receiver acceptance, zipped result)"
         ),
         _ => return Err("unknown bench command".into()),
     }
@@ -298,13 +304,13 @@ fn native(command: &str, args: Vec<std::ffi::OsString>) -> Result<(), Box<dyn st
     Ok(())
 }
 
-/// One-click latency test for the release kit (`START.bat`). Layout:
-/// `<kit>/files/{baauto-bench,baauto-receiver,baauto-engine}.exe` plus the two test JSONs;
+/// One-click latency test for the release kit (`tests\\1-latency-test.bat`). Layout:
+/// `<kit>/tools/{baauto-bench,baauto-receiver,baauto-engine}.exe` plus the two test JSONs;
 /// results go to `<kit>/result-N` and `<kit>/result-N.zip`.
 #[cfg(windows)]
 fn quick() -> Result<(), Box<dyn std::error::Error>> {
     use baauto_bench::win::*;
-    use std::{io::BufRead, os::windows::process::CommandExt, process::Command, time::Duration};
+    use std::{io::BufRead, process::Command, time::Duration};
     const SECONDS: u64 = 90;
     let files = std::env::current_exe()?
         .parent()
@@ -315,7 +321,6 @@ fn quick() -> Result<(), Box<dyn std::error::Error>> {
         .map(|n| root.join(format!("result-{n}")))
         .find(|p| !p.exists() && !p.with_extension("zip").exists())
         .ok_or("no free result name")?;
-    let zip = result.with_extension("zip");
     println!("BAauto 延遲測試");
     println!();
     println!("按 Enter 之後，畫面會變成一個全螢幕的測試視窗，上面有中文說明。");
@@ -370,16 +375,6 @@ fn quick() -> Result<(), Box<dyn std::error::Error>> {
         }
     );
     new_file(&result.join("info.txt"), info.as_bytes())?;
-    let zipped = Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "Compress-Archive -LiteralPath $env:BAAUTO_RESULT -DestinationPath $env:BAAUTO_ZIP",
-        ])
-        .env("BAAUTO_RESULT", &result)
-        .env("BAAUTO_ZIP", &zip)
-        .status()?;
     println!();
     if let Err(e) = &measured {
         println!("測試沒有完成：{e}");
@@ -387,16 +382,119 @@ fn quick() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         println!("測試完成，謝謝！");
     }
-    if zipped.success() {
-        println!("請把這個檔案傳回來：{}", zip.display());
-        let _ = Command::new("explorer")
-            .raw_arg(format!("/select,\"{}\"", zip.display()))
-            .spawn();
-    } else {
-        println!(
+    match zip_and_show(&result) {
+        Ok(zip) => println!("請把這個檔案傳回來：{}", zip.display()),
+        Err(e) => println!("{e}"),
+    }
+    Ok(())
+}
+
+/// Zips `dir` next to itself with PowerShell and points Explorer at the archive.
+#[cfg(windows)]
+fn zip_and_show(dir: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    use std::{os::windows::process::CommandExt, process::Command};
+    let zip = dir.with_extension("zip");
+    let status = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "Compress-Archive -LiteralPath $env:BAAUTO_RESULT -DestinationPath $env:BAAUTO_ZIP",
+        ])
+        .env("BAAUTO_RESULT", dir)
+        .env("BAAUTO_ZIP", &zip)
+        .status()?;
+    if !status.success() {
+        return Err(format!(
             "自動壓縮失敗，請把整個資料夾壓縮後傳回來：{}",
-            result.display()
-        );
+            dir.display()
+        )
+        .into());
+    }
+    let _ = Command::new("explorer")
+        .raw_arg(format!("/select,\"{}\"", zip.display()))
+        .spawn();
+    Ok(zip)
+}
+
+/// Release test kit (`tests\\2-receiver-test.bat`): runs the Windows receiver acceptance
+/// tests that were compiled into `<kit>/receiver-test` with test-hooks, against the test-hooks
+/// app/engine/receiver in the same folder. Evidence and logs go to `<kit>/receiver-result-N`.
+#[cfg(windows)]
+fn receiver_test() -> Result<(), Box<dyn std::error::Error>> {
+    use std::{io::BufRead, process::Command};
+    let tools = std::env::current_exe()?
+        .parent()
+        .ok_or("tool folder missing")?
+        .to_path_buf();
+    let root = tools.parent().ok_or("kit folder missing")?.to_path_buf();
+    let bin = root.join("receiver-test");
+    let result = (1..)
+        .map(|n| root.join(format!("receiver-result-{n}")))
+        .find(|p| !p.exists() && !p.with_extension("zip").exists())
+        .ok_or("no free result name")?;
+    println!("BAauto 接收器自動測試");
+    println!();
+    println!("這個測試會開一個全螢幕的測試視窗，然後自己按鍵、點滑鼠、移動游標，");
+    println!("逐項檢查每個功能送出的按鍵順序和點擊位置對不對，大約 3 到 5 分鐘。");
+    println!();
+    println!("測試期間請不要碰鍵盤和滑鼠，也不要切換視窗；中途會短暫出現 BAauto 的視窗，");
+    println!("那也是測試的一部分。不需要開遊戲。");
+    println!("緊急停止鍵在測試裡改用 Ctrl+Alt+F12，錄點鍵改用 Ctrl+Alt+F11。");
+    println!();
+    println!("準備好就按 Enter 開始。");
+    std::io::stdin().lock().read_line(&mut String::new())?;
+    fs::create_dir(&result)?;
+    let mut summary = String::new();
+    let mut all_passed = true;
+    for test in ["windows_capture", "windows_actions"] {
+        println!("{test} 測試中……請不要碰鍵盤和滑鼠。");
+        let log = result.join(format!("{test}.log"));
+        let out = fs::File::create(&log)?;
+        let status = Command::new(bin.join(format!("{test}.exe")))
+            .args(["--ignored", "--nocapture", "--test-threads=1"])
+            .env("BAAUTO_TEST_BIN", &bin)
+            .env("BAAUTO_TEST_STOP_HOTKEY", "Ctrl+Alt+F12")
+            .env("BAAUTO_TEST_RECORD_HOTKEY", "Ctrl+Alt+F11")
+            // Evidence folders are created under the temp directory; keep them with the result.
+            .env("TEMP", &result)
+            .env("TMP", &result)
+            .stdout(out.try_clone()?)
+            .stderr(out)
+            .status();
+        let passed = matches!(&status, Ok(s) if s.success());
+        all_passed &= passed;
+        let text = fs::read_to_string(&log).unwrap_or_default();
+        let fails: Vec<&str> = text.lines().filter(|l| l.contains("FAIL")).collect();
+        let line = match &status {
+            Ok(_) if passed => format!("{test}：通過"),
+            Ok(s) => format!(
+                "{test}：失敗（結束代碼 {:?}，{} 項 FAIL）",
+                s.code(),
+                fails.len()
+            ),
+            Err(e) => format!("{test}：無法執行（{e}）"),
+        };
+        println!("{line}");
+        for f in fails.iter().take(10) {
+            println!("  {f}");
+        }
+        summary.push_str(&line);
+        summary.push('\n');
+    }
+    new_file(&result.join("summary.txt"), summary.as_bytes())?;
+    println!();
+    println!(
+        "{}",
+        if all_passed {
+            "全部通過，謝謝！"
+        } else {
+            "有項目沒通過；詳細紀錄已經打包，傳回來就好。"
+        }
+    );
+    match zip_and_show(&result) {
+        Ok(zip) => println!("請把這個檔案傳回來：{}", zip.display()),
+        Err(e) => println!("{e}"),
     }
     Ok(())
 }
