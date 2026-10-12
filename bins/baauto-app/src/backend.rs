@@ -238,6 +238,20 @@ pub struct Backend {
     pub events: mpsc::Receiver<UiEvent>,
     pub controller: Controller,
 }
+/// What a v1 preset-key file lost in conversion, for the log tab. Empty for v2 files.
+fn keys_migration_notes(path: &std::path::Path) -> Vec<String> {
+    std::fs::read(path)
+        .ok()
+        .and_then(|b| decode_json(&b).ok())
+        .and_then(|text| parse_keys(&text).ok())
+        .map(|(_, notes)| {
+            notes
+                .into_iter()
+                .map(|n| format!("{}：{n}", path.display()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
 fn snapshot(store: &FileStore<BackendFs>) -> Result<Snapshot, String> {
     let points = match read_document(&store.settings.current_points).map_err(|e| e.to_string())? {
         Document::Points(p) => p,
@@ -284,6 +298,9 @@ impl Backend {
                     FileStore::initialize(&root, backend_fs()).map_err(|e| e.to_string())?;
                 for w in warnings {
                     let _ = events.send(UiEvent::Message(w));
+                }
+                for note in keys_migration_notes(&store.settings.current_keys) {
+                    let _ = events.send(UiEvent::Message(note));
                 }
                 if first {
                     let (p, k) = (
@@ -483,6 +500,9 @@ impl Backend {
                                 if matches!(job, Job::DialogOpen) {
                                     match read_document(&p) {
                                         Ok(d) => {
+                                            for note in keys_migration_notes(&p) {
+                                                let _ = events.send(UiEvent::Message(note));
+                                            }
                                             let _ = events.send(UiEvent::OpenReady(p, d.kind()));
                                         }
                                         Err(e) => {
@@ -505,6 +525,9 @@ impl Backend {
                         Job::Inspect(p) => {
                             match read_document(&p) {
                                 Ok(d) => {
+                                    for note in keys_migration_notes(&p) {
+                                        let _ = events.send(UiEvent::Message(note));
+                                    }
                                     let _ = events.send(UiEvent::OpenReady(p, d.kind()));
                                 }
                                 Err(e) => {
@@ -554,8 +577,8 @@ impl Backend {
                                 let text =
                                     decode_json(&std::fs::read(p).map_err(|e| e.to_string())?)
                                         .map_err(|e| e.to_string())?;
-                                let timing = from_json::<KeysProfile>(&text)
-                                    .map(|k| k.timing)
+                                let timing = parse_keys(&text)
+                                    .map(|(k, _)| k.timing)
                                     .or_else(|_| from_json::<TimingProfile>(&text))
                                     .map_err(|e| e.to_string())?;
                                 let _ = events.send(UiEvent::Timing(Box::new(timing)));

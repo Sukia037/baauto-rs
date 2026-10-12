@@ -122,6 +122,152 @@ pub(super) const TIMING: [TimingMeta; 12] = [
     },
 ];
 
+/// One piece of a "按下時" sequence: plain text, or an editable gap (index into [`TIMING`]).
+pub(super) enum Step {
+    T(&'static str),
+    G(usize),
+}
+/// A row of the spec §5 table. `roles` are the presets whose hotkeys are shown; an empty list
+/// means each item sets its own hotkey in the points file.
+pub(super) struct TimeRow {
+    pub name: &'static str,
+    pub roles: &'static [&'static str],
+    pub press: &'static [Step],
+    pub release: &'static str,
+}
+use Step::{G, T};
+pub(super) const TIME_ROWS: [TimeRow; 11] = [
+    TimeRow {
+        name: "普通暫停",
+        roles: &["pause"],
+        press: &[T("Esc")],
+        release: "無",
+    },
+    TimeRow {
+        name: "卡偵暫停（快）",
+        roles: &["frame_fast"],
+        press: &[T("Esc →"), G(0), T("→ Esc")],
+        release: "無",
+    },
+    TimeRow {
+        name: "卡偵暫停（慢）",
+        roles: &["frame_slow"],
+        press: &[T("Esc →"), G(1), T("→ Esc")],
+        release: "無",
+    },
+    TimeRow {
+        name: "AUTO、加速、技能 1–5",
+        roles: &[
+            "auto", "speed", "skill_1", "skill_2", "skill_3", "skill_4", "skill_5",
+        ],
+        press: &[T("對應按鍵一次")],
+        release: "無",
+    },
+    TimeRow {
+        name: "技能連點 1–5",
+        roles: &["spam_1", "spam_2", "spam_3", "spam_4", "spam_5"],
+        press: &[T("數字鍵 →"), G(2), T("→ 左鍵 →"), G(3), T("→ 下一輪")],
+        release: "停止",
+    },
+    TimeRow {
+        name: "滑鼠連點",
+        roles: &["click_spam"],
+        press: &[T("左鍵 →"), G(4), T("→ 下一輪")],
+        release: "停止",
+    },
+    TimeRow {
+        name: "卡偵開牌 1–5",
+        roles: &["card_1", "card_2", "card_3", "card_4", "card_5"],
+        press: &[
+            T("Esc →"),
+            G(5),
+            T("→ 數字鍵 →"),
+            G(6),
+            T("→ 左鍵（游標目前位置）→"),
+            G(7),
+            T("→ Esc"),
+        ],
+        release: "無（按住不重複）",
+    },
+    TimeRow {
+        name: "普通點位",
+        roles: &[],
+        press: &[T("移到點位＋左鍵↓ → 每"), G(8), T("把游標拉回點位")],
+        release: "移到點位＋左鍵↑",
+    },
+    TimeRow {
+        name: "牌鍵",
+        roles: &[],
+        press: &[
+            T("數字鍵（游標所在那張）→"),
+            G(9),
+            T("→ 移到點位＋左鍵↓ →"),
+            G(10),
+            T("→ 移到點位＋左鍵↑ → 游標回原位 →"),
+            G(11),
+            T("→ 下一輪"),
+        ],
+        release: "停止，游標回原位",
+    },
+    TimeRow {
+        name: "緊急停止",
+        roles: &["global_stop"],
+        press: &[T("停止全部動作，放開所有按鍵")],
+        release: "無",
+    },
+    TimeRow {
+        name: "錄製點位",
+        roles: &["record"],
+        press: &[T("開始錄製點位")],
+        release: "無",
+    },
+];
+const STEP_LINE_H: f32 = 32.;
+const STEP_GAP_W: f32 = 66.;
+/// Splits a row's "按下時" sequence into lines that fit a cell `width` wide. Text pieces never
+/// break, so the row grows instead of overflowing into the next one.
+fn press_lines<'a>(
+    ui: &egui::Ui,
+    r: &'a TimeRow,
+    width: f32,
+    ink: egui::Color32,
+) -> Vec<Vec<&'a Step>> {
+    let mut lines: Vec<Vec<&Step>> = vec![Vec::new()];
+    let mut x = 0.;
+    for step in r.press {
+        let w = 5.
+            + match step {
+                G(_) => STEP_GAP_W,
+                T(t) => {
+                    egui::WidgetText::from(k::text(*t, ink, k::SMALL))
+                        .into_galley(
+                            ui,
+                            Some(egui::TextWrapMode::Extend),
+                            f32::INFINITY,
+                            egui::TextStyle::Body,
+                        )
+                        .size()
+                        .x
+                }
+            };
+        if x > 0. && x + w > width {
+            lines.push(Vec::new());
+            x = 0.;
+        }
+        x += w;
+        lines.last_mut().unwrap().push(step);
+    }
+    lines
+}
+impl TimeRow {
+    pub fn gaps(&self) -> impl Iterator<Item = usize> + '_ {
+        self.press.iter().filter_map(|s| match s {
+            G(i) => Some(*i),
+            T(_) => None,
+        })
+    }
+}
+
 fn role_of(path: &str) -> Option<&str> {
     path.strip_prefix("$.presets.")?.strip_suffix(".hotkey")
 }
@@ -1569,6 +1715,7 @@ impl App {
     }
 
     // ---------- timing ----------
+    /// The spec §5 table: one row per function, gaps editable inline where they occur.
     fn timing_pane(&mut self, ui: &mut egui::Ui, h: f32) {
         let p = Pal::of(ui);
         k::pane_header(ui, "時間", "ms", None, |_| {});
@@ -1576,47 +1723,102 @@ impl App {
         let values = timing_fields(&self.timing_draft);
         let mut edit = None;
         let mut pick = None;
-        let width = ui.available_width();
-        let cols = [0., 92., ((width - 92. - 40.) * 0.48).max(80.)];
+        let cols = [150., 96., 0., 124.];
         k::list_box(ui, "timing", h - 34., |ui| {
-            k::table_head(ui, &cols, &["項目", "數值", "檢查"]);
-            for (index, (meta, (_, value))) in TIMING.iter().zip(values.iter()).enumerate() {
-                let (r, mut cells) = k::table_row(
+            k::table_head(ui, &cols, &["功能", "熱鍵", "按下時", "放開時"]);
+            // Matches k::columns: 10 px side padding, 8 px between columns.
+            let flow = (ui.available_width() - 20. - 24. - 370.).max(120.);
+            for (row, r) in TIME_ROWS.iter().enumerate() {
+                let lines = press_lines(ui, r, flow, p.ink);
+                let bad = r.gaps().any(|i| checks[i].is_some());
+                let (resp, mut cells) = k::table_row(
                     ui,
-                    ("tm", index),
+                    ("tm", row),
                     &cols,
-                    self.selection == Selection::Timing(index),
-                    k::ROW_H,
+                    self.selection == Selection::Timing(row),
+                    (lines.len() as f32 * STEP_LINE_H + 6.).max(k::ROW_H),
                 );
-                k::cell(&mut cells[0], k::text(meta.name, p.ink, k::BODY));
-                let mut v = *value;
-                if k::num(
+                k::cell(
+                    &mut cells[0],
+                    k::text(r.name, if bad { p.bad } else { p.ink }, k::BODY),
+                );
+                k::cell(
                     &mut cells[1],
-                    &mut v,
-                    1.,
-                    0.0..=100_000.0,
-                    2,
-                    checks[index].is_some(),
-                )
-                .changed()
-                {
-                    edit = Some((index, v));
+                    k::text(self.row_hotkeys(r), p.muted, k::SMALL),
+                );
+                // One horizontal strip per line, stacked from the top of the row.
+                let cell = &mut cells[2];
+                let height = lines.len() as f32 * STEP_LINE_H;
+                let top = cell.max_rect().center().y - height / 2.;
+                let mut flow_ui = cell.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(egui::Rect::from_min_size(
+                            egui::pos2(cell.max_rect().left(), top),
+                            egui::vec2(cell.max_rect().width(), height),
+                        ))
+                        .layout(egui::Layout::top_down(egui::Align::Min)),
+                );
+                flow_ui.spacing_mut().item_spacing = egui::vec2(5., 0.);
+                for line in &lines {
+                    flow_ui.horizontal(|ui| {
+                        ui.set_height(STEP_LINE_H);
+                        for step in line {
+                            match step {
+                                T(t) => {
+                                    ui.add(
+                                        egui::Label::new(k::text(*t, p.ink, k::SMALL))
+                                            .wrap_mode(egui::TextWrapMode::Extend),
+                                    );
+                                }
+                                G(i) => {
+                                    let mut v = values[*i].1;
+                                    if k::num(
+                                        ui,
+                                        &mut v,
+                                        1.,
+                                        0.0..=100_000.0,
+                                        2,
+                                        checks[*i].is_some(),
+                                    )
+                                    .changed()
+                                    {
+                                        edit = Some((row, *i, v));
+                                    }
+                                }
+                            }
+                        }
+                    });
                 }
-                match &checks[index] {
-                    Some(e) => k::cell(&mut cells[2], k::text(e, p.bad, k::SMALL)),
-                    None => k::cell(&mut cells[2], k::text("—", p.faint, k::SMALL)),
-                };
-                if r.clicked() {
-                    pick = Some(index);
+                k::cell(&mut cells[3], k::text(r.release, p.muted, k::SMALL));
+                if resp.clicked() {
+                    pick = Some(row);
                 }
             }
         });
-        if let Some(i) = pick {
-            self.selection = Selection::Timing(i);
+        if let Some(row) = pick {
+            self.selection = Selection::Timing(row);
         }
-        if let Some((index, value)) = edit {
-            self.selection = Selection::Timing(index);
+        if let Some((row, index, value)) = edit {
+            self.selection = Selection::Timing(row);
             self.edit_timing(index, value);
+        }
+    }
+    /// Hotkeys of a row, display only; they are changed on the preset keys tab.
+    fn row_hotkeys(&self, r: &TimeRow) -> String {
+        if r.roles.is_empty() {
+            return "各自設定".into();
+        }
+        let keys: Vec<String> = r
+            .roles
+            .iter()
+            .filter_map(|role| self.keys.document.presets.get(*role))
+            .filter(|p| p.enabled)
+            .filter_map(|p| p.hotkey.map(|c| c.to_string()))
+            .collect();
+        match keys.len() {
+            0 => "未設定".into(),
+            1..=3 => keys.join(" "),
+            _ => format!("{} …", keys[..3].join(" ")),
         }
     }
     fn edit_timing(&mut self, index: usize, value: f64) {
@@ -1670,28 +1872,63 @@ impl App {
                 self.timing_error = None;
             }
         });
-        let Selection::Timing(index) = self.selection else {
+        let Selection::Timing(row) = self.selection else {
             return;
         };
-        let Some(meta) = TIMING.get(index) else {
+        let Some(r) = TIME_ROWS.get(row) else {
             return;
         };
         k::hr(ui);
-        ui.label(k::text(meta.name, p.ink, 15.).strong());
-        ui.label(
-            egui::RichText::new(meta.json)
-                .monospace()
-                .size(11.5)
-                .color(p.faint),
-        );
-        ui.label(k::text(meta.purpose, p.ink, k::SMALL));
-        if !meta.rule.is_empty() {
-            ui.label(k::text(meta.rule, p.muted, k::SMALL));
+        ui.label(k::text(r.name, p.ink, 15.).strong());
+        ui.label(k::text(
+            if r.roles.is_empty() {
+                "熱鍵在點位分頁每一項各自設定。"
+            } else {
+                "熱鍵只顯示；要改請到「預設按鍵」分頁。"
+            },
+            p.muted,
+            k::SMALL,
+        ));
+        let checks = self.timing_checks();
+        let gaps: Vec<usize> = r.gaps().collect();
+        if gaps.is_empty() {
+            ui.label(k::text("這一列沒有可以調的間隔。", p.muted, k::SMALL));
         }
-        if let Some(e) = &self.timing_checks()[index] {
-            ui.label(k::text(e, p.bad, k::SMALL));
-        } else if let Some(e) = &self.timing_error {
+        for i in &gaps {
+            let meta = &TIMING[*i];
+            ui.add_space(6.);
+            ui.label(k::text(meta.name, p.ink, k::BODY).strong());
+            ui.label(
+                egui::RichText::new(format!("timing.{}", meta.json))
+                    .monospace()
+                    .size(11.5)
+                    .color(p.faint),
+            );
+            ui.label(k::text(meta.purpose, p.ink, k::SMALL));
+            if !meta.rule.is_empty() {
+                ui.label(k::text(meta.rule, p.muted, k::SMALL));
+            }
+            if let Some(e) = &checks[*i] {
+                ui.label(k::text(e, p.bad, k::SMALL));
+            }
+        }
+        if let Some(e) = &self.timing_error {
             ui.label(k::text(format!("時間設定有錯：{e}"), p.bad, k::SMALL));
+        }
+        if !gaps.is_empty() && k::link(ui, "恢復這一列預設").clicked() {
+            let template = template_keys().timing;
+            let mut timing = self.timing_draft.clone();
+            for i in &gaps {
+                let path = template.gaps()[*i].0;
+                if let Some(v) = timing.gap_mut(path) {
+                    *v = template.gaps()[*i].1;
+                }
+            }
+            self.timing_draft = timing.clone();
+            self.timing_error = self.keys.set_timing(timing).err().map(|e| e.to_string());
+            if self.timing_error.is_none() {
+                self.timing_draft = self.keys.document.timing.clone();
+            }
         }
         if t.verified {
             let id = &t.identity;
