@@ -60,6 +60,8 @@ fn worker_routes_by_content_and_keeps_other_document_when_opening_external_keys(
     let file = external.join("看似點位.json");
     std::fs::write(&file, to_json(&template_keys()).unwrap()).unwrap();
     b.jobs.send(Job::Inspect(file.clone())).unwrap();
+    // The GUI ignores a new job while busy, so the follow-up must come after Finished.
+    finished(&b);
     loop {
         if let UiEvent::OpenReady(p, kind) = b.events.recv_timeout(Duration::from_secs(5)).unwrap()
         {
@@ -68,7 +70,6 @@ fn worker_routes_by_content_and_keeps_other_document_when_opening_external_keys(
             break;
         }
     }
-    finished(&b);
     b.jobs
         .send(Job::Guarded(Box::new(Job::Open(file.clone(), false)), 0))
         .unwrap();
@@ -79,6 +80,62 @@ fn worker_routes_by_content_and_keeps_other_document_when_opening_external_keys(
     );
     assert_eq!(next.points, initial.points);
     assert_eq!(next.settings.current_keys, file.canonicalize().unwrap());
+    finished(&b);
+    shutdown(b, path);
+}
+/// preview.6 field report: 「從舊檔／MuMu 匯入…」 did nothing. ImportReady arrived before the
+/// planning job's Finished, while the GUI was still busy, so the import was dropped.
+#[test]
+fn legacy_import_ready_follows_finished_and_imports_points() {
+    let path = root();
+    let b = Backend::start(path.clone(), true, "unused.exe".into());
+    loaded(&b);
+    let file = path.join("舊點位.json");
+    std::fs::write(
+        &file,
+        include_str!("../../../tests/fixtures/synthetic/points.json.json"),
+    )
+    .unwrap();
+    b.jobs
+        .send(Job::PlanImport {
+            path: file.clone(),
+            mode: Mode::Ten,
+            resolution: None,
+        })
+        .unwrap();
+    finished(&b);
+    let (mode, resolution, kind) = loop {
+        match b.events.recv_timeout(Duration::from_secs(5)).unwrap() {
+            UiEvent::ImportReady(p, mode, resolution, kind) => {
+                assert_eq!(p, file);
+                break (mode, resolution, kind);
+            }
+            UiEvent::Finished(_) => panic!("ImportReady must follow the plan's Finished"),
+            _ => {}
+        }
+    };
+    assert_eq!(kind, FileKind::Points);
+    b.jobs
+        .send(Job::Guarded(
+            Box::new(Job::Import {
+                expected_kind: kind,
+                path: file,
+                mode,
+                resolution,
+                resume: false,
+            }),
+            0,
+        ))
+        .unwrap();
+    let next = loop {
+        match b.events.recv_timeout(Duration::from_secs(5)).unwrap() {
+            UiEvent::Loaded(s, _) => break s,
+            UiEvent::Message(e) if e.starts_with("問題") => panic!("import failed: {e}"),
+            _ => {}
+        }
+    };
+    assert_eq!(next.points.mode, Mode::Ten);
+    assert!(next.points.items.iter().any(|i| i.name == "拖曳一"));
     finished(&b);
     shutdown(b, path);
 }
