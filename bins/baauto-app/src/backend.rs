@@ -490,6 +490,9 @@ impl Backend {
                         | Job::Screenshot { .. }
                 );
                 let mut saved_paths = Vec::new();
+                // An event that makes the GUI start the next job. It must follow Finished: the GUI
+                // drops new jobs while it is still busy with this one.
+                let mut followup = None;
                 let result = (|| -> Result<(), String> {
                     let mut changed = 0;
                     let resume;
@@ -507,7 +510,7 @@ impl Backend {
                                             for note in keys_migration_notes(&p) {
                                                 let _ = events.send(UiEvent::Message(note));
                                             }
-                                            let _ = events.send(UiEvent::OpenReady(p, d.kind()));
+                                            followup = Some(UiEvent::OpenReady(p, d.kind()));
                                         }
                                         Err(e) => {
                                             let _ =
@@ -532,7 +535,7 @@ impl Backend {
                                     for note in keys_migration_notes(&p) {
                                         let _ = events.send(UiEvent::Message(note));
                                     }
-                                    let _ = events.send(UiEvent::OpenReady(p, d.kind()));
+                                    followup = Some(UiEvent::OpenReady(p, d.kind()));
                                 }
                                 Err(e) => {
                                     let _ = events.send(UiEvent::NeedImport(p, e.to_string()));
@@ -709,7 +712,7 @@ impl Backend {
                             } else {
                                 FileKind::Points
                             };
-                            let _ = events.send(UiEvent::ImportReady(path, mode, resolution, kind));
+                            followup = Some(UiEvent::ImportReady(path, mode, resolution, kind));
                             return Ok(());
                         }
                         Job::Open(ref p, r) | Job::OpenAs(ref p, _, r) => {
@@ -883,6 +886,9 @@ impl Backend {
                 }
                 if notify_finished {
                     let _ = events.send(UiEvent::Finished(success));
+                }
+                if let Some(event) = followup {
+                    let _ = events.send(event);
                 }
             }
             control.quit();
